@@ -37,13 +37,13 @@ ndarray = "0.17"
 sysinfo = "0.37"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24", "download-binaries", "coreml"] }
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24", "download-binaries", "tls-rustls", "coreml"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24", "download-binaries", "directml"] }
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24", "download-binaries", "tls-rustls", "directml"] }
 
 [target.'cfg(not(any(target_os = "macos", target_os = "windows")))'.dependencies]
-ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24", "download-binaries"] }
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24", "download-binaries", "tls-rustls"] }
 
 [dev-dependencies]
 tempfile = "3"
