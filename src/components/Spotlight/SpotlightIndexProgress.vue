@@ -6,7 +6,8 @@ import type { SpotlightIndexJob } from './types'
 const props = defineProps<{ job: SpotlightIndexJob }>()
 
 const percent = computed(() => {
-  if (props.job.total <= 0) return null
+  const determinate = props.job.stage === 'embedding' || props.job.stage === 'complete' || props.job.current > 0
+  if (!determinate || props.job.total <= 0) return null
   return Math.min(100, Math.max(0, props.job.current / props.job.total * 100))
 })
 const complete = computed(() => props.job.stage === 'complete')
