@@ -1,6 +1,7 @@
 use std::{fs, path::Path, path::PathBuf, sync::Arc};
 
 use chrono::Utc;
+use rayon::prelude::*;
 use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
 
@@ -77,6 +78,19 @@ pub async fn index_folder(folder_id: String, state: State<'_, Arc<AppState>>, ap
 
 #[tauri::command(rename_all = "camelCase")]
 pub fn pending_images(folder_id: Option<String>, state: State<'_, Arc<AppState>>) -> Result<Vec<ImageAsset>, String> { indexer::pending_assets(&state, folder_id.as_deref()).map_err(|error| error.to_string()) }
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn prepare_ai_images(images: Vec<ImageAsset>, state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
+    let state = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        images.par_iter().map(|image| {
+            state.thumbnails
+                .get_or_create(&image.id, Path::new(&image.path), image.modified_at)
+                .map(|path| path.to_string_lossy().into_owned())
+                .map_err(|error| error.to_string())
+        }).collect::<Result<Vec<_>, _>>()
+    }).await.map_err(|error| error.to_string())?
+}
 
 #[tauri::command]
 pub fn save_embeddings(embeddings: Vec<ImageEmbedding>, state: State<'_, Arc<AppState>>) -> Result<(), String> {
