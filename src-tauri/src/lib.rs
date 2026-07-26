@@ -50,9 +50,11 @@ pub fn run() {
                     let Some(window) = app.get_webview_window("spotlight") else { return; };
                     let visible = window.is_visible().unwrap_or(false);
                     if visible {
+                        let _ = window.emit("spotlight-will-hide", ());
                         let _ = window.hide();
                     } else {
                         let _ = window.center();
+                        let _ = window.emit("spotlight-will-open", ());
                         let _ = window.show();
                         let _ = window.set_focus();
                         let _ = window.emit("spotlight-opened", ());
@@ -89,6 +91,7 @@ pub fn run() {
                 spotlight.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
+                        let _ = window.emit("spotlight-will-hide", ());
                         let _ = window.hide();
                     }
                 });
@@ -111,6 +114,7 @@ pub fn run() {
             commands::prepare_ai_images,
             commands::save_embeddings,
             commands::explain_results,
+            commands::top_image_tags,
             commands::get_thumbnail,
             commands::search_images,
             commands::open_in_file_manager,
