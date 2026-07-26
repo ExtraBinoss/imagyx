@@ -22,6 +22,7 @@ thiserror = "2"
 rusqlite = { version = "0.37", features = ["bundled", "modern_sqlite"] }
 dirs = "6"
 walkdir = "2.5"
+notify = "8"
 rayon = "1.11"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp", "tiff", "ico"] }
 parking_lot = "0.12"
