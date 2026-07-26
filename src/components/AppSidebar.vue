@@ -7,6 +7,7 @@ import { usePlatformStore } from '../stores/platform'
 import Button from './ui/Button/Button.vue'
 import Popover from './ui/Popover/Popover.vue'
 import LocalAiStatus from './LocalAiStatus.vue'
+import imagyxLogo from '../../src-tauri/icons/imagyx.avif'
 
 const props = defineProps<{
   folders: FollowedFolder[]
@@ -75,7 +76,7 @@ onBeforeUnmount(() => {
 <template>
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-mark">ix</div>
+      <img :src="imagyxLogo" class="brand-mark-img" alt="Imagyx logo" />
       <div><strong>Imagyx</strong><span>Intelligence locale</span></div>
     </div>
 
