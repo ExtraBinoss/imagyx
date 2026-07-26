@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default desktop capability for Imagyx",
-  "windows": ["main"],
+  "windows": ["main", "spotlight"],
   "permissions": ["core:default", "dialog:allow-open"]
 }
