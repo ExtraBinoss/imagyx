@@ -1,6 +1,6 @@
 # Imagyx
 
-Imagyx est une bibliothèque d’images **locale, offline-first et accélérée automatiquement**. Elle suit les dossiers choisis, génère des aperçus et des embeddings visuels sur la machine, puis permet de retrouver un fichier par son nom ou avec une description naturelle comme « fille tenant un téléphone ».
+Imagyx est une bibliothèque d’images **locale, offline-first et accélérée automatiquement**. Elle suit les dossiers choisis, affiche les fichiers directement et génère des embeddings visuels sur la machine, puis permet de retrouver une image par son nom ou avec une description naturelle comme « fille tenant un téléphone ».
 
 ## Ce que contient le prototype
 
@@ -12,7 +12,8 @@ Imagyx est une bibliothèque d’images **locale, offline-first et accélérée 
 - explorateur d’images avec dossiers suivis, grille et recherche globale ;
 - téléchargement du modèle au lancement avec toast, progression en octets, Mo et pourcentage ;
 - indexation incrémentale récursive ;
-- miniatures calculées en parallèle avec Rayon ;
+- lecture parallèle des métadonnées sans générer de JPEG dupliqués ;
+- affichage paresseux et décodage asynchrone des fichiers originaux dans la grille ;
 - recherche hybride nom de fichier + similarité CLIP ;
 - embeddings image/texte FastEmbed exécutés localement avec ONNX Runtime ;
 - CoreML sur macOS, DirectML sur Windows, CUDA optionnel sous Linux, puis CPU en repli silencieux ;
@@ -54,6 +55,20 @@ Au lancement, Imagyx vérifie silencieusement son cache local. Si des fichiers C
 
 L’interface et la recherche par nom restent utilisables pendant cette préparation. Après le premier téléchargement, les modèles sont relus depuis le cache local.
 
+## Indexation rapide
+
+L’indexation est volontairement séparée en deux phases :
+
+1. une seule lecture SQLite récupère les empreintes existantes du dossier ;
+2. les dimensions et métadonnées des nouveaux fichiers sont lues en parallèle ;
+3. SQLite est mis à jour immédiatement et la grille devient disponible ;
+4. CLIP traite ensuite les images par paquets de 32 en arrière-plan ;
+5. les vecteurs sont enregistrés progressivement.
+
+La grille utilise directement les fichiers originaux avec `loading="lazy"` et `decoding="async"`. Imagyx ne crée donc plus une seconde copie JPEG de chaque image. Les anciens aperçus générés par le prototype sont supprimés automatiquement au prochain lancement.
+
+Windows propose un cache Shell partagé et macOS fournit Quick Look Thumbnailing. Ces API seront surtout utiles quand Imagyx prendra en charge des formats que le WebView ne peut pas afficher directement, comme certains RAW ou documents. Pour les formats actuellement acceptés — JPEG, PNG, WebP, GIF, BMP et TIFF — l’affichage direct évite à la fois la duplication disque et une étape de génération supplémentaire.
+
 ## Stockage local
 
 Toutes les données créées par Imagyx restent dans le dossier Images/Pictures de l’utilisateur :
@@ -65,7 +80,7 @@ Pictures/
     ├── database/
     │   └── imagyx.sqlite3       # dossiers, images et embeddings
     ├── cache/
-    │   └── thumbnails/          # aperçus JPEG
+    │   └── thumbnails/          # dossier hérité, maintenu vide
     └── logs/
 ```
 
@@ -127,8 +142,8 @@ Vue / Pinia
     ▼
 Rust
     ├── téléchargement hf-hub avec progression
-    ├── indexer Rayon
-    ├── FastEmbed + ONNX Runtime
+    ├── indexeur métadonnées Rayon
+    ├── FastEmbed + ONNX Runtime par lots
     ├── cache vectoriel en mémoire
     └── SQLite WAL
 ```
