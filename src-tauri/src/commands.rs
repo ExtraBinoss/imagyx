@@ -121,7 +121,7 @@ pub fn explain_results(image_ids: Vec<String>, concepts: Vec<QueryConcept>, stat
         let mut matches = concepts.iter().filter(|concept| concept.vector.len() == entry.vector.len()).map(|concept| SemanticMatch {
             label: concept.label.clone(), score: ((indexer::cosine_similarity(&concept.vector, &entry.vector) + 1.0) / 2.0).clamp(0.0, 1.0), source: "semantic".into(),
         }).collect::<Vec<_>>();
-        matches.sort_by(|a, b| b.score.total_cmp(&a.score)); matches.truncate(3);
+        matches.sort_by(|a, b| b.score.total_cmp(&a.score)); matches.truncate(8);
         ImageExplanation { image_id: entry.image_id.clone(), matches }
     }).collect()
 }
