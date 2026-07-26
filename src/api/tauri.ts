@@ -22,6 +22,8 @@ export const imagyxApi = {
   indexFolder: (folderId: string) => invoke<void>('index_folder', { folderId }),
   pendingImages: (folderId?: string) =>
     invoke<ImageAsset[]>('pending_images', { folderId: folderId ?? null }),
+  prepareAiImages: (images: ImageAsset[]) =>
+    invoke<string[]>('prepare_ai_images', { images }),
   saveEmbeddings: (embeddings: ImageEmbedding[]) =>
     invoke<void>('save_embeddings', { embeddings }),
   thumbnail: (image: Pick<ImageAsset, 'id' | 'path' | 'modifiedAt'>) =>
