@@ -60,10 +60,9 @@ function capture(event: KeyboardEvent) {
     return
   }
 
-  const value = [...modifiers, key].join('+')
-  emit('change', value)
+  emit('change', [...modifiers, key].join('+'))
   recording.value = false
-  message.value = 'Raccourci mis à jour'
+  message.value = 'Application du raccourci…'
   window.setTimeout(() => { if (!recording.value) message.value = '' }, 1400)
 }
 
@@ -83,15 +82,16 @@ function normalizeKey(event: KeyboardEvent): string | null {
 
 function displayTokens(shortcut: string): string[] {
   return shortcut.split('+').filter(Boolean).map((token) => {
-    if (token === 'Control') return 'Ctrl'
-    if (token === 'Meta' || token === 'Super') return 'Cmd'
-    if (token === 'Alt') return 'Alt'
-    if (token === 'Shift') return 'Shift'
-    if (/^Key[A-Z]$/.test(token)) return token.slice(3)
-    if (/^Digit\d$/.test(token)) return token.slice(5)
-    if (/^Numpad\d$/.test(token)) return `Num ${token.slice(6)}`
-    if (token === 'Space') return 'Espace'
-    if (token.startsWith('Arrow')) return token.replace('Arrow', 'Flèche ')
+    const normalized = token.toLocaleLowerCase('en')
+    if (normalized === 'control' || normalized === 'ctrl') return 'Ctrl'
+    if (normalized === 'meta' || normalized === 'super' || normalized === 'command' || normalized === 'cmd') return 'Cmd'
+    if (normalized === 'alt') return 'Alt'
+    if (normalized === 'shift') return 'Shift'
+    if (/^key[a-z]$/i.test(token)) return token.slice(3).toUpperCase()
+    if (/^digit\d$/i.test(token)) return token.slice(5)
+    if (/^numpad\d$/i.test(token)) return `Num ${token.slice(6)}`
+    if (normalized === 'space') return 'Espace'
+    if (normalized.startsWith('arrow')) return `Flèche ${token.slice(5)}`
     return token
   })
 }
