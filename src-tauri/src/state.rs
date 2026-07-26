@@ -6,6 +6,7 @@ use crate::{
     ml::MlRuntime,
     models::{ModelDownloadProgress, VectorEntry},
     paths::AppPaths,
+    thumbnails::ThumbnailCache,
 };
 
 #[derive(Debug)]
@@ -13,6 +14,7 @@ pub struct AppState {
     pub paths: AppPaths,
     pub database: Database,
     pub ml: Mutex<MlRuntime>,
+    pub thumbnails: ThumbnailCache,
     pub vectors: RwLock<Vec<VectorEntry>>,
     pub model_progress: RwLock<ModelDownloadProgress>,
     index_lock: Mutex<()>,
@@ -24,6 +26,7 @@ impl AppState {
         let vectors = database.vectors()?;
         Ok(Self {
             ml: Mutex::new(MlRuntime::new(paths.models.clone())),
+            thumbnails: ThumbnailCache::new(paths.thumbnails.clone()),
             paths,
             database,
             vectors: RwLock::new(vectors),
