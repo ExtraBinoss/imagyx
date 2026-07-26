@@ -17,7 +17,8 @@ export const imagyxApi = {
   updateRuntimeStats: (stats: RuntimeStats) => invoke<void>('update_runtime_stats', { stats }),
   updateModelProgress: (progress: ModelDownloadProgress) =>
     invoke<void>('update_model_progress', { progress }),
-  prepareLocalModel: () => invoke<string>('prepare_local_model'),
+  prepareLocalModel: (modelKey: string) => invoke<string>('prepare_local_model', { modelKey }),
+  resetEmbeddings: () => invoke<void>('reset_embeddings'),
   folders: () => invoke<FollowedFolder[]>('list_folders'),
   addFolder: (path: string) => invoke<FollowedFolder>('add_folder', { path }),
   removeFolder: (folderId: string) => invoke<void>('remove_folder', { folderId }),
