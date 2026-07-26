@@ -43,60 +43,29 @@ pub fn run() {
             let paths = AppPaths::discover()?;
             let state = Arc::new(AppState::new(paths)?);
             let folders = state.database.folders()?;
-
-            app.asset_protocol_scope()
-                .allow_directory(&state.paths.thumbnails, true)?;
+            app.asset_protocol_scope().allow_directory(&state.paths.thumbnails, true)?;
             for folder in &folders {
-                app.asset_protocol_scope()
-                    .allow_directory(&folder.path, true)?;
+                app.asset_protocol_scope().allow_directory(&folder.path, true)?;
             }
-
-            let folder_watcher =
-                FolderWatcher::start(app.handle().clone(), Arc::clone(&state), folders)?;
+            let folder_watcher = FolderWatcher::start(app.handle().clone(), Arc::clone(&state), folders)?;
             app.manage(folder_watcher);
-            app.manage(Arc::clone(&state));
-            start_model_preparation(app.handle().clone(), state);
+            app.manage(state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_app_info,
             commands::get_runtime_stats,
+            commands::update_runtime_stats,
+            commands::update_model_progress,
             commands::list_folders,
             commands::add_folder,
             commands::remove_folder,
             commands::index_folder,
+            commands::pending_images,
+            commands::save_embeddings,
             commands::get_thumbnail,
             commands::search_images,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Imagyx");
-}
-
-fn start_model_preparation(app: tauri::AppHandle, state: Arc<AppState>) {
-    tauri::async_runtime::spawn_blocking(move || {
-        let prepared = {
-            state
-                .ml
-                .lock()
-                .prepare(&app, &state.model_progress, &state.runtime_stats)
-                .map_err(|error| {
-                    eprintln!("Imagyx model preparation failed: {error}");
-                    error
-                })
-                .is_ok()
-        };
-
-        if !prepared {
-            return;
-        }
-
-        let Ok(folders) = state.database.folders() else {
-            return;
-        };
-        for folder in folders {
-            if let Err(error) = indexer::embed_pending(&state, &app, &folder) {
-                eprintln!("Imagyx semantic backfill failed: {error}");
-            }
-        }
-    });
 }
