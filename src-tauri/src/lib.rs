@@ -61,7 +61,9 @@ pub fn run() {
                 .build(),
         )
         .setup(move |app| {
-            app.global_shortcut().register(spotlight_shortcut)?;
+            if let Err(error) = app.global_shortcut().register(spotlight_shortcut) {
+                eprintln!("Impossible d’enregistrer Ctrl+Numpad9: {error}");
+            }
 
             let paths = AppPaths::discover()?;
             let state = Arc::new(AppState::new(paths)?);
