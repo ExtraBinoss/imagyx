@@ -59,6 +59,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_app_info,
+            commands::get_runtime_stats,
             commands::list_folders,
             commands::add_folder,
             commands::remove_folder,
@@ -76,7 +77,7 @@ fn start_model_preparation(app: tauri::AppHandle, state: Arc<AppState>) {
             state
                 .ml
                 .lock()
-                .prepare(&app, &state.model_progress)
+                .prepare(&app, &state.model_progress, &state.runtime_stats)
                 .map_err(|error| {
                     eprintln!("Imagyx model preparation failed: {error}");
                     error
