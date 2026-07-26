@@ -8,6 +8,7 @@ import type {
   ModelDownloadProgress,
   ModelStatus,
   RuntimeStats,
+  SemanticMatch,
 } from '../types'
 import { imagyxApi } from '../api/tauri'
 import { semanticRuntime } from '../services/semantic'
@@ -34,21 +35,10 @@ interface LibraryState {
 
 export const useLibraryStore = defineStore('library', {
   state: (): LibraryState => ({
-    folders: [],
-    images: [],
-    selectedFolderId: null,
-    query: '',
-    loading: false,
-    semanticSearching: false,
-    searchSequence: 0,
-    initialized: false,
-    refreshScheduled: false,
-    appInfo: null,
-    progress: null,
-    modelProgress: null,
-    runtimeStats: null,
-    error: null,
-    listeners: [],
+    folders: [], images: [], selectedFolderId: null, query: '', loading: false,
+    semanticSearching: false, searchSequence: 0, initialized: false,
+    refreshScheduled: false, appInfo: null, progress: null, modelProgress: null,
+    runtimeStats: null, error: null, listeners: [],
   }),
 
   getters: {
@@ -84,11 +74,8 @@ export const useLibraryStore = defineStore('library', {
         this.handleModelProgress(appInfo.modelProgress)
         await this.refreshImages()
         this.initialized = true
-        void semanticRuntime
-          .prepare()
-          .then(() => semanticRuntime.indexPending())
-          .then(() => this.scheduleRefresh())
-          .catch((error) => this.reportError(error))
+        void semanticRuntime.prepare().then(() => semanticRuntime.indexPending())
+          .then(() => this.scheduleRefresh()).catch((error) => this.reportError(error))
       } catch (error) {
         this.reportError(error)
       } finally {
@@ -104,9 +91,7 @@ export const useLibraryStore = defineStore('library', {
       })
       const updatedUnlisten = await listen('library-updated', () => this.scheduleRefresh())
       const semanticUnlisten = await listen<string>('semantic-index-requested', (event) => {
-        void semanticRuntime
-          .indexPending(event.payload)
-          .then(() => this.scheduleRefresh())
+        void semanticRuntime.indexPending(event.payload).then(() => this.scheduleRefresh())
           .catch((error) => this.reportError(error))
       })
       const modelUnlisten = await listen<ModelStatus>('model-status', (event) => {
@@ -116,21 +101,14 @@ export const useLibraryStore = defineStore('library', {
         }
       })
       const modelProgressUnlisten = await listen<ModelDownloadProgress>(
-        'model-download-progress',
-        (event) => this.handleModelProgress(event.payload),
+        'model-download-progress', (event) => this.handleModelProgress(event.payload),
       )
       const runtimeUnlisten = await listen<RuntimeStats>('runtime-stats', (event) => {
         this.runtimeStats = event.payload
         if (this.appInfo) this.appInfo.runtimeStats = event.payload
       })
-      this.listeners.push(
-        progressUnlisten,
-        updatedUnlisten,
-        semanticUnlisten,
-        modelUnlisten,
-        modelProgressUnlisten,
-        runtimeUnlisten,
-      )
+      this.listeners.push(progressUnlisten, updatedUnlisten, semanticUnlisten, modelUnlisten,
+        modelProgressUnlisten, runtimeUnlisten)
     },
 
     scheduleRefresh() {
@@ -148,41 +126,23 @@ export const useLibraryStore = defineStore('library', {
       const toasts = useToastStore()
       if (progress.stage === 'idle') return
       if (progress.stage === 'ready') {
-        toasts.upsert({
-          id: 'model-download',
-          title: 'IA locale prête',
-          description: progress.message,
-          kind: 'success',
-          duration: 3200,
-        })
+        toasts.upsert({ id: 'model-download', title: 'IA locale prête', description: progress.message,
+          kind: 'success', duration: 3200 })
         return
       }
       if (progress.stage === 'error') {
-        toasts.upsert({
-          id: 'model-download',
-          title: 'Chargement du modèle impossible',
-          description: progress.message,
-          kind: 'error',
-          duration: 9000,
-        })
+        toasts.upsert({ id: 'model-download', title: 'Chargement du modèle impossible',
+          description: progress.message, kind: 'error', duration: 9000 })
         return
       }
       const hasByteProgress = progress.totalBytes > 0
-      const percent = hasByteProgress
-        ? Math.min(100, (progress.currentBytes / progress.totalBytes) * 100)
-        : undefined
-      const byteLabel = hasByteProgress
-        ? `${formatBytes(progress.currentBytes)} sur ${formatBytes(progress.totalBytes)}`
-        : undefined
-      const fileLabel = progress.totalFiles > 0
-        ? `Fichier ${progress.currentFile} sur ${progress.totalFiles}`
-        : undefined
+      const percent = hasByteProgress ? Math.min(100, (progress.currentBytes / progress.totalBytes) * 100) : undefined
+      const byteLabel = hasByteProgress ? `${formatBytes(progress.currentBytes)} sur ${formatBytes(progress.totalBytes)}` : undefined
+      const fileLabel = progress.totalFiles > 0 ? `Fichier ${progress.currentFile} sur ${progress.totalFiles}` : undefined
       toasts.upsert({
         id: 'model-download',
         title: progress.stage === 'downloading' ? 'Téléchargement de MobileCLIP-S0' : 'Préparation de WebGPU',
-        description: progress.message,
-        kind: 'info',
-        progress: percent,
+        description: progress.message, kind: 'info', progress: percent,
         progressLabel: [byteLabel, fileLabel].filter(Boolean).join(' · ') || progress.fileName,
         persistent: true,
       })
@@ -190,13 +150,8 @@ export const useLibraryStore = defineStore('library', {
 
     reportError(error: unknown) {
       this.error = String(error)
-      useToastStore().upsert({
-        id: 'library-error',
-        title: 'Une opération a échoué',
-        description: this.error,
-        kind: 'error',
-        duration: 7000,
-      })
+      useToastStore().upsert({ id: 'library-error', title: 'Une opération a échoué',
+        description: this.error, kind: 'error', duration: 7000 })
     },
 
     async refreshFolders() {
@@ -210,10 +165,9 @@ export const useLibraryStore = defineStore('library', {
       const sequence = ++this.searchSequence
       const query = this.query.trim()
       const folderId = this.selectedFolderId ?? undefined
-      const hadImages = this.images.length > 0
       this.error = null
       this.semanticSearching = Boolean(query)
-      if (!hadImages) this.loading = true
+      if (this.images.length === 0) this.loading = true
 
       try {
         const embedded = query ? await semanticRuntime.embedQuery(query) : undefined
@@ -221,12 +175,30 @@ export const useLibraryStore = defineStore('library', {
         const images = await imagyxApi.search({
           query,
           queryVector: embedded?.queryVector,
-          concepts: embedded?.concepts,
           folderId,
           limit: 20_000,
         })
         if (sequence !== this.searchSequence) return
-        this.images = images
+
+        if (embedded?.concepts.length && images.length) {
+          const explanations = await imagyxApi.explainResults(
+            images.slice(0, 500).map((image) => image.id),
+            embedded.concepts,
+          )
+          if (sequence !== this.searchSequence) return
+          const byImage = new Map(explanations.map((item) => [item.imageId, item.matches]))
+          const queryWords = new Set(embedded.concepts.map((concept) => concept.label))
+          this.images = images.map((image) => {
+            const semantic = byImage.get(image.id) ?? []
+            const haystack = `${image.name} ${image.path}`.toLocaleLowerCase('fr')
+            const filename: SemanticMatch[] = [...queryWords]
+              .filter((word) => haystack.includes(word))
+              .map((label) => ({ label, score: 1, source: 'filename' as const }))
+            return { ...image, semanticMatches: [...filename, ...semantic].slice(0, 3) }
+          })
+        } else {
+          this.images = images
+        }
       } catch (error) {
         if (sequence === this.searchSequence) this.reportError(error)
       } finally {
@@ -243,9 +215,7 @@ export const useLibraryStore = defineStore('library', {
         await this.refreshFolders()
         this.selectedFolderId = folder.id
         void imagyxApi.indexFolder(folder.id).catch((error) => this.reportError(error))
-      } catch (error) {
-        this.reportError(error)
-      }
+      } catch (error) { this.reportError(error) }
     },
 
     async removeFolder(folderId: string) {
@@ -253,9 +223,7 @@ export const useLibraryStore = defineStore('library', {
         await imagyxApi.removeFolder(folderId)
         await this.refreshFolders()
         await this.refreshImages()
-      } catch (error) {
-        this.reportError(error)
-      }
+      } catch (error) { this.reportError(error) }
     },
 
     reindexFolder(folderId: string) {
@@ -267,8 +235,6 @@ export const useLibraryStore = defineStore('library', {
       void this.refreshImages()
     },
 
-    setQuery(query: string) {
-      this.query = query
-    },
+    setQuery(query: string) { this.query = query },
   },
 })
