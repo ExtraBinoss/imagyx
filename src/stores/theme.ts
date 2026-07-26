@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { emit, listen } from '@tauri-apps/api/event'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 
@@ -28,6 +29,12 @@ export const useThemeStore = defineStore('theme', {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
         if (this.mode === 'system') this.apply()
       })
+      void listen<ThemeMode>('theme-changed', (event) => {
+        if (!isThemeMode(event.payload)) return
+        this.mode = event.payload
+        localStorage.setItem(STORAGE_KEY, event.payload)
+        this.apply()
+      })
       this.initialized = true
     },
 
@@ -35,11 +42,13 @@ export const useThemeStore = defineStore('theme', {
       this.mode = mode
       localStorage.setItem(STORAGE_KEY, mode)
       this.apply()
+      void emit('theme-changed', mode)
     },
 
     apply() {
-      document.documentElement.dataset.theme = resolveTheme(this.mode)
-      document.documentElement.style.colorScheme = resolveTheme(this.mode)
+      const resolved = resolveTheme(this.mode)
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.style.colorScheme = resolved
     },
   },
 })
