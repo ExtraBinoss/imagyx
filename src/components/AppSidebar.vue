@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Folder, FolderOpen, Images, MoreHorizontal, Plus, RefreshCw, Trash2 } from '@lucide/vue'
 import type { FollowedFolder, IndexProgress, ModelDownloadProgress, RuntimeStats } from '../types'
 import { SEMANTIC_MODELS, type SemanticModelKey } from '../services/semantic'
@@ -33,11 +33,37 @@ const modelOptions = SEMANTIC_MODELS.map((model) => ({
   value: model.key,
   description: model.description,
 }))
+const contextMenu = ref<{ folderId: string; x: number; y: number } | null>(null)
 
-function reindexFromContext(event: MouseEvent, folderId: string) {
+function openContextMenu(event: MouseEvent, folderId: string) {
   event.preventDefault()
-  emit('reindex', folderId)
+  contextMenu.value = {
+    folderId,
+    x: Math.min(event.clientX, window.innerWidth - 220),
+    y: Math.min(event.clientY, window.innerHeight - 120),
+  }
 }
+
+function closeContextMenu() {
+  contextMenu.value = null
+}
+
+function runContextAction(action: 'reindex' | 'remove') {
+  const folderId = contextMenu.value?.folderId
+  if (!folderId) return
+  emit(action, folderId)
+  closeContextMenu()
+}
+
+onMounted(() => {
+  window.addEventListener('click', closeContextMenu)
+  window.addEventListener('blur', closeContextMenu)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('click', closeContextMenu)
+  window.removeEventListener('blur', closeContextMenu)
+})
 </script>
 
 <template>
@@ -65,8 +91,8 @@ function reindexFromContext(event: MouseEvent, folderId: string) {
         <FolderOpen :size="19" /><span>Aucun dossier suivi</span>
       </div>
 
-      <div v-for="folder in folders" :key="folder.id" class="folder-entry" @contextmenu="reindexFromContext($event, folder.id)">
-        <Button class="folder-row" :class="{ active: selectedFolderId === folder.id }" variant="ghost" block :title="`${folder.path} · clic droit pour réindexer`" @click="emit('select', folder.id)">
+      <div v-for="folder in folders" :key="folder.id" class="folder-entry" @contextmenu="openContextMenu($event, folder.id)">
+        <Button class="folder-row" :class="{ active: selectedFolderId === folder.id }" variant="ghost" block :title="folder.path" @click="emit('select', folder.id)">
           <Folder :size="17" />
           <span class="folder-name">{{ folder.name }}</span>
           <span class="folder-count">{{ folder.imageCount }}</span>
@@ -102,6 +128,20 @@ function reindexFromContext(event: MouseEvent, folderId: string) {
     </div>
 
     <LocalAiStatus :progress="progress" :model-progress="modelProgress" :runtime-stats="runtimeStats" />
+
+    <div
+      v-if="contextMenu"
+      class="folder-context-menu"
+      :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+      @click.stop
+    >
+      <Button variant="ghost" size="sm" block @click="runContextAction('reindex')">
+        <template #leading><RefreshCw :size="15" /></template>Réindexer
+      </Button>
+      <Button variant="danger" size="sm" block @click="runContextAction('remove')">
+        <template #leading><Trash2 :size="15" /></template>Ne plus suivre
+      </Button>
+    </div>
   </aside>
 </template>
 
@@ -132,5 +172,18 @@ function reindexFromContext(event: MouseEvent, folderId: string) {
 .sidebar-model-picker :deep(.ui-select__trigger) {
   width: 100%;
   min-width: 0;
+}
+
+.folder-context-menu {
+  position: fixed;
+  z-index: var(--z-popover);
+  display: grid;
+  gap: var(--space-1);
+  width: 210px;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-popover);
 }
 </style>
