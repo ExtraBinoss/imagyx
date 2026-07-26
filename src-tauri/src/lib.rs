@@ -66,6 +66,7 @@ pub fn run() {
             commands::pending_images,
             commands::prepare_ai_images,
             commands::save_embeddings,
+            commands::explain_results,
             commands::get_thumbnail,
             commands::search_images,
         ])
