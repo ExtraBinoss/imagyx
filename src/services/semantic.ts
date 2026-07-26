@@ -42,6 +42,8 @@ class SemanticRuntime {
   private device: Device = 'webgpu'
   private loading: Promise<void> | null = null
   private textLoading: Promise<void> | null = null
+  private environmentLoading: Promise<void> | null = null
+  private environmentReady = false
   private indexing: Promise<void> | null = null
   private genericConcepts: QueryConcept[] | null = null
   private callbacks: RuntimeCallbacks | null = null
@@ -167,30 +169,50 @@ class SemanticRuntime {
   }
 
   private async ensureTextReady() {
-    await this.prepare()
     if (this.textModel && this.tokenizer) return
     if (this.textLoading) return this.textLoading
     this.textLoading = (async () => {
       this.patchStats({ stage: 'loading-text' })
-      const options = this.modelOptions()
-      ;[this.tokenizer, this.textModel] = await Promise.all([
-        AutoTokenizer.from_pretrained(MODEL_ID, options),
-        CLIPTextModelWithProjection.from_pretrained(MODEL_ID, options),
-      ])
+      await this.ensureModelEnvironment()
+      try {
+        await this.loadTextForDevice('webgpu')
+      } catch {
+        this.textModel = null
+        this.tokenizer = null
+        await this.loadTextForDevice('wasm')
+      }
       this.patchStats({ stage: this.paused ? 'paused' : 'ready' })
     })()
     try { await this.textLoading } finally { this.textLoading = null }
   }
 
+  private async loadTextForDevice(device: Device) {
+    const options = this.modelOptions(device)
+    ;[this.tokenizer, this.textModel] = await Promise.all([
+      AutoTokenizer.from_pretrained(MODEL_ID, options),
+      CLIPTextModelWithProjection.from_pretrained(MODEL_ID, options),
+    ])
+  }
+
+  private async ensureModelEnvironment() {
+    if (this.environmentReady) return
+    if (this.environmentLoading) return this.environmentLoading
+    this.environmentLoading = (async () => {
+      const modelRoot = await imagyxApi.prepareLocalModel('mobileclip-s0')
+      const modelsDir = modelRoot.replace(/[\\/]+Xenova[\\/]mobileclip_s0$/, '')
+      env.allowLocalModels = true
+      env.allowRemoteModels = false
+      env.localModelPath = `${imagyxApi.fileUrl(modelsDir).replace(/\/$/, '')}/`
+      env.useBrowserCache = false
+      this.environmentReady = true
+    })()
+    try { await this.environmentLoading } finally { this.environmentLoading = null }
+  }
+
   private async loadVisionRuntime() {
     this.publishProgress({ stage: 'checking', message: `Vérification de ${MODEL_NAME}…`, currentBytes: 0, totalBytes: 0, currentFile: 0, totalFiles: 0 })
     this.patchStats({ stage: 'loading', modelName: MODEL_NAME, backendRequested: 'WebGPU' })
-    const modelRoot = await imagyxApi.prepareLocalModel('mobileclip-s0')
-    const modelsDir = modelRoot.replace(/[\\/]+Xenova[\\/]mobileclip_s0$/, '')
-    env.allowLocalModels = true
-    env.allowRemoteModels = false
-    env.localModelPath = `${imagyxApi.fileUrl(modelsDir).replace(/\/$/, '')}/`
-    env.useBrowserCache = false
+    await this.ensureModelEnvironment()
     try {
       this.device = 'webgpu'
       await this.loadVisionForDevice('webgpu')
