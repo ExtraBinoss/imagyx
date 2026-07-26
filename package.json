@@ -1,0 +1,32 @@
+{
+  "name": "imagyx",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@lucide/vue": "1.26.0",
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-dialog": "2.7.2",
+    "pinia": "4.0.2",
+    "vue": "3.5.40"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4",
+    "@types/node": "24.3.0",
+    "@vitejs/plugin-vue": "6.0.8",
+    "typescript": "7.0.2",
+    "vite": "8.1.5",
+    "vitest": "4.1.10",
+    "vue-tsc": "3.3.8"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
