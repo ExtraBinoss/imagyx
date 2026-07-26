@@ -12,6 +12,11 @@ export interface SemanticMatch {
   source: 'semantic' | 'filename'
 }
 
+export interface ImageExplanation {
+  imageId: string
+  matches: SemanticMatch[]
+}
+
 export interface ImageAsset {
   id: string
   folderId: string
@@ -113,5 +118,4 @@ export interface SearchRequest {
   folderId?: string
   limit?: number
   queryVector?: number[]
-  concepts?: QueryConcept[]
 }
