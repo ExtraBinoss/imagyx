@@ -138,6 +138,29 @@ pub fn explain_results(image_ids: Vec<String>, concepts: Vec<QueryConcept>, stat
 }
 
 #[tauri::command(rename_all = "camelCase")]
+pub fn top_image_tags(concepts: Vec<QueryConcept>, limit: Option<usize>, state: State<'_, Arc<AppState>>) -> Vec<String> {
+    if concepts.is_empty() { return Vec::new(); }
+    let vectors = state.vectors.read();
+    let counts = vectors.par_iter().take(2_000).filter_map(|entry| {
+        concepts.iter()
+            .filter(|concept| concept.vector.len() == entry.vector.len())
+            .map(|concept| (concept.label.clone(), indexer::cosine_similarity(&concept.vector, &entry.vector)))
+            .max_by(|left, right| left.1.total_cmp(&right.1))
+            .map(|best| best.0)
+    }).fold(HashMap::<String, usize>::new, |mut map, label| {
+        *map.entry(label).or_default() += 1;
+        map
+    }).reduce(HashMap::<String, usize>::new, |mut left, right| {
+        for (label, count) in right { *left.entry(label).or_default() += count; }
+        left
+    });
+    let mut ranked = counts.into_iter().collect::<Vec<_>>();
+    ranked.sort_by(|(left_label, left_count), (right_label, right_count)| right_count.cmp(left_count).then_with(|| left_label.cmp(right_label)));
+    ranked.truncate(limit.unwrap_or(10).clamp(1, 20));
+    ranked.into_iter().map(|(label, _)| label).collect()
+}
+
+#[tauri::command(rename_all = "camelCase")]
 pub async fn get_thumbnail(image_id: String, path: String, modified_at: i64, state: State<'_, Arc<AppState>>) -> Result<String, String> {
     let source = PathBuf::from(&path);
     let allowed = state.database.folders().map_err(|e| e.to_string())?.iter().any(|folder| source.starts_with(&folder.path));
@@ -209,13 +232,17 @@ pub fn open_in_imagyx(image_id: String, app: AppHandle, state: State<'_, Arc<App
     let _ = main.unminimize();
     main.set_focus().map_err(|error| error.to_string())?;
     main.emit("open-image-requested", image_id).map_err(|error| error.to_string())?;
-    if let Some(spotlight) = app.get_webview_window("spotlight") { let _ = spotlight.hide(); }
+    if let Some(spotlight) = app.get_webview_window("spotlight") {
+        let _ = spotlight.emit("spotlight-will-hide", ());
+        let _ = spotlight.hide();
+    }
     Ok(())
 }
 
 #[tauri::command]
 pub fn hide_spotlight(app: AppHandle) -> Result<(), String> {
     let window = app.get_webview_window("spotlight").ok_or_else(|| "Fenêtre Spotlight indisponible".to_owned())?;
+    let _ = window.emit("spotlight-will-hide", ());
     window.hide().map_err(|error| error.to_string())
 }
 
