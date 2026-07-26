@@ -213,6 +213,7 @@ onBeforeUnmount(() => {
         </template>
         <template #content>
           <SpotlightSettings
+            variant="popover"
             query=""
             :shortcut="shortcut.displayShortcut || 'Ctrl+Numpad9'"
             :shortcut-updating="shortcut.isRegistering || false"

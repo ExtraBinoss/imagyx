@@ -353,6 +353,7 @@ onBeforeUnmount(() => {
                 <SpotlightSettings
                   v-if="view === 'settings'"
                   key="settings"
+                  variant="spotlight"
                   :query="settingsQuery"
                   :shortcut="shortcut.spotlight"
                   :shortcut-updating="shortcut.updating"

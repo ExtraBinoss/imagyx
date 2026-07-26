@@ -21,10 +21,12 @@ const content = ref<HTMLElement | null>(null)
 const positioned = ref(false)
 const floatingStyle = ref<Record<string, string>>({})
 let resizeObserver: ResizeObserver | null = null
+let contentResizeObserver: ResizeObserver | null = null
 
 function close() {
   open.value = false
   positioned.value = false
+  contentResizeObserver?.disconnect()
 }
 
 async function toggle() {
@@ -32,9 +34,18 @@ async function toggle() {
   positioned.value = false
   if (open.value) {
     await nextTick()
-    requestAnimationFrame(() => {
-      updatePosition()
-    })
+    setupContentObserver()
+    updatePosition()
+  } else {
+    contentResizeObserver?.disconnect()
+  }
+}
+
+function setupContentObserver() {
+  contentResizeObserver?.disconnect()
+  if (content.value) {
+    contentResizeObserver = new ResizeObserver(() => updatePosition())
+    contentResizeObserver.observe(content.value)
   }
 }
 
@@ -43,6 +54,14 @@ function updatePosition() {
 
   const anchorRect = trigger.value.getBoundingClientRect()
   const contentRect = content.value.getBoundingClientRect()
+
+  if (contentRect.height === 0 || contentRect.width === 0) {
+    requestAnimationFrame(() => {
+      if (open.value) updatePosition()
+    })
+    return
+  }
+
   const position = computeFloatingPosition(anchorRect, contentRect, {
     side: props.side,
     align: props.align,
@@ -91,6 +110,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleViewportChange)
   window.removeEventListener('scroll', handleViewportChange, true)
   resizeObserver?.disconnect()
+  contentResizeObserver?.disconnect()
 })
 </script>
 

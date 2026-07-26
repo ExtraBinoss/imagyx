@@ -13,9 +13,11 @@ function normalizePlatform(value: string): DesktopPlatform {
 export const usePlatformStore = defineStore('platform', {
   state: () => ({
     platform: 'unknown' as DesktopPlatform,
+    version: '0.1.0',
     initialized: false,
   }),
   getters: {
+    appVersion: (state) => state.version,
     isWindows: (state) => state.platform === 'windows',
     isMac: (state) => state.platform === 'macos',
     isLinux: (state) => state.platform === 'linux',
