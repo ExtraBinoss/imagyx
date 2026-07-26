@@ -46,8 +46,8 @@ const modelSpecs = {
     name: 'MobileCLIP2-S2',
     modelId: 'plhery/mobileclip2-onnx',
     directorySuffix: /[\\/]+plhery[\\/]mobileclip2-onnx$/,
-    visionFile: 'onnx/s2/vision_model',
-    textFile: 'onnx/s2/text_model',
+    visionFile: 's2/vision_model',
+    textFile: 's2/text_model',
     inputSize: 256,
   },
 }
