@@ -55,6 +55,8 @@ onBeforeUnmount(() => {
       :folders="store.folders"
       :selected-folder-id="store.selectedFolderId"
       :total-images="store.totalImages"
+      :progress="store.progress"
+      :model-progress="store.modelProgress"
       @select="store.selectFolder"
       @add="addFolder"
       @remove="removeFolder"
@@ -89,7 +91,7 @@ onBeforeUnmount(() => {
         :view-key="viewKey"
       />
 
-      <StatusBar :progress="store.progress" :database-path="store.appInfo?.databasePath ?? ''" />
+      <StatusBar :progress="null" :database-path="store.appInfo?.databasePath ?? ''" />
     </section>
   </main>
 
