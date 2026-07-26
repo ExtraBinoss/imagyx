@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { computeFloatingPosition, type FloatingAlign } from '../floating'
+import { computeFloatingPosition, type FloatingAlign, type FloatingSide } from '../floating'
 
 const props = withDefaults(
   defineProps<{
+    side?: FloatingSide
     align?: FloatingAlign
     width?: string
   }>(),
   {
+    side: 'bottom',
     align: 'center',
     width: 'auto',
   },
@@ -40,10 +42,10 @@ function updatePosition() {
   const anchorRect = trigger.value.getBoundingClientRect()
   const contentRect = content.value.getBoundingClientRect()
   const position = computeFloatingPosition(anchorRect, contentRect, {
-    side: 'bottom',
+    side: props.side,
     align: props.align,
     gap: 8,
-    viewportPadding: 10,
+    viewportPadding: 12,
   })
 
   floatingStyle.value = {

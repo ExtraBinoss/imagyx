@@ -3,5 +3,12 @@
   "identifier": "default",
   "description": "Default desktop capability for Imagyx",
   "windows": ["main", "spotlight"],
-  "permissions": ["core:default", "dialog:allow-open"]
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-destroy"
+  ]
 }

@@ -41,7 +41,7 @@ defineExpose({ focusSearch, selectSearch })
 </script>
 
 <template>
-  <header class="search-header">
+  <header class="search-header" data-tauri-drag-region>
     <div class="search-field">
       <Input
         ref="searchInput"
@@ -64,19 +64,6 @@ defineExpose({ focusSearch, selectSearch })
           </Button>
         </template>
       </Input>
-    </div>
-
-    <div class="header-actions">
-      <Badge :variant="props.modelReady ? 'success' : 'warning'" :aria-label="props.modelBackend">
-        <Sparkles :size="14" />
-        {{ props.modelReady ? props.modelBackend : 'IA en préparation' }}
-      </Badge>
-      <Select
-        :model-value="theme.mode"
-        :options="themeOptions"
-        aria-label="Thème de l’interface"
-        @update:model-value="setTheme"
-      />
     </div>
   </header>
 </template>

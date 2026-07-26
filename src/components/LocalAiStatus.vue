@@ -92,7 +92,7 @@ function formatMilliseconds(value: number) {
 
 <template>
   <div class="sidebar-status-container">
-    <Popover align="start" width="310px">
+    <Popover side="top" align="start" width="310px">
       <template #trigger="{ open }">
         <article
           class="sidebar-index-card"

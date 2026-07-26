@@ -7,6 +7,7 @@ import {
   MoreHorizontal,
   Plus,
   RefreshCw,
+  Settings,
   Trash2,
 } from "@lucide/vue";
 import type {
@@ -14,12 +15,16 @@ import type {
   IndexProgress,
   ModelDownloadProgress,
   RuntimeStats,
-} from "../types";
-import { imagyxApi } from "../api/tauri";
-import { usePlatformStore } from "../stores/platform";
-import Button from "./ui/Button/Button.vue";
-import Popover from "./ui/Popover/Popover.vue";
-import LocalAiStatus from "./LocalAiStatus.vue";
+} from "@/types";
+import { imagyxApi } from "@/api/tauri";
+import SpotlightSettings from "@/components/Spotlight/SpotlightSettings.vue";
+import LocalAiStatus from "@/components/LocalAiStatus.vue";
+import Button from "@/components/ui/Button/Button.vue";
+import Popover from "@/components/ui/Popover/Popover.vue";
+import { useThemeStore } from "@/stores/theme";
+import { useShortcutStore } from "@/stores/shortcut";
+import { usePlatformStore } from "@/stores/platform";
+import TitleBar from "@/components/TitleBar.vue";
 import imagyxLogo from "../../src-tauri/icons/imagyx-smaller.avif";
 
 const props = defineProps<{
@@ -41,6 +46,8 @@ const emit = defineEmits<{
 }>();
 
 const platform = usePlatformStore();
+const theme = useThemeStore();
+const shortcut = useShortcutStore();
 const allSelected = computed(() => props.selectedFolderId === null);
 const contextMenu = ref<{ folderId: string; x: number; y: number } | null>(
   null,
@@ -78,6 +85,7 @@ async function runContextAction(action: "open" | "reindex" | "remove") {
 
 onMounted(() => {
   void platform.initialize();
+  void shortcut.initialize();
   window.addEventListener("pointerdown", closeContextMenu);
   window.addEventListener("blur", closeContextMenu);
 });
@@ -90,6 +98,7 @@ onBeforeUnmount(() => {
 
 <template>
   <aside class="sidebar">
+    <TitleBar />
     <div class="brand">
       <img :src="imagyxLogo" class="brand-mark-img" alt="Imagyx logo" />
       <div><strong>Imagyx</strong><span>Local Intelligence</span></div>
@@ -139,11 +148,7 @@ onBeforeUnmount(() => {
         <div class="folder-actions" @click.stop @pointerdown.stop>
           <Popover align="end" width="224px">
             <template #trigger>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Folder Actions"
-              >
+              <Button variant="ghost" size="icon" aria-label="Folder Actions">
                 <MoreHorizontal :size="16" />
               </Button>
             </template>
@@ -170,8 +175,7 @@ onBeforeUnmount(() => {
                     close();
                   "
                 >
-                  <template #leading><RefreshCw :size="15" /></template
-                  >Reindex
+                  <template #leading><RefreshCw :size="15" /></template>Reindex
                 </Button>
                 <Button
                   variant="danger"
@@ -191,13 +195,35 @@ onBeforeUnmount(() => {
       </div>
     </nav>
 
-    <LocalAiStatus
-      :progress="progress"
-      :model-progress="modelProgress"
-      :runtime-stats="runtimeStats"
-      @pause="emit('pauseIndexing')"
-      @resume="emit('resumeIndexing')"
-    />
+    <div class="sidebar-bottom-actions">
+      <LocalAiStatus
+        :progress="progress"
+        :model-progress="modelProgress"
+        :runtime-stats="runtimeStats"
+        @pause="emit('pauseIndexing')"
+        @resume="emit('resumeIndexing')"
+      />
+
+      <Popover side="top" align="start" width="340px">
+        <template #trigger>
+          <Button variant="ghost" size="sm" block class="settings-trigger-btn">
+            <template #leading><Settings :size="15" /></template>
+            Settings & Theme
+          </Button>
+        </template>
+        <template #content>
+          <SpotlightSettings
+            query=""
+            :shortcut="shortcut.displayShortcut || 'Ctrl+Numpad9'"
+            :shortcut-updating="shortcut.isRegistering || false"
+            :shortcut-error="shortcut.error || null"
+            :theme-mode="theme.mode || 'system'"
+            @shortcut-change="shortcut.registerShortcut"
+            @theme-change="theme.setMode"
+          />
+        </template>
+      </Popover>
+    </div>
 
     <div
       v-if="contextMenu"
