@@ -98,12 +98,12 @@ watch(() => props.images.length, () => {
               {{ Math.round(entry.image.semanticScore * 100) }}%
             </Badge>
 
-            <div class="semantic-overlay" :class="{ 'semantic-overlay--ready': entry.image.semanticMatches?.length }">
+            <div class="semantic-overlay">
               <div v-if="entry.image.semanticMatches?.length" class="semantic-marquee">
                 <div class="semantic-marquee__track">
                   <span
-                    v-for="match in [...entry.image.semanticMatches, ...entry.image.semanticMatches]"
-                    :key="`${entry.image.id}:${match.source}:${match.label}:${Math.random()}`"
+                    v-for="(match, matchIndex) in [...entry.image.semanticMatches, ...entry.image.semanticMatches]"
+                    :key="`${entry.image.id}:${matchIndex}:${match.source}:${match.label}`"
                     class="semantic-chip"
                   >
                     {{ match.label }} · {{ Math.round(match.score * 100) }}%
@@ -185,10 +185,6 @@ watch(() => props.images.length, () => {
   font-size: 10px;
   font-weight: 600;
   backdrop-filter: blur(8px);
-}
-
-.image-card:hover .semantic-marquee__track {
-  animation-play-state: running;
 }
 
 @keyframes semantic-marquee {
