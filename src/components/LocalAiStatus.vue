@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Check, Cpu, FolderSync, Gauge, LoaderCircle, MemoryStick, Pause, Play, Sparkles, TriangleAlert } from '@lucide/vue'
+import { Check, Copy, Cpu, FolderSync, Gauge, LoaderCircle, MemoryStick, Pause, Play } from '@lucide/vue'
 import type { IndexProgress, ModelDownloadProgress, RuntimeStats } from '../types'
 import { imagyxApi } from '../api/tauri'
 import { formatBytes } from '../utils'
@@ -17,6 +17,7 @@ const props = defineProps<{
 const emit = defineEmits<{ pause: []; resume: [] }>()
 const liveStats = ref<RuntimeStats | null>(props.runtimeStats)
 const popoverOpen = ref(false)
+const copied = ref(false)
 let timer: number | undefined
 
 watch(() => props.runtimeStats, (value) => { if (value) liveStats.value = value }, { immediate: true })
@@ -88,95 +89,108 @@ function formatMilliseconds(value: number) {
   if (value < 1_000) return `${Math.round(value)} ms`
   return `${(value / 1_000).toFixed(1)} s`
 }
+
+function copyAiDetails() {
+  const infoText = `Imagyx Local AI Debug Info:
+- Model: ${liveStats.value?.modelName ?? 'MobileCLIP-S0'}
+- Phase: ${phaseLabel.value}
+- Backend: ${liveStats.value?.backendEffective ?? 'Automatic'} (Requested: ${liveStats.value?.backendRequested ?? 'WebGPU'})
+- Batch: ${liveStats.value?.batchCurrent ?? 0} / ${liveStats.value?.batchTotal ?? 0} (${liveStats.value?.batchSize ?? 0} img)
+- Progress: ${current.value} / ${total.value}
+- Speed: ${liveStats.value?.imagesPerSecond?.toFixed(1) ?? '0.0'} img/s (${liveStats.value?.averageMsPerImage ? `${Math.round(liveStats.value.averageMsPerImage)} ms/img` : '—'})
+- Timings: Decode: ${formatMilliseconds(liveStats.value?.decodeMs ?? 0)} | Inference: ${formatMilliseconds(liveStats.value?.inferenceMs ?? 0)} | SQLite: ${formatMilliseconds(liveStats.value?.saveMs ?? 0)}
+- CPU: App ${liveStats.value?.processCpuPercent?.toFixed(0) ?? 0}% | System ${liveStats.value?.systemCpuPercent?.toFixed(0) ?? 0}%
+- RAM: ${formatBytes(liveStats.value?.processMemoryBytes ?? 0)}`
+
+  void navigator.clipboard.writeText(infoText)
+  copied.value = true
+  setTimeout(() => {
+    copied.value = false
+  }, 2000)
+}
 </script>
 
 <template>
-  <div class="sidebar-status-container">
-    <Popover side="top" align="start" width="310px">
-      <template #trigger="{ open }">
-        <article
-          class="sidebar-index-card"
-          :class="{
-            'sidebar-index-card--active': active,
-            'sidebar-index-card--open': open
-          }"
-          role="button"
-          tabindex="0"
-          title="Cliquez pour voir les détails de l'IA"
-          @click="popoverOpen = !open"
-        >
-          <span class="card-icon">
-            <Check v-if="!active && !paused" :size="16" />
-            <Pause v-else-if="paused" :size="16" />
-            <LoaderCircle v-else-if="indexing || downloading" class="spin" :size="16" />
-            <FolderSync v-else :size="16" />
-          </span>
-
-          <div class="card-copy">
-            <div class="card-title-row">
-              <strong>{{ title }}</strong>
-              <span v-if="percent != null && active && !indeterminate" class="card-percent">{{ Math.round(percent) }}%</span>
-            </div>
-            <span class="card-detail">{{ detail }}</span>
-
-            <!-- Spotlight style progress bar -->
-            <div class="card-track" :class="{ 'card-track--indeterminate': indeterminate }">
-              <i :style="percent != null ? { width: `${percent}%` } : undefined" />
-            </div>
-          </div>
-
-          <Button
-            v-if="indexing || paused"
-            class="card-control"
-            variant="ghost"
-            size="icon"
-            :aria-label="paused ? 'Reprendre' : 'Pause'"
-            @click.stop="emit(paused ? 'resume' : 'pause')"
+  <Transition name="fade">
+    <div v-if="active || paused" class="sidebar-status-container">
+      <Popover side="top" align="start" width="280px">
+        <template #trigger="{ open }">
+          <article
+            class="sidebar-index-card"
+            :class="{
+              'sidebar-index-card--active': active,
+              'sidebar-index-card--open': open
+            }"
+            role="button"
+            tabindex="0"
+            title="Détails de l'indexation IA"
+            @click="popoverOpen = !open"
           >
-            <Play v-if="paused" :size="14" />
-            <Pause v-else :size="14" />
-          </Button>
-        </article>
-      </template>
+            <span class="card-icon">
+              <Pause v-if="paused" :size="16" />
+              <LoaderCircle v-else-if="indexing || downloading" class="spin" :size="16" />
+              <FolderSync v-else :size="16" />
+            </span>
 
-      <template #content>
-        <div class="ai-stats">
-          <div class="ai-stats__title">
-            <div>
-              <strong>{{ liveStats?.modelName ?? 'MobileCLIP-S0' }}</strong>
-              <span>{{ phaseLabel }}</span>
+            <div class="card-copy">
+              <div class="card-title-row">
+                <strong>{{ title }}</strong>
+                <span v-if="percent != null && active && !indeterminate" class="card-percent">{{ Math.round(percent) }}%</span>
+              </div>
+              <span class="card-detail">{{ detail }}</span>
+
+              <!-- Spotlight style progress bar -->
+              <div class="card-track" :class="{ 'card-track--indeterminate': indeterminate }">
+                <i :style="percent != null ? { width: `${percent}%` } : undefined" />
+              </div>
             </div>
-            <Badge :variant="liveStats?.accelerationActive ? 'success' : 'neutral'">
-              {{ liveStats?.accelerationLabel ?? 'Chargement' }}
-            </Badge>
+
+            <Button
+              v-if="indexing || paused"
+              class="card-control"
+              variant="ghost"
+              size="icon"
+              :aria-label="paused ? 'Reprendre' : 'Pause'"
+              @click.stop="emit(paused ? 'resume' : 'pause')"
+            >
+              <Play v-if="paused" :size="14" />
+              <Pause v-else :size="14" />
+            </Button>
+          </article>
+        </template>
+
+        <template #content>
+          <div class="ai-stats">
+            <div class="ai-stats__title">
+              <div>
+                <strong>{{ liveStats?.modelName ?? 'MobileCLIP-S0' }}</strong>
+                <span>{{ phaseLabel }}</span>
+              </div>
+              <Badge :variant="liveStats?.accelerationActive ? 'success' : 'neutral'">
+                {{ liveStats?.accelerationLabel ?? 'WebGPU' }}
+              </Badge>
+            </div>
+
+            <dl class="ai-simple-dl">
+              <div><dt>Progress</dt><dd>{{ current }} / {{ total }}</dd></div>
+              <div v-if="liveStats?.imagesPerSecond"><dt>Speed</dt><dd>{{ liveStats.imagesPerSecond.toFixed(1) }} img/s</dd></div>
+              <div><dt>Resources</dt><dd>CPU {{ liveStats?.processCpuPercent?.toFixed(0) ?? 0 }}% · RAM {{ formatBytes(liveStats?.processMemoryBytes ?? 0) }}</dd></div>
+            </dl>
+
+            <Button variant="secondary" size="sm" block class="ai-copy-btn" @click="copyAiDetails">
+              <template #leading>
+                <Check v-if="copied" :size="14" />
+                <Copy v-else :size="14" />
+              </template>
+              {{ copied ? 'Copied!' : 'Copy AI Debug Info' }}
+            </Button>
+
+            <p v-if="liveStats?.fallbackReason" class="ai-stats__warning">{{ liveStats.fallbackReason }}</p>
           </div>
-
-          <dl>
-            <div><dt>Active Backend</dt><dd>{{ liveStats?.backendEffective ?? 'Automatic' }}</dd></div>
-            <div><dt>Requested Backend</dt><dd>{{ liveStats?.backendRequested ?? 'WebGPU' }}</dd></div>
-            <div><dt>Batch</dt><dd>{{ liveStats?.batchCurrent ?? 0 }} / {{ liveStats?.batchTotal ?? 0 }} ({{ liveStats?.batchSize ?? 0 }} img)</dd></div>
-            <div><dt>Progress</dt><dd>{{ liveStats?.current ?? 0 }} / {{ liveStats?.total ?? 0 }}</dd></div>
-            <div><dt>Throughput</dt><dd>{{ liveStats?.imagesPerSecond?.toFixed(1) ?? '0.0' }} img/s</dd></div>
-            <div><dt>Average Time</dt><dd>{{ liveStats?.averageMsPerImage ? `${liveStats.averageMsPerImage.toFixed(0)} ms/img` : '—' }}</dd></div>
-          </dl>
-
-          <div class="ai-stats__timings">
-            <span>Decoding <strong>{{ formatMilliseconds(liveStats?.decodeMs ?? 0) }}</strong></span>
-            <span>Inference <strong>{{ formatMilliseconds(liveStats?.inferenceMs ?? 0) }}</strong></span>
-            <span>SQLite <strong>{{ formatMilliseconds(liveStats?.saveMs ?? 0) }}</strong></span>
-          </div>
-
-          <div class="ai-stats__resources">
-            <div><Cpu :size="14" /><span>Imagyx {{ liveStats?.processCpuPercent.toFixed(0) ?? 0 }}% CPU</span></div>
-            <div><Gauge :size="14" /><span>System {{ liveStats?.systemCpuPercent.toFixed(0) ?? 0 }}% CPU</span></div>
-            <div><MemoryStick :size="14" /><span>{{ formatBytes(liveStats?.processMemoryBytes ?? 0) }} RAM</span></div>
-          </div>
-
-          <p v-if="liveStats?.fallbackReason" class="ai-stats__warning">{{ liveStats.fallbackReason }}</p>
-        </div>
-      </template>
-    </Popover>
-  </div>
+        </template>
+      </Popover>
+    </div>
+  </Transition>
 </template>
 
 <style scoped>
@@ -334,54 +348,49 @@ function formatMilliseconds(value: number) {
   color: var(--text-muted);
 }
 
-.ai-stats dd {
+.ai-simple-dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.ai-simple-dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+}
+
+.ai-simple-dl dt {
+  color: var(--text-muted);
+}
+
+.ai-simple-dl dd {
   margin: 0;
   color: var(--text);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
-.ai-stats__timings {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.ai-stats__timings span {
-  display: grid;
-  gap: 2px;
-  padding: 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  color: var(--text-muted);
-  font-size: 10px;
-}
-
-.ai-stats__timings strong {
-  color: var(--text);
-  font-size: 11px;
-}
-
-.ai-stats__resources {
-  display: grid;
-  gap: 6px;
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--border);
-}
-
-.ai-stats__resources div {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-muted);
-  font-size: var(--text-xs);
+.ai-copy-btn {
+  margin-top: var(--space-1);
 }
 
 .ai-stats__warning {
   margin: 0;
   color: var(--warning-text);
   font-size: var(--text-xs);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
 }
 
 .spin {
