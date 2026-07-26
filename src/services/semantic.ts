@@ -42,6 +42,8 @@ class SemanticRuntime {
   private device: Device = 'webgpu'
   private loading: Promise<void> | null = null
   private textLoading: Promise<void> | null = null
+  private textPriming: Promise<void> | null = null
+  private textPrimed = false
   private environmentLoading: Promise<void> | null = null
   private environmentReady = false
   private indexing: Promise<void> | null = null
@@ -78,6 +80,12 @@ class SemanticRuntime {
 
   async prewarmText() {
     await this.ensureTextReady()
+    if (this.textPrimed) return
+    if (!this.textPriming) {
+      this.textPriming = this.primeTextRuntime()
+        .finally(() => { this.textPriming = null })
+    }
+    await this.textPriming
   }
 
   async indexPending(folderId?: string) {
@@ -147,7 +155,7 @@ class SemanticRuntime {
   async embedQuery(query: string): Promise<EmbeddedQuery | undefined> {
     const trimmed = query.trim()
     if (!trimmed) return undefined
-    await this.ensureTextReady()
+    await this.prewarmText()
     const labels = queryConceptLabels(trimmed)
     const texts = [trimmed, ...labels]
     const inputs = this.tokenizer(texts, { padding: 'max_length', truncation: true, max_length: 77 })
@@ -160,7 +168,7 @@ class SemanticRuntime {
 
   async genericImageConcepts(): Promise<QueryConcept[]> {
     if (this.genericConcepts) return this.genericConcepts
-    await this.ensureTextReady()
+    await this.prewarmText()
     const prompts = DEFAULT_IMAGE_LABELS.map((label) => `une photo de ${label}`)
     const inputs = this.tokenizer(prompts, { padding: 'max_length', truncation: true, max_length: 77 })
     const output = await this.textModel(inputs)
@@ -190,12 +198,24 @@ class SemanticRuntime {
     try { await this.textLoading } finally { this.textLoading = null }
   }
 
+  private async primeTextRuntime() {
+    const inputs = this.tokenizer(['une photo'], {
+      padding: 'max_length',
+      truncation: true,
+      max_length: 77,
+    })
+    const output = await this.textModel(inputs)
+    tensorRows(output.text_embeds)
+    this.textPrimed = true
+  }
+
   private async loadTextForDevice(device: Device) {
     const options = this.modelOptions(device)
     ;[this.tokenizer, this.textModel] = await Promise.all([
       AutoTokenizer.from_pretrained(MODEL_ID, options),
       CLIPTextModelWithProjection.from_pretrained(MODEL_ID, options),
     ])
+    this.textPrimed = false
   }
 
   private async ensureModelEnvironment() {
