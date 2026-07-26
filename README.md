@@ -1,6 +1,6 @@
 # Imagyx
 
-Imagyx est une bibliothèque d’images **locale, offline-first et accélérée automatiquement**. Elle suit les dossiers choisis, affiche les fichiers directement et génère des embeddings visuels sur la machine, puis permet de retrouver une image par son nom ou avec une description naturelle comme « fille tenant un téléphone ».
+Imagyx est une bibliothèque d’images **locale, offline-first et accélérée automatiquement**. Elle suit les dossiers choisis, affiche rapidement les nouveaux fichiers et génère des embeddings visuels sur la machine, puis permet de retrouver une image par son nom ou avec une description naturelle comme « fille tenant un téléphone ».
 
 ## Ce que contient le prototype
 
@@ -10,10 +10,14 @@ Imagyx est une bibliothèque d’images **locale, offline-first et accélérée 
 - design system local dans `src/components/ui` ;
 - thèmes système, clair et sombre basés sur des variables CSS globales ;
 - explorateur d’images avec dossiers suivis, grille et recherche globale ;
+- grille virtualisée : seules les cartes visibles et trois rangées d’overscan sont montées ;
+- watcher natif récursif Windows, macOS et Linux avec debounce ;
+- miniatures demandées uniquement par les cartes visibles ;
+- quatre générations de miniatures simultanées au maximum ;
+- cache disque LRU borné à 256 miniatures et cache mémoire borné à 512 URL ;
 - téléchargement du modèle au lancement avec toast, progression en octets, Mo et pourcentage ;
 - indexation incrémentale récursive ;
-- lecture parallèle des métadonnées sans générer de JPEG dupliqués ;
-- affichage paresseux et décodage asynchrone des fichiers originaux dans la grille ;
+- lecture parallèle des métadonnées ;
 - recherche hybride nom de fichier + similarité CLIP ;
 - embeddings image/texte FastEmbed exécutés localement avec ONNX Runtime ;
 - CoreML sur macOS, DirectML sur Windows, CUDA optionnel sous Linux, puis CPU en repli silencieux ;
@@ -53,21 +57,41 @@ Au lancement, Imagyx vérifie silencieusement son cache local. Si des fichiers C
 5. les modèles sont initialisés avec l’accélérateur disponible ;
 6. le toast confirme que l’IA locale est prête.
 
-L’interface et la recherche par nom restent utilisables pendant cette préparation. Après le premier téléchargement, les modèles sont relus depuis le cache local.
+L’interface et la recherche par nom restent utilisables pendant cette préparation. Les fichiers découverts sont immédiatement visibles. Leur analyse sémantique est mise en file d’attente et démarre automatiquement dès que le modèle est prêt.
 
 ## Indexation rapide
 
-L’indexation est volontairement séparée en deux phases :
+L’indexation est séparée en phases indépendantes :
 
 1. une seule lecture SQLite récupère les empreintes existantes du dossier ;
 2. les dimensions et métadonnées des nouveaux fichiers sont lues en parallèle ;
-3. SQLite est mis à jour immédiatement et la grille devient disponible ;
-4. CLIP traite ensuite les images par paquets de 32 en arrière-plan ;
-5. les vecteurs sont enregistrés progressivement.
+3. SQLite est mis à jour et la grille devient disponible ;
+4. si le modèle est encore en préparation, l’analyse IA est indiquée comme mise en attente sans bloquer l’interface ;
+5. CLIP traite ensuite les images par lots de huit ;
+6. la barre d’état affiche le lot courant, le nombre total de lots et le nombre exact d’images terminées ;
+7. les vecteurs sont enregistrés après chaque lot.
 
-La grille utilise directement les fichiers originaux avec `loading="lazy"` et `decoding="async"`. Imagyx ne crée donc plus une seconde copie JPEG de chaque image. Les anciens aperçus générés par le prototype sont supprimés automatiquement au prochain lancement.
+Le premier lot utilise une progression indéterminée avec un libellé comme `Lot 1 / 10`, au lieu d’afficher un `0 / 76` immobile. Après le premier lot, la progression devient exacte.
 
-Windows propose un cache Shell partagé et macOS fournit Quick Look Thumbnailing. Ces API seront surtout utiles quand Imagyx prendra en charge des formats que le WebView ne peut pas afficher directement, comme certains RAW ou documents. Pour les formats actuellement acceptés — JPEG, PNG, WebP, GIF, BMP et TIFF — l’affichage direct évite à la fois la duplication disque et une étape de génération supplémentaire.
+## Virtualisation et miniatures
+
+La grille calcule le nombre de colonnes à partir de la largeur disponible et ne rend que les rangées présentes dans le viewport, avec trois rangées supplémentaires avant et après. Une bibliothèque de plusieurs milliers d’images ne crée donc pas plusieurs milliers de nœuds DOM ni plusieurs milliers de requêtes simultanées.
+
+Lorsqu’une carte devient visible :
+
+1. Vue place sa demande dans une file bornée ;
+2. quatre demandes peuvent être exécutées simultanément ;
+3. Rust retourne immédiatement une miniature déjà présente dans le cache, ou en génère une de 512 px ;
+4. le cache disque élimine les entrées les moins récemment utilisées au-delà de 256 fichiers ;
+5. une file frontend supérieure à 96 demandes abandonne les anciennes demandes devenues hors écran.
+
+Cette stratégie évite de dupliquer toutes les images. Seule une petite fenêtre de miniatures utiles est conservée.
+
+## Surveillance des dossiers
+
+Chaque dossier suivi est enregistré auprès du watcher natif de la plateforme en mode récursif. Les créations, modifications, suppressions, renommages et nouveaux sous-dossiers déclenchent une réindexation incrémentale après un debounce de 700 ms. Les événements provenant du dossier interne `Pictures/imagyx` sont ignorés afin que les miniatures et la base de données ne créent pas de boucle.
+
+Un dossier ajouté ou retiré depuis l’interface est ajouté ou retiré du watcher immédiatement, sans redémarrer l’application.
 
 ## Stockage local
 
@@ -80,7 +104,7 @@ Pictures/
     ├── database/
     │   └── imagyx.sqlite3       # dossiers, images et embeddings
     ├── cache/
-    │   └── thumbnails/          # dossier hérité, maintenu vide
+    │   └── thumbnails/          # maximum 256 aperçus JPEG de 512 px
     └── logs/
 ```
 
@@ -138,9 +162,13 @@ Le provider accéléré est enregistré avec un échec silencieux : un pilote ab
 
 ```text
 Vue / Pinia
-    │ commandes et événements Tauri
-    ▼
+    ├── grille virtualisée
+    ├── file de miniatures bornée
+    └── événements Tauri
+              ▼
 Rust
+    ├── watcher natif récursif
+    ├── cache de miniatures LRU
     ├── téléchargement hf-hub avec progression
     ├── indexeur métadonnées Rayon
     ├── FastEmbed + ONNX Runtime par lots
@@ -153,7 +181,7 @@ La recherche vectorielle reste volontairement en mémoire dans ce prototype. Pou
 ## Limites actuelles du prototype
 
 - le moteur sémantique est CLIP ViT-B/32, rapide mais moins précis qu’un grand VLM ;
+- la liste de métadonnées chargée par Vue est plafonnée à 20 000 résultats par vue, tandis que le DOM reste virtualisé ;
 - le renommage automatique n’est pas encore appliqué aux fichiers originaux ;
-- les changements de dossiers sont détectés par une actualisation automatique périodique, avec réindexation manuelle immédiate disponible dans la barre latérale ;
 - la signature/notarisation macOS et la signature Windows ne sont pas configurées ;
 - l’exécution GPU doit encore être testée sur du matériel physique avant une distribution publique.
