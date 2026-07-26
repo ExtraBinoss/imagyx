@@ -22,8 +22,7 @@ export const imagyxApi = {
   indexFolder: (folderId: string) => invoke<void>('index_folder', { folderId }),
   pendingImages: (folderId?: string) =>
     invoke<ImageAsset[]>('pending_images', { folderId: folderId ?? null }),
-  prepareAiImages: (images: ImageAsset[]) =>
-    invoke<string[]>('prepare_ai_images', { images }),
+  prepareAiImages: (imageIds: string[]) => invoke<string[]>('prepare_ai_images', { imageIds }),
   saveEmbeddings: (embeddings: ImageEmbedding[]) =>
     invoke<void>('save_embeddings', { embeddings }),
   thumbnail: (image: Pick<ImageAsset, 'id' | 'path' | 'modifiedAt'>) =>
@@ -39,6 +38,7 @@ export const imagyxApi = {
         folderId: request.folderId ?? null,
         limit: request.limit ?? 2_000,
         queryVector: request.queryVector ?? null,
+        concepts: request.concepts ?? [],
       },
     }),
   fileUrl: (path: string) => convertFileSrc(path),
