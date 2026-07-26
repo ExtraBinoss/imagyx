@@ -7,7 +7,10 @@ Imagyx est une bibliothèque d’images **locale, offline-first et accélérée 
 - application desktop Tauri 2 ;
 - interface Vue 3 + Pinia + TypeScript + Vite ;
 - icônes `@lucide/vue` ;
+- design system local dans `src/components/ui` ;
+- thèmes système, clair et sombre basés sur des variables CSS globales ;
 - explorateur d’images avec dossiers suivis, grille et recherche globale ;
+- téléchargement du modèle au lancement avec toast, progression en octets, Mo et pourcentage ;
 - indexation incrémentale récursive ;
 - miniatures calculées en parallèle avec Rayon ;
 - recherche hybride nom de fichier + similarité CLIP ;
@@ -19,6 +22,38 @@ Imagyx est une bibliothèque d’images **locale, offline-first et accélérée 
 
 Il n’existe aucun sélecteur de « mode performance ». Imagyx choisit le meilleur accélérateur disponible et retombe automatiquement sur le CPU si le provider GPU n’est pas utilisable.
 
+## Design system
+
+Les composants réutilisables sont regroupés dans `src/components/ui` :
+
+```text
+components/ui/
+├── Badge/
+├── Button/
+├── Input/
+├── Popover/
+├── ProgressBar/
+├── Select/
+├── Skeleton/
+├── Toast/
+└── Tooltip/
+```
+
+Les couleurs, espacements, rayons, niveaux de texte et états sont définis dans `src/style.css` par des variables globales. Le thème clair est blanc, neutre et bleu SaaS ; le thème sombre utilise les mêmes rôles sémantiques. Aucun glow ou dégradé décoratif n’est utilisé.
+
+## Téléchargement du modèle
+
+Au lancement, Imagyx vérifie silencieusement son cache local. Si des fichiers CLIP manquent :
+
+1. le backend récupère leur taille totale ;
+2. le téléchargement s’exécute dans un worker Rust bloquant séparé ;
+3. un événement Tauri remonte les octets téléchargés, le total, le fichier courant et le nombre de fichiers ;
+4. le toast Vue affiche les Mo, le pourcentage et une barre de progression ;
+5. les modèles sont initialisés avec l’accélérateur disponible ;
+6. le toast confirme que l’IA locale est prête.
+
+L’interface et la recherche par nom restent utilisables pendant cette préparation. Après le premier téléchargement, les modèles sont relus depuis le cache local.
+
 ## Stockage local
 
 Toutes les données créées par Imagyx restent dans le dossier Images/Pictures de l’utilisateur :
@@ -26,7 +61,7 @@ Toutes les données créées par Imagyx restent dans le dossier Images/Pictures 
 ```text
 Pictures/
 └── imagyx/
-    ├── models/                  # modèles ONNX téléchargés au premier usage
+    ├── models/                  # modèles ONNX téléchargés au premier lancement
     ├── database/
     │   └── imagyx.sqlite3       # dossiers, images et embeddings
     ├── cache/
@@ -66,8 +101,6 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
 npm run tauri build
 ```
 
-Le premier calcul sémantique télécharge les deux parties de CLIP dans `Pictures/imagyx/models`. Les lancements suivants utilisent exclusivement le cache local.
-
 ## Accélération automatique
 
 | Plateforme | Provider prioritaire | Repli |
@@ -93,6 +126,7 @@ Vue / Pinia
     │ commandes et événements Tauri
     ▼
 Rust
+    ├── téléchargement hf-hub avec progression
     ├── indexer Rayon
     ├── FastEmbed + ONNX Runtime
     ├── cache vectoriel en mémoire
@@ -106,4 +140,5 @@ La recherche vectorielle reste volontairement en mémoire dans ce prototype. Pou
 - le moteur sémantique est CLIP ViT-B/32, rapide mais moins précis qu’un grand VLM ;
 - le renommage automatique n’est pas encore appliqué aux fichiers originaux ;
 - les changements de dossiers sont détectés par une actualisation automatique périodique, avec réindexation manuelle immédiate disponible dans la barre latérale ;
-- la signature/notarisation macOS et la signature Windows ne sont pas configurées.
+- la signature/notarisation macOS et la signature Windows ne sont pas configurées ;
+- l’exécution GPU doit encore être testée sur du matériel physique avant une distribution publique.
