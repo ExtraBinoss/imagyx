@@ -2,10 +2,13 @@ import type { ImageAsset } from '../types'
 import { imagyxApi } from '../api/tauri'
 
 const MAX_CONCURRENT_REQUESTS = 4
+const MAX_QUEUED_REQUESTS = 96
 const MEMORY_CACHE_CAPACITY = 512
 
 interface QueueTask {
+  key: string
   run: () => Promise<void>
+  cancel: () => void
 }
 
 const urls = new Map<string, string>()
@@ -39,6 +42,15 @@ function pump(): void {
   }
 }
 
+function makeRoom(): void {
+  while (queue.length >= MAX_QUEUED_REQUESTS) {
+    const dropped = queue.shift()
+    if (!dropped) return
+    pending.delete(dropped.key)
+    dropped.cancel()
+  }
+}
+
 export function requestThumbnail(
   image: Pick<ImageAsset, 'id' | 'path' | 'modifiedAt'>,
 ): Promise<string> {
@@ -53,7 +65,10 @@ export function requestThumbnail(
   if (existing) return existing
 
   const request = new Promise<string>((resolve, reject) => {
+    makeRoom()
     queue.push({
+      key,
+      cancel: () => reject(new Error('Thumbnail request superseded by the visible viewport')),
       run: async () => {
         try {
           const path = await imagyxApi.thumbnail(image)
