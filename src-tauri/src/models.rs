@@ -43,6 +43,7 @@ pub struct AppInfo {
     pub thumbnails_dir: String,
     pub ai_backend: String,
     pub ai_ready: bool,
+    pub model_progress: ModelDownloadProgress,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -61,6 +62,32 @@ pub struct IndexProgress {
 pub struct ModelStatus {
     pub ready: bool,
     pub backend: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelDownloadProgress {
+    pub stage: String,
+    pub file_name: Option<String>,
+    pub current_bytes: u64,
+    pub total_bytes: u64,
+    pub current_file: usize,
+    pub total_files: usize,
+    pub message: String,
+}
+
+impl Default for ModelDownloadProgress {
+    fn default() -> Self {
+        Self {
+            stage: "idle".to_owned(),
+            file_name: None,
+            current_bytes: 0,
+            total_bytes: 0,
+            current_file: 0,
+            total_files: 0,
+            message: "En attente".to_owned(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
