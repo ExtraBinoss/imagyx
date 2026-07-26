@@ -2,16 +2,13 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Folder, FolderOpen, Images, MoreHorizontal, Plus, RefreshCw, Trash2 } from '@lucide/vue'
 import type { FollowedFolder, IndexProgress, ModelDownloadProgress, RuntimeStats } from '../types'
-import { SEMANTIC_MODELS, type SemanticModelKey } from '../services/semantic'
 import Button from './ui/Button/Button.vue'
 import Popover from './ui/Popover/Popover.vue'
-import Select from './ui/Select/Select.vue'
 import LocalAiStatus from './LocalAiStatus.vue'
 
 const props = defineProps<{
   folders: FollowedFolder[]
   selectedFolderId: string | null
-  selectedModel: SemanticModelKey
   totalImages: number
   progress: IndexProgress | null
   modelProgress: ModelDownloadProgress | null
@@ -23,15 +20,9 @@ const emit = defineEmits<{
   add: []
   remove: [folderId: string]
   reindex: [folderId: string]
-  model: [modelKey: SemanticModelKey]
 }>()
 
 const allSelected = computed(() => props.selectedFolderId === null)
-const modelOptions = SEMANTIC_MODELS.map((model) => ({
-  label: model.name,
-  value: model.key,
-  description: model.description,
-}))
 const contextMenu = ref<{ folderId: string; x: number; y: number } | null>(null)
 
 function openContextMenu(event: MouseEvent, folderId: string) {
@@ -119,16 +110,6 @@ onBeforeUnmount(() => {
       </div>
     </nav>
 
-    <div class="sidebar-model-picker">
-      <span class="section-label">Modèle sémantique</span>
-      <Select
-        :model-value="selectedModel"
-        :options="modelOptions"
-        aria-label="Choisir le modèle sémantique"
-        @update:model-value="emit('model', $event as SemanticModelKey)"
-      />
-    </div>
-
     <LocalAiStatus :progress="progress" :model-progress="modelProgress" :runtime-stats="runtimeStats" />
 
     <div
@@ -159,8 +140,7 @@ onBeforeUnmount(() => {
 }
 
 .folder-entry,
-.folder-row,
-.sidebar-model-picker {
+.folder-row {
   min-width: 0;
   max-width: 100%;
 }
@@ -191,18 +171,6 @@ onBeforeUnmount(() => {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
-}
-
-.sidebar-model-picker {
-  display: grid;
-  gap: var(--space-2);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
-}
-
-.sidebar-model-picker :deep(.ui-select__trigger) {
-  width: 100%;
-  min-width: 0;
 }
 
 .folder-context-menu {
