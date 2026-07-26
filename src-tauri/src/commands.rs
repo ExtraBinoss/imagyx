@@ -24,7 +24,7 @@ use crate::{
 };
 
 const SPOTLIGHT_WIDTH: f64 = 780.0;
-const SPOTLIGHT_COMPACT_HEIGHT: f64 = 112.0;
+const SPOTLIGHT_COMPACT_HEIGHT: f64 = 126.0;
 const SPOTLIGHT_EXPANDED_HEIGHT: f64 = 580.0;
 
 pub(crate) fn layout_spotlight_window(window: &WebviewWindow, expanded: bool) -> Result<(), String> {
