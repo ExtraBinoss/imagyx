@@ -221,10 +221,15 @@ impl Database {
         Ok(())
     }
 
-    pub fn delete_missing(&self, folder_id: &str, current: &HashSet<String>) -> Result<(), AppError> {
+    pub fn delete_missing(
+        &self,
+        folder_id: &str,
+        current: &HashSet<String>,
+    ) -> Result<(), AppError> {
         let mut connection = self.connect()?;
         let existing = {
-            let mut statement = connection.prepare("SELECT path FROM images WHERE folder_id = ?1")?;
+            let mut statement =
+                connection.prepare("SELECT path FROM images WHERE folder_id = ?1")?;
             let rows = statement.query_map(params![folder_id], |row| row.get::<_, String>(0))?;
             rows.collect::<Result<Vec<_>, _>>()?
         };
