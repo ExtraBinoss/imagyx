@@ -127,7 +127,7 @@ impl MlRuntime {
             .map_err(|error| AppError::Model(error.to_string()))?
             .into_iter()
             .next()
-            .ok_or_else(|| ApError::Model("empty text embedding".into()))
+            .ok_or_else(|| AppError::Model("empty text embedding".into()))
     }
 
     pub fn cache_has_models(&self) -> bool {
