@@ -28,6 +28,25 @@
         "resizable": true,
         "fullscreen": false,
         "center": true
+      },
+      {
+        "label": "spotlight",
+        "title": "Imagyx Spotlight",
+        "width": 780,
+        "height": 580,
+        "minWidth": 780,
+        "minHeight": 580,
+        "maxWidth": 780,
+        "maxHeight": 580,
+        "resizable": false,
+        "fullscreen": false,
+        "center": true,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false
       }
     ]
   },
