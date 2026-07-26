@@ -3,7 +3,6 @@ use parking_lot::{Mutex, MutexGuard, RwLock};
 use crate::{
     AppError,
     db::Database,
-    ml::MlRuntime,
     models::{ModelDownloadProgress, RuntimeStats, VectorEntry},
     paths::AppPaths,
     system_stats::SystemMonitor,
@@ -14,7 +13,6 @@ use crate::{
 pub struct AppState {
     pub paths: AppPaths,
     pub database: Database,
-    pub ml: Mutex<MlRuntime>,
     pub thumbnails: ThumbnailCache,
     pub vectors: RwLock<Vec<VectorEntry>>,
     pub model_progress: RwLock<ModelDownloadProgress>,
@@ -28,7 +26,6 @@ impl AppState {
         let database = Database::new(paths.database.clone())?;
         let vectors = database.vectors()?;
         Ok(Self {
-            ml: Mutex::new(MlRuntime::new(paths.models.clone())),
             thumbnails: ThumbnailCache::new(paths.thumbnails.clone()),
             paths,
             database,
