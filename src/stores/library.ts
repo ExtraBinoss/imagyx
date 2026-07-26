@@ -10,6 +10,7 @@ import type {
   RuntimeStats,
 } from '../types'
 import { imagyxApi } from '../api/tauri'
+import { semanticRuntime } from '../services/semantic'
 import { formatBytes } from '../utils'
 import { useToastStore } from './toasts'
 
@@ -60,6 +61,17 @@ export const useLibraryStore = defineStore('library', {
       if (this.initialized) return
       this.loading = true
       try {
+        semanticRuntime.setCallbacks({
+          progress: (progress) => this.handleModelProgress(progress),
+          stats: (stats) => {
+            this.runtimeStats = stats
+            if (this.appInfo) {
+              this.appInfo.runtimeStats = stats
+              this.appInfo.aiBackend = stats.backendEffective
+              this.appInfo.aiReady = stats.stage === 'ready' || stats.stage === 'indexing'
+            }
+          },
+        })
         await this.bindEvents()
         const [appInfo, folders] = await Promise.all([imagyxApi.appInfo(), imagyxApi.folders()])
         this.appInfo = appInfo
@@ -68,6 +80,11 @@ export const useLibraryStore = defineStore('library', {
         this.handleModelProgress(appInfo.modelProgress)
         await this.refreshImages()
         this.initialized = true
+        void semanticRuntime
+          .prepare()
+          .then(() => semanticRuntime.indexPending())
+          .then(() => this.scheduleRefresh())
+          .catch((error) => this.reportError(error))
       } catch (error) {
         this.reportError(error)
       } finally {
@@ -82,16 +99,16 @@ export const useLibraryStore = defineStore('library', {
         if (event.payload.stage === 'complete') this.scheduleRefresh()
       })
       const updatedUnlisten = await listen('library-updated', () => this.scheduleRefresh())
+      const semanticUnlisten = await listen<string>('semantic-index-requested', (event) => {
+        void semanticRuntime
+          .indexPending(event.payload)
+          .then(() => this.scheduleRefresh())
+          .catch((error) => this.reportError(error))
+      })
       const modelUnlisten = await listen<ModelStatus>('model-status', (event) => {
         if (this.appInfo) {
           this.appInfo.aiReady = event.payload.ready
           this.appInfo.aiBackend = event.payload.backend
-        }
-        if (this.runtimeStats) {
-          this.runtimeStats.backendEffective = event.payload.backend
-          this.runtimeStats.accelerationActive = event.payload.accelerationActive
-          this.runtimeStats.accelerationLabel = event.payload.accelerationLabel
-          this.runtimeStats.fallbackReason = event.payload.fallbackReason
         }
       })
       const modelProgressUnlisten = await listen<ModelDownloadProgress>(
@@ -105,6 +122,7 @@ export const useLibraryStore = defineStore('library', {
       this.listeners.push(
         progressUnlisten,
         updatedUnlisten,
+        semanticUnlisten,
         modelUnlisten,
         modelProgressUnlisten,
         runtimeUnlisten,
@@ -123,10 +141,8 @@ export const useLibraryStore = defineStore('library', {
     handleModelProgress(progress: ModelDownloadProgress) {
       this.modelProgress = progress
       if (this.appInfo) this.appInfo.modelProgress = progress
-
       const toasts = useToastStore()
       if (progress.stage === 'idle') return
-
       if (progress.stage === 'ready') {
         toasts.upsert({
           id: 'model-download',
@@ -137,18 +153,16 @@ export const useLibraryStore = defineStore('library', {
         })
         return
       }
-
       if (progress.stage === 'error') {
         toasts.upsert({
           id: 'model-download',
-          title: 'Téléchargement du modèle impossible',
+          title: 'Chargement du modèle impossible',
           description: progress.message,
           kind: 'error',
           duration: 9000,
         })
         return
       }
-
       const hasByteProgress = progress.totalBytes > 0
       const percent = hasByteProgress
         ? Math.min(100, (progress.currentBytes / progress.totalBytes) * 100)
@@ -159,13 +173,9 @@ export const useLibraryStore = defineStore('library', {
       const fileLabel = progress.totalFiles > 0
         ? `Fichier ${progress.currentFile} sur ${progress.totalFiles}`
         : undefined
-
       toasts.upsert({
         id: 'model-download',
-        title:
-          progress.stage === 'downloading'
-            ? 'Téléchargement de l’IA locale'
-            : 'Préparation de l’IA locale',
+        title: progress.stage === 'downloading' ? 'Téléchargement de MobileCLIP-S0' : 'Préparation de WebGPU',
         description: progress.message,
         kind: 'info',
         progress: percent,
@@ -196,8 +206,10 @@ export const useLibraryStore = defineStore('library', {
       this.loading = true
       this.error = null
       try {
+        const queryVector = this.query ? await semanticRuntime.embedText(this.query) : undefined
         this.images = await imagyxApi.search({
           query: this.query,
+          queryVector,
           folderId: this.selectedFolderId ?? undefined,
           limit: 20_000,
         })
