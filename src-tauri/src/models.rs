@@ -12,14 +12,6 @@ pub struct FollowedFolder {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SemanticMatch {
-    pub label: String,
-    pub score: f32,
-    pub source: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ImageAsset {
     pub id: String,
     pub folder_id: String,
@@ -32,8 +24,6 @@ pub struct ImageAsset {
     pub modified_at: i64,
     pub thumbnail_path: String,
     pub semantic_score: Option<f32>,
-    #[serde(default)]
-    pub semantic_matches: Vec<SemanticMatch>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -50,6 +40,21 @@ pub struct QueryConcept {
     pub vector: Vec<f32>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticMatch {
+    pub label: String,
+    pub score: f32,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageExplanation {
+    pub image_id: String,
+    pub matches: Vec<SemanticMatch>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchRequest {
@@ -57,8 +62,6 @@ pub struct SearchRequest {
     pub folder_id: Option<String>,
     pub limit: Option<usize>,
     pub query_vector: Option<Vec<f32>>,
-    #[serde(default)]
-    pub concepts: Vec<QueryConcept>,
 }
 
 #[derive(Debug, Clone, Serialize)]
