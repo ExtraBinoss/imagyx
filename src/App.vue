@@ -57,6 +57,7 @@ onBeforeUnmount(() => {
       :total-images="store.totalImages"
       :progress="store.progress"
       :model-progress="store.modelProgress"
+      :runtime-stats="store.runtimeStats"
       @select="store.selectFolder"
       @add="addFolder"
       @remove="removeFolder"
