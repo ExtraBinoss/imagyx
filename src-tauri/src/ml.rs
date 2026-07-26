@@ -6,7 +6,7 @@ use std::{
 };
 
 use hf_hub::api::{Progress, sync::ApiBuilder};
-use image::{DynamicImage, imageops::FilterType};
+use image::imageops::FilterType;
 use ndarray::{Array2, Array4, Axis};
 use ort::{
     ep::ExecutionProviderDispatch,
@@ -28,6 +28,7 @@ pub const MODEL_ID: &str = "mobileclip2-s0";
 pub const MODEL_NAME: &str = "MobileCLIP2-S0";
 const MODEL_REPOSITORY: &str = "plhery/mobileclip2-onnx";
 const IMAGE_EDGE: usize = 256;
+const IMAGE_VALUES: usize = 3 * IMAGE_EDGE * IMAGE_EDGE;
 const TEXT_CONTEXT: usize = 77;
 
 #[derive(Clone, Copy)]
@@ -86,6 +87,7 @@ impl std::fmt::Debug for MlRuntime {
             .debug_struct("MlRuntime")
             .field("cache_dir", &self.cache_dir)
             .field("ready", &self.is_ready())
+            .field("text_ready", &self.text_session.is_some())
             .field("backend_requested", &self.backend_requested)
             .field("backend_effective", &self.backend_effective)
             .field("batch_size", &self.batch_size)
@@ -112,8 +114,10 @@ impl MlRuntime {
         }
     }
 
+    /// The image encoder is the only model required for folder indexing.
+    /// The much larger text session is initialized lazily on the first semantic search.
     pub fn is_ready(&self) -> bool {
-        self.image_session.is_some() && self.text_session.is_some() && self.tokenizer.is_some()
+        self.image_session.is_some() && self.tokenizer.is_some()
     }
 
     pub fn backend_requested(&self) -> &str {
@@ -182,14 +186,14 @@ impl MlRuntime {
                 current_file: MODEL_FILES.len(),
                 total_files: MODEL_FILES.len(),
                 message: format!(
-                    "Initialisation de MobileCLIP2-S0 avec {}…",
+                    "Optimisation de MobileCLIP2-S0 avec {}…",
                     self.backend_requested
                 ),
             },
         );
         runtime_stats.write().stage = "loading".to_owned();
 
-        match self.initialize_models() {
+        match self.initialize_image_model() {
             Ok(()) => {
                 publish_ready(app, progress_state, runtime_stats, self);
                 Ok(())
@@ -211,19 +215,26 @@ impl MlRuntime {
                 "MobileCLIP2-S0 n’est pas encore prêt".to_owned()
             })));
         }
-        self.initialize_models()
+        self.initialize_image_model()
     }
 
     pub fn embed_images(&mut self, paths: &[PathBuf]) -> Result<EmbeddingBatch, AppError> {
         self.ensure_ready()?;
+        if paths.is_empty() {
+            return Ok(EmbeddingBatch {
+                vectors: Vec::new(),
+                decode_ms: 0,
+                inference_ms: 0,
+            });
+        }
+
         let decode_started = Instant::now();
-        let decoded = paths
-            .par_iter()
-            .map(|path| decode_mobileclip_image(path))
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut flat = vec![0.0_f32; paths.len() * IMAGE_VALUES];
+        flat.par_chunks_mut(IMAGE_VALUES)
+            .zip(paths.par_iter())
+            .try_for_each(|(output, path)| decode_mobileclip_image_into(path, output))?;
         let decode_ms = millis(decode_started.elapsed());
 
-        let flat = decoded.into_iter().flatten().collect::<Vec<_>>();
         let input = Array4::from_shape_vec((paths.len(), 3, IMAGE_EDGE, IMAGE_EDGE), flat)
             .map_err(|error| AppError::Model(error.to_string()))?;
         let tensor = TensorRef::from_array_view(&input)
@@ -254,7 +265,7 @@ impl MlRuntime {
     }
 
     pub fn embed_text(&mut self, query: &str) -> Result<Vec<f32>, AppError> {
-        self.ensure_ready()?;
+        self.ensure_text_ready()?;
         let tokenizer = self
             .tokenizer
             .as_ref()
@@ -315,23 +326,18 @@ impl MlRuntime {
         Ok(true)
     }
 
-    fn initialize_models(&mut self) -> Result<(), AppError> {
+    fn initialize_image_model(&mut self) -> Result<(), AppError> {
         let image_path = self.cache_dir.join(MODEL_FILES[0].local);
-        let text_path = self.cache_dir.join(MODEL_FILES[1].local);
         let tokenizer_path = self.cache_dir.join(MODEL_FILES[2].local);
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
             .map_err(|error| AppError::Model(format!("tokenizer MobileCLIP2-S0: {error}")))?;
 
         if let Some(acceleration) = acceleration_profile() {
-            let accelerated = build_session(&image_path, acceleration.provider(), true, 1)
-                .and_then(|image_session| {
-                    build_session(&text_path, acceleration.provider(), true, 1)
-                        .map(|text_session| (image_session, text_session))
-                });
-            match accelerated {
-                Ok((image_session, text_session)) => {
+            match build_session(&image_path, acceleration.provider(), true, 1) {
+                Ok(mut image_session) => {
+                    warm_up_image_session(&mut image_session)?;
                     self.image_session = Some(image_session);
-                    self.text_session = Some(text_session);
+                    self.text_session = None;
                     self.tokenizer = Some(tokenizer);
                     self.backend_effective = acceleration.backend.to_owned();
                     self.acceleration_active = true;
@@ -353,14 +359,41 @@ impl MlRuntime {
         }
 
         let threads = num_cpus::get().max(1);
-        self.image_session = Some(build_session(&image_path, None, false, threads)?);
-        self.text_session = Some(build_session(&text_path, None, false, threads)?);
+        let mut image_session = build_session(&image_path, None, false, threads)?;
+        warm_up_image_session(&mut image_session)?;
+        self.image_session = Some(image_session);
+        self.text_session = None;
         self.tokenizer = Some(tokenizer);
         self.backend_effective = "ONNX Runtime CPU".to_owned();
         self.acceleration_active = false;
         self.acceleration_label = "CPU".to_owned();
         self.batch_size = cpu_batch_size();
         self.last_error = None;
+        Ok(())
+    }
+
+    fn ensure_text_ready(&mut self) -> Result<(), AppError> {
+        self.ensure_ready()?;
+        if self.text_session.is_some() {
+            return Ok(());
+        }
+
+        let text_path = self.cache_dir.join(MODEL_FILES[1].local);
+        if self.acceleration_active {
+            if let Some(acceleration) = acceleration_profile() {
+                if let Ok(session) = build_session(&text_path, acceleration.provider(), true, 1) {
+                    self.text_session = Some(session);
+                    return Ok(());
+                }
+            }
+        }
+
+        self.text_session = Some(build_session(
+            &text_path,
+            None,
+            false,
+            num_cpus::get().max(1),
+        )?);
         Ok(())
     }
 
@@ -549,35 +582,32 @@ fn build_session(
         .map_err(|error| AppError::Model(error.to_string()))
 }
 
-fn decode_mobileclip_image(path: &Path) -> Result<Vec<f32>, AppError> {
-    let image = image::open(path)?.into_rgb8();
-    let (width, height) = image.dimensions();
-    let shortest = width.min(height).max(1);
-    let resized_width =
-        ((u64::from(width) * IMAGE_EDGE as u64) / u64::from(shortest)) as u32;
-    let resized_height =
-        ((u64::from(height) * IMAGE_EDGE as u64) / u64::from(shortest)) as u32;
-    let resized = DynamicImage::ImageRgb8(image)
-        .resize_exact(resized_width, resized_height, FilterType::CatmullRom)
+fn warm_up_image_session(session: &mut Session) -> Result<(), AppError> {
+    let input = Array4::<f32>::zeros((1, 3, IMAGE_EDGE, IMAGE_EDGE));
+    let tensor = TensorRef::from_array_view(&input)
+        .map_err(|error| AppError::Model(error.to_string()))?;
+    session
+        .run(ort::inputs!["pixel_values" => tensor])
+        .map(|_| ())
+        .map_err(|error| AppError::Model(error.to_string()))
+}
+
+fn decode_mobileclip_image_into(path: &Path, output: &mut [f32]) -> Result<(), AppError> {
+    debug_assert_eq!(output.len(), IMAGE_VALUES);
+    let resized = image::open(path)?
+        .resize_to_fill(
+            IMAGE_EDGE as u32,
+            IMAGE_EDGE as u32,
+            FilterType::Triangle,
+        )
         .to_rgb8();
-    let x = resized_width.saturating_sub(IMAGE_EDGE as u32) / 2;
-    let y = resized_height.saturating_sub(IMAGE_EDGE as u32) / 2;
-    let cropped = image::imageops::crop_imm(
-        &resized,
-        x,
-        y,
-        IMAGE_EDGE as u32,
-        IMAGE_EDGE as u32,
-    )
-    .to_image();
     let plane = IMAGE_EDGE * IMAGE_EDGE;
-    let mut output = vec![0.0; plane * 3];
-    for (index, pixel) in cropped.pixels().enumerate() {
+    for (index, pixel) in resized.pixels().enumerate() {
         output[index] = f32::from(pixel[0]) / 255.0;
         output[plane + index] = f32::from(pixel[1]) / 255.0;
         output[plane * 2 + index] = f32::from(pixel[2]) / 255.0;
     }
-    Ok(output)
+    Ok(())
 }
 
 fn normalize(mut vector: Vec<f32>) -> Vec<f32> {
