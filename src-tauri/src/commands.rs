@@ -13,15 +13,15 @@ use crate::{
 
 #[tauri::command]
 pub fn get_app_info(state: State<'_, Arc<AppState>>) -> AppInfo {
-    let ml = state.ml.lock();
+    let model_progress = state.model_progress.read().clone();
     AppInfo {
         root_dir: state.paths.root.to_string_lossy().into_owned(),
         models_dir: state.paths.models.to_string_lossy().into_owned(),
         database_path: state.database.path().to_string_lossy().into_owned(),
         thumbnails_dir: state.paths.thumbnails.to_string_lossy().into_owned(),
         ai_backend: MlRuntime::backend_label().to_owned(),
-        ai_ready: ml.is_ready(),
-        model_progress: state.model_progress.read().clone(),
+        ai_ready: model_progress.stage == "ready",
+        model_progress,
     }
 }
 
