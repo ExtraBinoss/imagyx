@@ -5,6 +5,7 @@ mod ml;
 mod models;
 mod paths;
 mod state;
+mod system_stats;
 mod thumbnails;
 mod watcher;
 
