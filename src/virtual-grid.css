@@ -5,10 +5,11 @@
 
 .virtual-grid-window {
   position: absolute;
-  inset: 0 0 auto;
+  top: 0;
+  left: 24px;
+  right: 24px;
   display: grid;
   gap: var(--space-4);
-  width: 100%;
   will-change: transform;
 }
 
