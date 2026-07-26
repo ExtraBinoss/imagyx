@@ -4,10 +4,12 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { X } from '@lucide/vue'
 import AppSidebar from './components/AppSidebar.vue'
 import ImageGrid from './components/ImageGrid.vue'
+import ImagePreviewDialog from './components/ImagePreviewDialog.vue'
 import SearchHeader from './components/SearchHeader.vue'
 import StatusBar from './components/StatusBar.vue'
 import Button from './components/ui/Button/Button.vue'
 import ToastViewport from './components/ui/Toast/ToastViewport.vue'
+import type { ImageAsset } from './types'
 import { useLibraryStore } from './stores/library'
 import { useThemeStore } from './stores/theme'
 import { debounce } from './utils'
@@ -15,6 +17,7 @@ import { debounce } from './utils'
 const store = useLibraryStore()
 const theme = useThemeStore()
 const localQuery = ref('')
+const previewImage = ref<ImageAsset | null>(null)
 
 const selectedTitle = computed(() => store.selectedFolder?.name ?? 'Toutes les images')
 const subtitle = computed(() => {
@@ -87,9 +90,11 @@ onBeforeUnmount(() => {
         :has-folders="store.folders.length > 0"
         :view-key="viewKey"
         @explain="store.explainImage"
+        @preview="previewImage = $event"
       />
       <StatusBar :progress="null" :database-path="store.appInfo?.databasePath ?? ''" />
     </section>
   </main>
   <ToastViewport />
+  <ImagePreviewDialog v-if="previewImage" :image="previewImage" @close="previewImage = null" />
 </template>
