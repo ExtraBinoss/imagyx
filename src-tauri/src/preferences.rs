@@ -46,7 +46,6 @@ impl ShortcutPreferences {
         let mut current = self.current.lock();
         if current.0 == normalized { return Ok(normalized); }
 
-        let previous_value = current.0.clone();
         let previous_shortcut = current.1.clone();
         app.global_shortcut().unregister(previous_shortcut.clone())
             .map_err(|error| format!("Impossible de libérer l’ancien raccourci: {error}"))?;
@@ -58,13 +57,12 @@ impl ShortcutPreferences {
 
         if let Err(error) = write_preferences(&self.path, &PreferencesFile { spotlight_shortcut: normalized.clone() }) {
             let _ = app.global_shortcut().unregister(parsed);
-            let _ = app.global_shortcut().register(current.1.clone());
+            let _ = app.global_shortcut().register(previous_shortcut);
             return Err(format!("Impossible d’enregistrer le raccourci: {error}"));
         }
 
         current.0 = normalized.clone();
-        current.1 = Shortcut::from_str(&normalized).map_err(|error| error.to_string())?;
-        let _ = previous_value;
+        current.1 = parsed;
         Ok(normalized)
     }
 }
