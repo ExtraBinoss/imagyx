@@ -3,7 +3,7 @@ import { Search, Sparkles, X } from '@lucide/vue'
 import Badge from './ui/Badge/Badge.vue'
 import Button from './ui/Button/Button.vue'
 import Input from './ui/Input/Input.vue'
-import Select, { type SelectOption } from './ui/Select/Select.vue'
+import Select from './ui/Select/Select.vue'
 import Tooltip from './ui/Tooltip/Tooltip.vue'
 import { useThemeStore, type ThemeMode } from '../stores/theme'
 
@@ -18,7 +18,7 @@ const emit = defineEmits<{
 }>()
 
 const theme = useThemeStore()
-const themeOptions: SelectOption[] = [
+const themeOptions = [
   { label: 'Système', value: 'system', description: 'Suit macOS ou Windows' },
   { label: 'Clair', value: 'light', description: 'Interface blanche' },
   { label: 'Sombre', value: 'dark', description: 'Interface sombre' },
