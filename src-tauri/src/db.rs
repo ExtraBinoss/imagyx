@@ -208,8 +208,6 @@ impl Database {
         Ok(())
     }
 
-    /// Persists several inference batches with one SQLite transaction.
-    /// Metadata was already written before semantic indexing starts.
     pub fn save_embeddings(&self, embeddings: &[(String, Vec<f32>)]) -> Result<(), AppError> {
         if embeddings.is_empty() {
             return Ok(());
@@ -387,7 +385,7 @@ mod tests {
                     thumbnail_path: "/tmp/thumb.jpg".into(),
                     semantic_score: None,
                 }],
-                &[('image'.to_string(), vec![0.1, 0.2])],
+                &[("image".to_owned(), vec![0.1, 0.2])],
             )
             .expect("save image");
         assert_eq!(database.folders().expect("folders")[0].image_count, 1);
