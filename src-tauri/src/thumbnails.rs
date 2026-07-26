@@ -88,6 +88,17 @@ impl ThumbnailCache {
         Ok(cache_path)
     }
 
+    pub fn cached_items(&self) -> usize {
+        fs::read_dir(&self.directory).map_or(0, |entries| {
+            entries
+                .filter_map(Result::ok)
+                .filter(|entry| {
+                    entry.path().extension().and_then(|value| value.to_str()) == Some("jpg")
+                })
+                .count()
+        })
+    }
+
     fn cache_path(&self, image_id: &str, modified_at: i64) -> PathBuf {
         let short_id = image_id.get(..20).unwrap_or(image_id);
         self.directory
@@ -175,12 +186,6 @@ mod tests {
                 .expect("thumbnail");
         }
 
-        assert_eq!(
-            std::fs::read_dir(cache_dir)
-                .expect("cache directory")
-                .filter_map(Result::ok)
-                .count(),
-            2
-        );
+        assert_eq!(cache.cached_items(), 2);
     }
 }
