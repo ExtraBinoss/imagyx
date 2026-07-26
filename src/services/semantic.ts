@@ -7,7 +7,7 @@ import {
   env,
 } from '@huggingface/transformers'
 import { imagyxApi } from '../api/tauri'
-import type { ImageAsset, ModelDownloadProgress, RuntimeStats } from '../types'
+import type { ModelDownloadProgress, RuntimeStats } from '../types'
 
 const MODEL_ID = 'Xenova/mobileclip_s0'
 const MODEL_NAME = 'MobileCLIP-S0'
@@ -15,14 +15,6 @@ const INITIAL_BATCH_SIZE = 4
 const MAX_BATCH_SIZE = 16
 
 type Device = 'webgpu' | 'wasm'
-type ProgressPayload = {
-  status?: string
-  file?: string
-  loaded?: number
-  total?: number
-  progress?: number
-}
-
 type RuntimeCallbacks = {
   progress: (progress: ModelDownloadProgress) => void
   stats: (stats: RuntimeStats) => void
@@ -68,36 +60,28 @@ class SemanticRuntime {
     let saveMs = 0
 
     this.patchStats({
-      stage: 'indexing',
-      current: 0,
-      total: pending.length,
-      batchCurrent: 0,
-      batchTotal: Math.ceil(pending.length / batchSize),
-      batchSize,
-      decodeMs: 0,
-      inferenceMs: 0,
-      saveMs: 0,
-      elapsedMs: 0,
-      imagesPerSecond: 0,
-      averageMsPerImage: 0,
+      stage: 'indexing', current: 0, total: pending.length, batchCurrent: 0,
+      batchTotal: Math.ceil(pending.length / batchSize), batchSize,
+      decodeMs: 0, inferenceMs: 0, saveMs: 0, elapsedMs: 0,
+      imagesPerSecond: 0, averageMsPerImage: 0,
     })
 
     while (processed < pending.length) {
       const batch = pending.slice(processed, processed + batchSize)
       batchCurrent += 1
+      this.patchStats({ stage: 'decoding', batchCurrent, batchSize: batch.length })
       const decodeStarted = performance.now()
-      const images = await Promise.all(
-        batch.map((asset) => RawImage.read(imagyxApi.fileUrl(asset.path))),
-      )
+      const images = await Promise.all(batch.map((asset) => RawImage.read(imagyxApi.fileUrl(asset.path))))
       const imageInputs = await this.processor(images.length === 1 ? images[0] : images)
       decodeMs += performance.now() - decodeStarted
 
-      this.patchStats({ stage: 'inference', batchCurrent, batchSize: batch.length })
+      this.patchStats({ stage: 'inference' })
       const inferenceStarted = performance.now()
       const output = await this.visionModel(imageInputs)
       const vectors = tensorRows(output.image_embeds)
       inferenceMs += performance.now() - inferenceStarted
 
+      this.patchStats({ stage: 'saving' })
       const saveStarted = performance.now()
       await imagyxApi.saveEmbeddings(
         batch.map((asset, index) => ({ imageId: asset.id, vector: vectors[index] ?? [] })),
@@ -107,22 +91,15 @@ class SemanticRuntime {
 
       const elapsedMs = performance.now() - started
       const imagesPerSecond = processed / Math.max(elapsedMs / 1000, 0.001)
-      const lastBatchMs = (decodeMs + inferenceMs + saveMs) / processed
-      if (lastBatchMs < 90 && batchSize < MAX_BATCH_SIZE) batchSize = Math.min(MAX_BATCH_SIZE, batchSize * 2)
-      if (lastBatchMs > 450 && batchSize > 2) batchSize = Math.max(2, Math.floor(batchSize / 2))
+      const averageBatchMs = (decodeMs + inferenceMs + saveMs) / processed
+      if (averageBatchMs < 90 && batchSize < MAX_BATCH_SIZE) batchSize = Math.min(MAX_BATCH_SIZE, batchSize * 2)
+      if (averageBatchMs > 450 && batchSize > 2) batchSize = Math.max(2, Math.floor(batchSize / 2))
 
       this.patchStats({
-        stage: 'indexing',
-        current: processed,
-        total: pending.length,
-        batchCurrent,
+        stage: 'indexing', current: processed, total: pending.length, batchCurrent,
         batchTotal: batchCurrent + Math.ceil((pending.length - processed) / batchSize),
-        batchSize,
-        decodeMs: Math.round(decodeMs),
-        inferenceMs: Math.round(inferenceMs),
-        saveMs: Math.round(saveMs),
-        elapsedMs: Math.round(elapsedMs),
-        imagesPerSecond,
+        batchSize, decodeMs: Math.round(decodeMs), inferenceMs: Math.round(inferenceMs),
+        saveMs: Math.round(saveMs), elapsedMs: Math.round(elapsedMs), imagesPerSecond,
         averageMsPerImage: elapsedMs / processed,
       })
     }
@@ -148,26 +125,25 @@ class SemanticRuntime {
   }
 
   private async loadVisionRuntime() {
-    env.allowLocalModels = true
     this.publishProgress({
-      stage: 'checking',
-      message: 'Vérification de MobileCLIP-S0…',
-      currentBytes: 0,
-      totalBytes: 0,
-      currentFile: 0,
-      totalFiles: 0,
+      stage: 'checking', message: 'Vérification du cache MobileCLIP-S0…',
+      currentBytes: 0, totalBytes: 0, currentFile: 0, totalFiles: 0,
     })
     this.patchStats({ stage: 'loading', backendRequested: 'WebGPU' })
+
+    const modelRoot = await imagyxApi.prepareLocalModel()
+    const modelsDir = modelRoot.replace(/[\\/]+Xenova[\\/]mobileclip_s0$/, '')
+    env.allowLocalModels = true
+    env.allowRemoteModels = false
+    env.localModelPath = `${imagyxApi.fileUrl(modelsDir).replace(/\/$/, '')}/`
+    env.useBrowserCache = false
 
     try {
       this.device = 'webgpu'
       await this.loadVisionForDevice('webgpu')
       this.patchStats({
-        stage: 'ready',
-        backendEffective: 'Transformers.js · WebGPU',
-        accelerationActive: true,
-        accelerationLabel: 'GPU WebGPU actif',
-        fallbackReason: undefined,
+        stage: 'ready', backendEffective: 'Transformers.js · WebGPU',
+        accelerationActive: true, accelerationLabel: 'GPU WebGPU actif', fallbackReason: undefined,
       })
     } catch (error) {
       this.device = 'wasm'
@@ -175,21 +151,15 @@ class SemanticRuntime {
       this.processor = null
       await this.loadVisionForDevice('wasm')
       this.patchStats({
-        stage: 'ready',
-        backendEffective: 'Transformers.js · WASM',
-        accelerationActive: false,
-        accelerationLabel: 'CPU WASM',
+        stage: 'ready', backendEffective: 'Transformers.js · WASM',
+        accelerationActive: false, accelerationLabel: 'CPU WASM',
         fallbackReason: `WebGPU indisponible: ${String(error)}`,
       })
     }
 
     this.publishProgress({
-      stage: 'ready',
-      message: `${MODEL_NAME} prêt avec ${this.device === 'webgpu' ? 'WebGPU' : 'WASM'}.`,
-      currentBytes: 0,
-      totalBytes: 0,
-      currentFile: 0,
-      totalFiles: 0,
+      stage: 'ready', message: `${MODEL_NAME} prêt hors connexion avec ${this.device === 'webgpu' ? 'WebGPU' : 'WASM'}.`,
+      currentBytes: 0, totalBytes: 0, currentFile: 7, totalFiles: 7,
     })
   }
 
@@ -205,26 +175,7 @@ class SemanticRuntime {
   }
 
   private modelOptions(device: Device = this.device) {
-    return {
-      device,
-      dtype: 'fp32',
-      progress_callback: (payload: ProgressPayload) => this.handleDownloadProgress(payload),
-    } as const
-  }
-
-  private handleDownloadProgress(payload: ProgressPayload) {
-    const loaded = Math.max(0, payload.loaded ?? 0)
-    const total = Math.max(0, payload.total ?? 0)
-    const status = payload.status ?? 'downloading'
-    this.publishProgress({
-      stage: status === 'ready' ? 'loading' : 'downloading',
-      fileName: payload.file,
-      currentBytes: loaded,
-      totalBytes: total,
-      currentFile: 0,
-      totalFiles: 0,
-      message: payload.file ? `Téléchargement · ${payload.file}` : 'Téléchargement du modèle…',
-    })
+    return { device, dtype: 'fp32', local_files_only: true } as const
   }
 
   private publishProgress(progress: ModelDownloadProgress) {
@@ -247,30 +198,14 @@ function tensorRows(tensor: any): number[][] {
 
 function defaultStats(): RuntimeStats {
   return {
-    modelName: MODEL_NAME,
-    stage: 'idle',
-    backendRequested: 'WebGPU',
-    backendEffective: 'En attente',
-    accelerationActive: false,
-    accelerationLabel: 'Non initialisée',
-    batchSize: INITIAL_BATCH_SIZE,
-    current: 0,
-    total: 0,
-    batchCurrent: 0,
-    batchTotal: 0,
-    imagesPerSecond: 0,
-    averageMsPerImage: 0,
-    decodeMs: 0,
-    inferenceMs: 0,
-    saveMs: 0,
-    elapsedMs: 0,
-    systemCpuPercent: 0,
-    processCpuPercent: 0,
-    memoryUsedBytes: 0,
-    memoryTotalBytes: 0,
-    processMemoryBytes: 0,
-    modelCacheBytes: 0,
-    thumbnailCacheItems: 0,
+    modelName: MODEL_NAME, stage: 'idle', backendRequested: 'WebGPU',
+    backendEffective: 'En attente', accelerationActive: false,
+    accelerationLabel: 'Non initialisée', batchSize: INITIAL_BATCH_SIZE,
+    current: 0, total: 0, batchCurrent: 0, batchTotal: 0,
+    imagesPerSecond: 0, averageMsPerImage: 0, decodeMs: 0,
+    inferenceMs: 0, saveMs: 0, elapsedMs: 0, systemCpuPercent: 0,
+    processCpuPercent: 0, memoryUsedBytes: 0, memoryTotalBytes: 0,
+    processMemoryBytes: 0, modelCacheBytes: 0, thumbnailCacheItems: 0,
     updatedAt: Date.now(),
   }
 }
