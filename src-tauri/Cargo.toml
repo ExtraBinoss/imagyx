@@ -33,7 +33,7 @@ num_cpus = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 hf-hub = { version = "=0.5.0", default-features = false, features = ["ureq", "rustls-tls"] }
 tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
-ndarray = "0.16"
+ndarray = "0.17"
 sysinfo = "0.37"
 
 [target.'cfg(target_os = "macos")'.dependencies]
