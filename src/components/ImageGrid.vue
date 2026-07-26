@@ -10,6 +10,7 @@ import Tooltip from './ui/Tooltip/Tooltip.vue'
 import ThumbnailImage from './ThumbnailImage.vue'
 
 const props = defineProps<{ images: ImageAsset[]; loading: boolean; hasFolders: boolean; viewKey: string }>()
+const emit = defineEmits<{ explain: [imageId: string] }>()
 const GAP = 16
 const MIN_CARD_WIDTH = 180
 const META_HEIGHT = 82
@@ -34,11 +35,15 @@ const spacerHeight = computed(() => Math.max(0, totalRows.value * rowStride.valu
 const windowOffset = computed(() => startRow.value * rowStride.value)
 
 function explanation(image: ImageAsset): string {
-  const rows = image.semanticMatches?.map((match) =>
-    `${match.source === 'filename' ? 'Nom de fichier' : 'Similarité IA'} : ${match.label} (${Math.round(match.score * 100)} %)`
-  ) ?? []
-  if (image.semanticScore != null) rows.unshift(`Correspondance globale : ${Math.round(image.semanticScore * 100)} %`)
-  return rows.length ? rows.join('\n') : 'Aucune explication détaillée disponible pour cette image.'
+  const matches = image.semanticMatches ?? []
+  if (!matches.length) return 'Analyse au survol… Le résultat sera conservé pour cette image.'
+  const concepts = matches
+    .map((match) => `${match.label} (${Math.round(match.score * 100)} %)`)
+    .join(', ')
+  const prefix = image.semanticScore != null
+    ? `Cette image correspond à la recherche à ${Math.round(image.semanticScore * 100)} %. `
+    : ''
+  return `${prefix}Elle semble surtout répondre à des recherches comme : ${concepts}.`
 }
 
 function measure() {
@@ -71,8 +76,15 @@ watch(() => props.images.length, () => {
           <div class="image-frame">
             <ThumbnailImage :image="entry.image" />
             <Badge v-if="entry.image.semanticScore" class="score-badge" variant="primary">{{ Math.round(entry.image.semanticScore * 100) }}%</Badge>
-            <Tooltip v-if="entry.image.semanticScore || entry.image.semanticMatches?.length" :text="explanation(entry.image)" side="left">
-              <Button class="explanation-button" variant="secondary" size="icon" aria-label="Expliquer cette correspondance">
+            <Tooltip :text="explanation(entry.image)" side="left">
+              <Button
+                class="explanation-button"
+                variant="secondary"
+                size="icon"
+                aria-label="Analyser le contenu de cette image"
+                @mouseenter="emit('explain', entry.image.id)"
+                @focus="emit('explain', entry.image.id)"
+              >
                 <Info :size="14" />
               </Button>
             </Tooltip>
