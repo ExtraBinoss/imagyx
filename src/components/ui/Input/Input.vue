@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+
 withDefaults(
   defineProps<{
     modelValue: string
@@ -20,12 +22,25 @@ withDefaults(
 const emit = defineEmits<{
   'update:modelValue': [value: string]
 }>()
+
+const input = ref<HTMLInputElement | null>(null)
+
+function focus() {
+  input.value?.focus()
+}
+
+function select() {
+  input.value?.select()
+}
+
+defineExpose({ focus, select })
 </script>
 
 <template>
   <label class="ui-input">
     <span v-if="$slots.leading" class="ui-input__slot"><slot name="leading" /></span>
     <input
+      ref="input"
       :value="modelValue"
       :type="type"
       :placeholder="placeholder"
@@ -55,16 +70,12 @@ const emit = defineEmits<{
     background-color var(--transition-fast);
 }
 
-.ui-input:hover {
-  border-color: var(--border-strong);
-}
-
+.ui-input:hover { border-color: var(--border-strong); }
 .ui-input:focus-within {
   border-color: var(--primary);
   outline: 2px solid var(--focus-ring-soft);
   outline-offset: 1px;
 }
-
 .ui-input input {
   flex: 1;
   min-width: 0;
@@ -75,13 +86,6 @@ const emit = defineEmits<{
   font: inherit;
   font-size: var(--text-sm);
 }
-
-.ui-input input::placeholder {
-  color: var(--text-subtle);
-}
-
-.ui-input__slot {
-  display: inline-flex;
-  flex: 0 0 auto;
-}
+.ui-input input::placeholder { color: var(--text-subtle); }
+.ui-input__slot { display: inline-flex; flex: 0 0 auto; }
 </style>
