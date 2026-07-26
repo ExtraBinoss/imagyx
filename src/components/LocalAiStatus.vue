@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Cpu, Gauge, MemoryStick, Sparkles } from '@lucide/vue'
+import { Cpu, Gauge, MemoryStick, Pause, Play, Sparkles } from '@lucide/vue'
 import type { IndexProgress, ModelDownloadProgress, RuntimeStats } from '../types'
 import { imagyxApi } from '../api/tauri'
 import { formatBytes } from '../utils'
 import Badge from './ui/Badge/Badge.vue'
+import Button from './ui/Button/Button.vue'
 import Popover from './ui/Popover/Popover.vue'
 import ProgressBar from './ui/ProgressBar/ProgressBar.vue'
 import DisclosureButton from './ui/DisclosureButton/DisclosureButton.vue'
@@ -15,12 +16,14 @@ const props = defineProps<{
   runtimeStats: RuntimeStats | null
 }>()
 
+const emit = defineEmits<{ pause: []; resume: [] }>()
 const liveStats = ref<RuntimeStats | null>(props.runtimeStats)
 const popoverOpen = ref(false)
 let timer: number | undefined
 
 watch(() => props.runtimeStats, (value) => { if (value) liveStats.value = value }, { immediate: true })
 
+const paused = computed(() => liveStats.value?.stage === 'paused')
 const indexing = computed(() =>
   ['decoding', 'inference', 'indexing', 'saving'].includes(liveStats.value?.stage ?? ''),
 )
@@ -29,12 +32,13 @@ const preparingModel = computed(() =>
   props.modelProgress?.stage === 'checking' || props.modelProgress?.stage === 'loading',
 )
 const active = computed(() => indexing.value || downloading.value || preparingModel.value)
-const current = computed(() => indexing.value ? liveStats.value?.current ?? 0 : props.modelProgress?.currentBytes ?? 0)
-const total = computed(() => indexing.value ? liveStats.value?.total ?? 0 : props.modelProgress?.totalBytes ?? 0)
+const current = computed(() => (indexing.value || paused.value) ? liveStats.value?.current ?? 0 : props.modelProgress?.currentBytes ?? 0)
+const total = computed(() => (indexing.value || paused.value) ? liveStats.value?.total ?? 0 : props.modelProgress?.totalBytes ?? 0)
 const percent = computed(() => total.value > 0 ? Math.min(100, (current.value / total.value) * 100) : 0)
 const indeterminate = computed(() => preparingModel.value || (indexing.value && current.value === 0))
 
 const title = computed(() => {
+  if (paused.value) return 'Indexation en pause'
   if (downloading.value) return 'Téléchargement de l’IA'
   if (indexing.value) return liveStats.value?.stage === 'saving' ? 'Sauvegarde de l’analyse' : 'Analyse IA WebGPU'
   if (preparingModel.value) return 'Chargement du modèle'
@@ -43,7 +47,7 @@ const title = computed(() => {
 })
 
 const detail = computed(() => {
-  if (indexing.value) {
+  if (indexing.value || paused.value) {
     const speed = liveStats.value?.imagesPerSecond ?? 0
     return `${current.value} / ${total.value}${speed > 0 ? ` · ${speed.toFixed(1)} img/s` : ''}`
   }
@@ -65,6 +69,7 @@ const phaseLabel = computed(() => {
     case 'inference': return 'Inférence WebGPU'
     case 'indexing': return 'Indexation sémantique'
     case 'saving': return 'Écriture SQLite'
+    case 'paused': return 'Reprise disponible'
     case 'error': return 'Erreur'
     default: return 'Prêt'
   }
@@ -77,7 +82,7 @@ async function refreshStats() {
 watch(popoverOpen, (open) => { if (open) void refreshStats() })
 onMounted(() => {
   void refreshStats()
-  timer = window.setInterval(() => { if (popoverOpen.value || active.value) void refreshStats() }, 1200)
+  timer = window.setInterval(() => { if (popoverOpen.value || active.value || paused.value) void refreshStats() }, 1200)
 })
 onBeforeUnmount(() => { if (timer) window.clearInterval(timer) })
 
@@ -92,6 +97,18 @@ function formatMilliseconds(value: number) {
     <div class="local-ai-status__heading">
       <span class="local-ai-status__icon"><Sparkles :size="15" /></span>
       <div><strong>{{ title }}</strong><span>{{ detail }}</span></div>
+      <Button
+        v-if="indexing || paused"
+        class="local-ai-status__control"
+        variant="ghost"
+        size="icon"
+        :aria-label="paused ? 'Reprendre l’indexation' : 'Mettre l’indexation en pause'"
+        :title="paused ? 'Reprendre' : 'Pause'"
+        @click="emit(paused ? 'resume' : 'pause')"
+      >
+        <Play v-if="paused" :size="15" />
+        <Pause v-else :size="15" />
+      </Button>
     </div>
     <ProgressBar class="local-ai-status__progress" :value="percent" :indeterminate="indeterminate" size="sm" label="Progression de l’IA locale" />
     <Popover align="start" width="320px">
@@ -135,10 +152,11 @@ function formatMilliseconds(value: number) {
 .local-ai-status { display:grid; gap:var(--space-3); margin-top:auto; padding:var(--space-3); border:1px solid var(--border); border-radius:var(--radius-lg); background:var(--surface); }
 .local-ai-status__heading { display:flex; align-items:center; gap:var(--space-3); min-width:0; }
 .local-ai-status__icon { display:grid; place-items:center; width:30px; height:30px; border-radius:var(--radius-md); background:var(--primary-soft); color:var(--primary-text); }
-.local-ai-status__heading div { min-width:0; }
+.local-ai-status__heading div { min-width:0; flex:1; }
 .local-ai-status__heading strong,.local-ai-status__heading span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .local-ai-status__heading strong { font-size:var(--text-xs); }
 .local-ai-status__heading span { margin-top:3px; color:var(--text-muted); font-size:10px; }
+.local-ai-status__control { flex:0 0 auto; }
 .local-ai-status__progress { width:100%; }
 .ai-stats { display:grid; gap:var(--space-4); }
 .ai-stats__title { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); }
