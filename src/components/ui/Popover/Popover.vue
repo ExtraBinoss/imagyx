@@ -132,7 +132,7 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-lg);
   background: var(--surface-elevated);
   color: var(--text);
-  box-shadow: var(--shadow-popover);
+  box-shadow: var(--popover-depth-shadow);
   visibility: hidden;
 }
 

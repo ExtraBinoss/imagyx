@@ -47,13 +47,17 @@ function selectImage(image: ImageAsset) {
 
 function handleGlobalKeydown(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null
-  if (target?.matches('input, textarea, [contenteditable="true"]')) return
-  if (event.code !== 'Space') return
+  if (target?.matches('input, textarea, select, [contenteditable="true"]')) return
+  if (event.code !== 'Space' && event.key !== ' ') return
+
+  // Prevent browser window scrolling on Space
+  event.preventDefault()
+  event.stopPropagation()
+
   const imageId = selectedImageId.value ?? activeImageId.value
   if (!imageId) return
   const image = props.images.find((item) => item.id === imageId)
   if (!image) return
-  event.preventDefault()
   emit('preview', image)
 }
 

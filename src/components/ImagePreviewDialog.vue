@@ -1,140 +1,338 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
-import { X } from '@lucide/vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { Copy, ExternalLink, Info, Maximize2, Minimize2, Sparkles, X } from '@lucide/vue'
 import type { ImageAsset } from '../types'
 import { imagyxApi } from '../api/tauri'
 import { formatBytes } from '../utils'
 import Button from './ui/Button/Button.vue'
+import Badge from './ui/Badge/Badge.vue'
 
 const props = defineProps<{ image: ImageAsset | null }>()
 const emit = defineEmits<{ close: [] }>()
 
+const copied = ref(false)
+const showInfo = ref(false)
+const fitMode = ref<'contain' | 'cover'>('contain')
+
 function handleKeydown(event: KeyboardEvent) {
   if (!props.image) return
-  if (event.key === 'Escape' || event.code === 'Space') {
+  if (event.key === 'Escape' || event.code === 'Space' || event.key === ' ') {
     event.preventDefault()
+    event.stopPropagation()
     emit('close')
   }
 }
 
-onMounted(() => window.addEventListener('keydown', handleKeydown))
-onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
+async function copyPath() {
+  if (!props.image) return
+  await imagyxApi.copyImageToClipboard(props.image.path)
+  copied.value = true
+  setTimeout(() => { copied.value = false }, 2000)
+}
+
+async function openInFolder() {
+  if (!props.image) return
+  await imagyxApi.openInFileManager(props.image.path)
+}
+
+onMounted(() => window.addEventListener('keydown', handleKeydown, true))
+onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true))
 </script>
 
 <template>
   <Teleport to="body">
-    <Transition name="preview-morph" appear>
-      <div v-if="image" class="preview-backdrop" role="presentation" @pointerdown.self="emit('close')">
-        <section class="preview-dialog" role="dialog" aria-modal="true" :aria-label="`Aperçu de ${image.name}`">
-          <header class="preview-header">
-            <div>
-              <strong>{{ image.name }}</strong>
-              <span>{{ image.width }} × {{ image.height }} · {{ formatBytes(image.sizeBytes) }}</span>
+    <Transition name="preview-fade" appear>
+      <div v-if="image" class="preview-overlay" role="presentation" @click.self="emit('close')">
+        <div class="preview-modal" role="dialog" aria-modal="true" :aria-label="`Aperçu de ${image.name}`">
+          
+          <!-- Control Bar -->
+          <header class="preview-bar">
+            <div class="file-info">
+              <span class="file-name">{{ image.name }}</span>
+              <span class="file-meta">{{ image.width }} × {{ image.height }} px · {{ formatBytes(image.sizeBytes) }}</span>
             </div>
-            <Button variant="secondary" size="icon" aria-label="Fermer l’aperçu" @click="emit('close')">
-              <X :size="18" />
-            </Button>
+
+            <div class="bar-actions">
+              <Button
+                variant="ghost"
+                size="sm"
+                :title="fitMode === 'contain' ? 'Ajuster à l\'écran' : 'Taille réelle'"
+                @click="fitMode = fitMode === 'contain' ? 'cover' : 'contain'"
+              >
+                <Maximize2 v-if="fitMode === 'contain'" :size="15" />
+                <Minimize2 v-else :size="15" />
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                title="Copier le presse-papier"
+                @click="copyPath"
+              >
+                <Copy :size="15" />
+                <span>{{ copied ? 'Copié !' : 'Copier' }}</span>
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                title="Ouvrir dans l'explorateur"
+                @click="openInFolder"
+              >
+                <ExternalLink :size="15" />
+                <span>Révéler</span>
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                :class="{ active: showInfo }"
+                title="Détails & Tags IA"
+                @click="showInfo = !showInfo"
+              >
+                <Info :size="15" />
+              </Button>
+
+              <div class="divider" />
+
+              <Button variant="ghost" size="icon" aria-label="Fermer" class="close-btn" @click="emit('close')">
+                <X :size="18" />
+              </Button>
+            </div>
           </header>
-          <div class="preview-stage">
-            <img :src="imagyxApi.fileUrl(image.path)" :alt="image.name" />
+
+          <!-- Main Viewport -->
+          <div class="preview-content" :class="{ 'with-sidebar': showInfo }">
+            <div class="stage-wrapper">
+              <img
+                :src="imagyxApi.fileUrl(image.path)"
+                :alt="image.name"
+                class="stage-image"
+                :style="{ objectFit: fitMode }"
+              />
+            </div>
+
+            <!-- Details Drawer -->
+            <aside v-if="showInfo" class="info-drawer">
+              <h3>Détails de l'image</h3>
+              
+              <div class="info-group">
+                <label>Nom</label>
+                <p>{{ image.name }}</p>
+              </div>
+
+              <div class="info-group">
+                <label>Dimensions</label>
+                <p>{{ image.width }} × {{ image.height }} pixels</p>
+              </div>
+
+              <div class="info-group">
+                <label>Taille</label>
+                <p>{{ formatBytes(image.sizeBytes) }}</p>
+              </div>
+
+              <div class="info-group">
+                <label>Chemin d'accès</label>
+                <p class="path-text">{{ image.path }}</p>
+              </div>
+
+              <div v-if="image.semanticMatches?.length" class="info-group">
+                <label class="label-ia"><Sparkles :size="13" /> Détections IA</label>
+                <div class="tags-cloud">
+                  <Badge
+                    v-for="(match, idx) in image.semanticMatches"
+                    :key="idx"
+                    variant="primary"
+                  >
+                    {{ match.label }} ({{ Math.round(match.score * 100) }}%)
+                  </Badge>
+                </div>
+              </div>
+            </aside>
           </div>
-        </section>
+
+        </div>
       </div>
     </Transition>
   </Teleport>
 </template>
 
 <style scoped>
-.preview-backdrop {
+.preview-overlay {
   position: fixed;
   inset: 0;
-  z-index: 120;
-  display: grid;
-  place-items: center;
-  padding: 28px;
-  background: rgb(5 7 11 / 0.78);
-  backdrop-filter: blur(12px) saturate(0.9);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(10, 12, 16, 0.82);
+  backdrop-filter: blur(20px) saturate(1.2);
 }
 
-.preview-dialog {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  width: min(94vw, 1280px);
-  height: min(90vh, 900px);
+.preview-modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 1200px;
+  height: 100%;
+  max-height: 840px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
   overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 0.14);
-  border-radius: calc(var(--radius-xl) + 4px);
-  background: var(--surface-elevated);
-  box-shadow: 0 32px 100px rgb(0 0 0 / 0.48), 0 3px 14px rgb(0 0 0 / 0.28);
-  transform-origin: center 58%;
+  animation: modalPop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.preview-header {
+.preview-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
+  height: 52px;
+  padding: 0 var(--space-4);
+  background: var(--surface-elevated);
   border-bottom: 1px solid var(--border);
 }
-.preview-header div,
-.preview-header strong,
-.preview-header span { min-width: 0; }
-.preview-header strong,
-.preview-header span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.preview-header strong { font-size: var(--text-sm); }
-.preview-header span { margin-top: 3px; color: var(--text-muted); font-size: var(--text-xs); }
 
-.preview-stage {
-  display: grid;
-  place-items: center;
-  min-height: 0;
-  padding: var(--space-4);
-  background: radial-gradient(circle at 50% 42%, #171a22, #090b10 68%);
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
 }
-.preview-stage img {
+
+.file-name {
+  font-weight: 600;
+  font-size: var(--text-sm);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.bar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 var(--space-1);
+}
+
+.close-btn {
+  border-radius: var(--radius-full);
+}
+
+.preview-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #090a0d;
+}
+
+.stage-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.stage-image {
   max-width: 100%;
   max-height: 100%;
-  object-fit: contain;
-  filter: drop-shadow(0 18px 34px rgb(0 0 0 / 0.34));
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+  transition: transform 0.2s ease;
 }
 
-.preview-morph-enter-active,
-.preview-morph-leave-active {
-  transition: opacity 220ms ease, backdrop-filter 260ms ease;
+.info-drawer {
+  width: 300px;
+  padding: var(--space-5);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow-y: auto;
 }
-.preview-morph-enter-active .preview-dialog,
-.preview-morph-leave-active .preview-dialog {
-  transition:
-    opacity 230ms ease,
-    transform 320ms cubic-bezier(0.16, 1, 0.3, 1),
-    filter 260ms ease;
-}
-.preview-morph-enter-active .preview-stage img,
-.preview-morph-leave-active .preview-stage img {
-  transition: opacity 260ms ease 45ms, transform 340ms cubic-bezier(0.16, 1, 0.3, 1) 25ms;
-}
-.preview-morph-enter-from,
-.preview-morph-leave-to { opacity: 0; backdrop-filter: blur(0); }
-.preview-morph-enter-from .preview-dialog {
-  opacity: 0;
-  transform: translateY(24px) scale(0.88);
-  filter: blur(10px);
-}
-.preview-morph-leave-to .preview-dialog {
-  opacity: 0;
-  transform: translateY(12px) scale(0.94);
-  filter: blur(6px);
-}
-.preview-morph-enter-from .preview-stage img,
-.preview-morph-leave-to .preview-stage img { opacity: 0; transform: scale(0.96); }
 
-@media (prefers-reduced-motion: reduce) {
-  .preview-morph-enter-active,
-  .preview-morph-leave-active,
-  .preview-morph-enter-active .preview-dialog,
-  .preview-morph-leave-active .preview-dialog,
-  .preview-morph-enter-active .preview-stage img,
-  .preview-morph-leave-active .preview-stage img { transition-duration: 0.01ms; }
+.info-drawer h3 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.info-group label {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+  font-weight: 500;
+}
+
+.label-ia {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--primary) !important;
+}
+
+.info-group p {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text);
+  word-break: break-word;
+}
+
+.path-text {
+  font-family: monospace;
+  font-size: var(--text-xs) !important;
+  color: var(--text-muted) !important;
+  background: var(--surface-hover);
+  padding: 6px;
+  border-radius: var(--radius-sm);
+}
+
+.tags-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: 4px;
+}
+
+@keyframes modalPop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.preview-fade-enter-active,
+.preview-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.preview-fade-enter-from,
+.preview-fade-leave-to {
+  opacity: 0;
 }
 </style>
