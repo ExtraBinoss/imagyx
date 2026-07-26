@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::{
     indexer,
+    ml,
     models::{AppInfo, FollowedFolder, ImageAsset, ImageEmbedding, ModelDownloadProgress, RuntimeStats, SearchRequest},
     state::AppState,
     watcher::FolderWatcher,
@@ -28,24 +29,24 @@ pub fn get_app_info(state: State<'_, Arc<AppState>>) -> AppInfo {
 }
 
 #[tauri::command]
-pub fn get_runtime_stats(state: State<'_, Arc<AppState>>) -> RuntimeStats {
-    collect_runtime_stats(&state)
+pub fn get_runtime_stats(state: State<'_, Arc<AppState>>) -> RuntimeStats { collect_runtime_stats(&state) }
+
+#[tauri::command]
+pub fn update_runtime_stats(stats: RuntimeStats, state: State<'_, Arc<AppState>>) { *state.runtime_stats.write() = stats; }
+
+#[tauri::command]
+pub fn update_model_progress(progress: ModelDownloadProgress, state: State<'_, Arc<AppState>>) { *state.model_progress.write() = progress; }
+
+#[tauri::command]
+pub async fn prepare_local_model(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<String, String> {
+    let state = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        ml::prepare_local_model(&app, &state).map(|path| path.to_string_lossy().into_owned())
+    }).await.map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub fn update_runtime_stats(stats: RuntimeStats, state: State<'_, Arc<AppState>>) {
-    *state.runtime_stats.write() = stats;
-}
-
-#[tauri::command]
-pub fn update_model_progress(progress: ModelDownloadProgress, state: State<'_, Arc<AppState>>) {
-    *state.model_progress.write() = progress;
-}
-
-#[tauri::command]
-pub fn list_folders(state: State<'_, Arc<AppState>>) -> Result<Vec<FollowedFolder>, String> {
-    state.database.folders().map_err(|error| error.to_string())
-}
+pub fn list_folders(state: State<'_, Arc<AppState>>) -> Result<Vec<FollowedFolder>, String> { state.database.folders().map_err(|error| error.to_string()) }
 
 #[tauri::command]
 pub fn add_folder(path: String, state: State<'_, Arc<AppState>>, folder_watcher: State<'_, FolderWatcher>, app: AppHandle) -> Result<FollowedFolder, String> {
@@ -54,13 +55,7 @@ pub fn add_folder(path: String, state: State<'_, Arc<AppState>>, folder_watcher:
     app.asset_protocol_scope().allow_directory(&canonical, true).map_err(|error| format!("Impossible d’autoriser l’affichage du dossier: {error}"))?;
     let canonical_string = canonical.to_string_lossy().into_owned();
     if let Some(existing) = state.database.folders().map_err(|error| error.to_string())?.into_iter().find(|folder| folder.path == canonical_string) { return Ok(existing); }
-    let folder = FollowedFolder {
-        id: Uuid::new_v4().to_string(),
-        name: canonical.file_name().and_then(|name| name.to_str()).unwrap_or("Images").to_owned(),
-        path: canonical_string,
-        image_count: 0,
-        created_at: Utc::now().timestamp_millis(),
-    };
+    let folder = FollowedFolder { id: Uuid::new_v4().to_string(), name: canonical.file_name().and_then(|name| name.to_str()).unwrap_or("Images").to_owned(), path: canonical_string, image_count: 0, created_at: Utc::now().timestamp_millis() };
     state.database.add_folder(&folder).map_err(|error| error.to_string())?;
     folder_watcher.watch(folder.clone())?;
     Ok(folder)
@@ -81,9 +76,7 @@ pub async fn index_folder(folder_id: String, state: State<'_, Arc<AppState>>, ap
 }
 
 #[tauri::command(rename_all = "camelCase")]
-pub fn pending_images(folder_id: Option<String>, state: State<'_, Arc<AppState>>) -> Result<Vec<ImageAsset>, String> {
-    indexer::pending_assets(&state, folder_id.as_deref()).map_err(|error| error.to_string())
-}
+pub fn pending_images(folder_id: Option<String>, state: State<'_, Arc<AppState>>) -> Result<Vec<ImageAsset>, String> { indexer::pending_assets(&state, folder_id.as_deref()).map_err(|error| error.to_string()) }
 
 #[tauri::command]
 pub fn save_embeddings(embeddings: Vec<ImageEmbedding>, state: State<'_, Arc<AppState>>) -> Result<(), String> {
@@ -125,10 +118,6 @@ fn directory_size(root: &Path) -> u64 {
     let Ok(entries) = fs::read_dir(root) else { return 0; };
     entries.filter_map(Result::ok).map(|entry| {
         let path = entry.path();
-        match entry.metadata() {
-            Ok(metadata) if metadata.is_file() => metadata.len(),
-            Ok(metadata) if metadata.is_dir() => directory_size(&path),
-            _ => 0,
-        }
+        match entry.metadata() { Ok(metadata) if metadata.is_file() => metadata.len(), Ok(metadata) if metadata.is_dir() => directory_size(&path), _ => 0 }
     }).sum()
 }
