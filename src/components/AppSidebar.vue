@@ -20,6 +20,8 @@ const emit = defineEmits<{
   add: []
   remove: [folderId: string]
   reindex: [folderId: string]
+  pauseIndexing: []
+  resumeIndexing: []
 }>()
 
 const allSelected = computed(() => props.selectedFolderId === null)
@@ -110,7 +112,13 @@ onBeforeUnmount(() => {
       </div>
     </nav>
 
-    <LocalAiStatus :progress="progress" :model-progress="modelProgress" :runtime-stats="runtimeStats" />
+    <LocalAiStatus
+      :progress="progress"
+      :model-progress="modelProgress"
+      :runtime-stats="runtimeStats"
+      @pause="emit('pauseIndexing')"
+      @resume="emit('resumeIndexing')"
+    />
 
     <div
       v-if="contextMenu"
