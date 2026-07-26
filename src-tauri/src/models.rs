@@ -53,6 +53,8 @@ pub struct IndexProgress {
     pub folder_name: String,
     pub current: usize,
     pub total: usize,
+    pub batch_current: Option<usize>,
+    pub batch_total: Option<usize>,
     pub stage: String,
     pub message: String,
 }
