@@ -78,7 +78,7 @@ pub struct ModelStatus {
     pub fallback_reason: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelDownloadProgress {
     pub stage: String,
@@ -104,7 +104,7 @@ impl Default for ModelDownloadProgress {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeStats {
     pub model_name: String,
@@ -166,6 +166,12 @@ impl Default for RuntimeStats {
             updated_at: 0,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct ImageFingerprint {
+    pub modified_at: i64,
+    pub size_bytes: u64,
 }
 
 #[derive(Debug, Clone)]
