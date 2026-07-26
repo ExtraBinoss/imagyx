@@ -4,7 +4,7 @@ use crate::{
     AppError,
     db::Database,
     ml::MlRuntime,
-    models::{ModelDownloadProgress, VectorEntry},
+    models::{ModelDownloadProgress, RuntimeStats, VectorEntry},
     paths::AppPaths,
     thumbnails::ThumbnailCache,
 };
@@ -17,6 +17,7 @@ pub struct AppState {
     pub thumbnails: ThumbnailCache,
     pub vectors: RwLock<Vec<VectorEntry>>,
     pub model_progress: RwLock<ModelDownloadProgress>,
+    pub runtime_stats: RwLock<RuntimeStats>,
     index_lock: Mutex<()>,
 }
 
@@ -31,6 +32,13 @@ impl AppState {
             database,
             vectors: RwLock::new(vectors),
             model_progress: RwLock::new(ModelDownloadProgress::default()),
+            runtime_stats: RwLock::new(RuntimeStats {
+                model_name: "MobileCLIP2-S0".to_owned(),
+                backend: "En préparation".to_owned(),
+                acceleration: "Non confirmée".to_owned(),
+                stage: "idle".to_owned(),
+                ..RuntimeStats::default()
+            }),
             index_lock: Mutex::new(()),
         })
     }
