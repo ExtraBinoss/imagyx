@@ -20,6 +20,18 @@ export interface ImageAsset {
   semanticScore?: number
 }
 
+export type ModelDownloadStage = 'idle' | 'checking' | 'downloading' | 'loading' | 'ready' | 'error'
+
+export interface ModelDownloadProgress {
+  stage: ModelDownloadStage
+  fileName?: string
+  currentBytes: number
+  totalBytes: number
+  currentFile: number
+  totalFiles: number
+  message: string
+}
+
 export interface AppInfo {
   rootDir: string
   modelsDir: string
@@ -27,6 +39,7 @@ export interface AppInfo {
   thumbnailsDir: string
   aiBackend: string
   aiReady: boolean
+  modelProgress: ModelDownloadProgress
 }
 
 export interface IndexProgress {
