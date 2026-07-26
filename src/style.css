@@ -76,25 +76,25 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --background: #171717;
-  --sidebar: #1c1c1f;
-  --surface: #212124;
-  --surface-elevated: #262629;
-  --surface-hover: #2d2d31;
-  --surface-active: #3a3a3f;
-  --skeleton: #2d2d31;
-  --border: #343439;
-  --border-strong: #46464d;
-  --text: #f4f4f5;
-  --text-secondary: #d4d4d8;
-  --text-muted: #a1a1aa;
-  --text-subtle: #71717a;
-  --primary: #3b82f6;
+  --background: #0d0e12;
+  --sidebar: #131419;
+  --surface: #191b22;
+  --surface-elevated: #20232d;
+  --surface-hover: #282c38;
+  --surface-active: #323746;
+  --skeleton: #282c38;
+  --border: #2c303d;
+  --border-strong: #3f4557;
+  --text: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-subtle: #64748b;
+  --primary: #38bdf8;
   --primary-hover: #60a5fa;
-  --primary-foreground: #ffffff;
-  --primary-soft: #172554;
-  --primary-border: #1e40af;
-  --primary-text: #93c5fd;
+  --primary-foreground: #0f172a;
+  --primary-soft: #0369a126;
+  --primary-border: #0284c7;
+  --primary-text: #38bdf8;
   --success-surface: #052e24;
   --success-border: #065f46;
   --success-text: #6ee7b7;
@@ -212,8 +212,8 @@ button {
 
 .section-label {
   margin: 0 var(--space-2) var(--space-2);
-  color: var(--text-subtle);
-  font-size: 10px;
+  color: var(--text-muted);
+  font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -230,20 +230,18 @@ button {
 }
 
 .folder-row {
-  display: grid !important;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  justify-content: stretch !important;
+  display: flex !important;
+  align-items: center;
   gap: var(--space-2) !important;
   min-height: 38px !important;
   padding: 0 var(--space-3) !important;
-  color: var(--text-secondary) !important;
+  color: var(--text) !important;
   text-align: left;
 }
 
 .folder-row:hover,
 .folder-row.active {
   background: var(--surface-hover) !important;
-  color: var(--text) !important;
 }
 
 .folder-row.active {
@@ -251,7 +249,10 @@ button {
 }
 
 .folder-name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
+  color: inherit;
   font-size: var(--text-sm);
   font-weight: 560;
   text-overflow: ellipsis;

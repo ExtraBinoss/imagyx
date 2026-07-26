@@ -173,9 +173,10 @@ withDefaults(
   flex: 0 0 auto;
 }
 .ui-button__content {
+  display: inline-flex;
+  align-items: center;
+  gap: inherit;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 100%;
 }
 </style>

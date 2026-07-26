@@ -92,16 +92,16 @@ onBeforeUnmount(() => {
   <aside class="sidebar">
     <div class="brand">
       <img :src="imagyxLogo" class="brand-mark-img" alt="Imagyx logo" />
-      <div><strong>Imagyx</strong><span>Intelligence locale</span></div>
+      <div><strong>Imagyx</strong><span>Local Intelligence</span></div>
     </div>
 
     <Button variant="primary" size="lg" block @click="emit('add')">
       <template #leading><Plus :size="17" :stroke-width="2.2" /></template>
-      Ajouter un dossier
+      Add Folder
     </Button>
 
-    <nav class="folder-nav" aria-label="Dossiers suivis">
-      <p class="section-label">Bibliothèque</p>
+    <nav class="folder-nav" aria-label="Watched Folders">
+      <p class="section-label">Library</p>
       <Button
         class="folder-row"
         :class="{ active: allSelected }"
@@ -110,13 +110,13 @@ onBeforeUnmount(() => {
         @click="emit('select', null)"
       >
         <Images :size="17" />
-        <span class="folder-name">Toutes les images</span>
+        <span class="folder-name">All Images</span>
         <span class="folder-count">{{ totalImages }}</span>
       </Button>
 
-      <p class="section-label followed-label">Dossiers suivis</p>
+      <p class="section-label followed-label">Watched Folders</p>
       <div v-if="folders.length === 0" class="sidebar-empty">
-        <FolderOpen :size="19" /><span>Aucun dossier suivi</span>
+        <FolderOpen :size="19" /><span>No watched folders</span>
       </div>
 
       <div
@@ -142,7 +142,7 @@ onBeforeUnmount(() => {
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label="Actions du dossier"
+                aria-label="Folder Actions"
               >
                 <MoreHorizontal :size="16" />
               </Button>
@@ -171,7 +171,7 @@ onBeforeUnmount(() => {
                   "
                 >
                   <template #leading><RefreshCw :size="15" /></template
-                  >Réindexer
+                  >Reindex
                 </Button>
                 <Button
                   variant="danger"
@@ -182,8 +182,7 @@ onBeforeUnmount(() => {
                     close();
                   "
                 >
-                  <template #leading><Trash2 :size="15" /></template>Ne plus
-                  suivre
+                  <template #leading><Trash2 :size="15" /></template>Unfollow
                 </Button>
               </div>
             </template>
@@ -217,7 +216,7 @@ onBeforeUnmount(() => {
         block
         @click="runContextAction('reindex')"
       >
-        <template #leading><RefreshCw :size="15" /></template>Réindexer
+        <template #leading><RefreshCw :size="15" /></template>Reindex
       </Button>
       <Button
         variant="danger"
@@ -225,7 +224,7 @@ onBeforeUnmount(() => {
         block
         @click="runContextAction('remove')"
       >
-        <template #leading><Trash2 :size="15" /></template>Ne plus suivre
+        <template #leading><Trash2 :size="15" /></template>Unfollow
       </Button>
     </div>
   </aside>
