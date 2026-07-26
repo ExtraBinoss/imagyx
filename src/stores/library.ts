@@ -20,6 +20,8 @@ interface LibraryState {
   selectedFolderId: string | null
   query: string
   loading: boolean
+  semanticSearching: boolean
+  searchSequence: number
   initialized: boolean
   refreshScheduled: boolean
   appInfo: AppInfo | null
@@ -37,6 +39,8 @@ export const useLibraryStore = defineStore('library', {
     selectedFolderId: null,
     query: '',
     loading: false,
+    semanticSearching: false,
+    searchSequence: 0,
     initialized: false,
     refreshScheduled: false,
     appInfo: null,
@@ -68,7 +72,7 @@ export const useLibraryStore = defineStore('library', {
             if (this.appInfo) {
               this.appInfo.runtimeStats = stats
               this.appInfo.aiBackend = stats.backendEffective
-              this.appInfo.aiReady = stats.stage === 'ready' || stats.stage === 'indexing'
+              this.appInfo.aiReady = stats.backendEffective !== 'En attente' && stats.stage !== 'error'
             }
           },
         })
@@ -203,20 +207,33 @@ export const useLibraryStore = defineStore('library', {
     },
 
     async refreshImages() {
-      this.loading = true
+      const sequence = ++this.searchSequence
+      const query = this.query.trim()
+      const folderId = this.selectedFolderId ?? undefined
+      const hadImages = this.images.length > 0
       this.error = null
+      this.semanticSearching = Boolean(query)
+      if (!hadImages) this.loading = true
+
       try {
-        const queryVector = this.query ? await semanticRuntime.embedText(this.query) : undefined
-        this.images = await imagyxApi.search({
-          query: this.query,
-          queryVector,
-          folderId: this.selectedFolderId ?? undefined,
+        const embedded = query ? await semanticRuntime.embedQuery(query) : undefined
+        if (sequence !== this.searchSequence) return
+        const images = await imagyxApi.search({
+          query,
+          queryVector: embedded?.queryVector,
+          concepts: embedded?.concepts,
+          folderId,
           limit: 20_000,
         })
+        if (sequence !== this.searchSequence) return
+        this.images = images
       } catch (error) {
-        this.reportError(error)
+        if (sequence === this.searchSequence) this.reportError(error)
       } finally {
-        this.loading = false
+        if (sequence === this.searchSequence) {
+          this.loading = false
+          this.semanticSearching = false
+        }
       }
     },
 
