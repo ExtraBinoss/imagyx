@@ -162,6 +162,17 @@ export const useLibraryStore = defineStore('library', {
         explainingImages.delete(imageId)
       }
     },
+    pauseIndexing() {
+      semanticRuntime.pauseIndexing()
+    },
+    async resumeIndexing() {
+      try {
+        await semanticRuntime.resumeIndexing()
+        this.scheduleRefresh()
+      } catch (error) {
+        this.reportError(error)
+      }
+    },
     async addFolder(path: string) {
       try { const folder = await imagyxApi.addFolder(path); await this.refreshFolders(); this.selectedFolderId = folder.id; void imagyxApi.indexFolder(folder.id).catch((error) => this.reportError(error)) }
       catch (error) { this.reportError(error) }
