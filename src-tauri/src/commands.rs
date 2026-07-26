@@ -9,6 +9,7 @@ use crate::{
     ml::MlRuntime,
     models::{AppInfo, FollowedFolder, ImageAsset, SearchRequest},
     state::AppState,
+    watcher::FolderWatcher,
 };
 
 #[tauri::command]
@@ -34,6 +35,7 @@ pub fn list_folders(state: State<'_, Arc<AppState>>) -> Result<Vec<FollowedFolde
 pub fn add_folder(
     path: String,
     state: State<'_, Arc<AppState>>,
+    folder_watcher: State<'_, FolderWatcher>,
     app: AppHandle,
 ) -> Result<FollowedFolder, String> {
     let canonical = PathBuf::from(&path)
@@ -57,6 +59,7 @@ pub fn add_folder(
     {
         return Ok(existing);
     }
+
     let folder = FollowedFolder {
         id: Uuid::new_v4().to_string(),
         name: canonical
@@ -72,11 +75,23 @@ pub fn add_folder(
         .database
         .add_folder(&folder)
         .map_err(|error| error.to_string())?;
+    folder_watcher.watch(folder.clone())?;
     Ok(folder)
 }
 
 #[tauri::command(rename_all = "camelCase")]
-pub fn remove_folder(folder_id: String, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn remove_folder(
+    folder_id: String,
+    state: State<'_, Arc<AppState>>,
+    folder_watcher: State<'_, FolderWatcher>,
+) -> Result<(), String> {
+    if let Some(folder) = state
+        .database
+        .folder(&folder_id)
+        .map_err(|error| error.to_string())?
+    {
+        folder_watcher.unwatch(folder)?;
+    }
     state
         .database
         .remove_folder(&folder_id)
@@ -102,6 +117,36 @@ pub async fn index_folder(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_thumbnail(
+    image_id: String,
+    path: String,
+    modified_at: i64,
+    state: State<'_, Arc<AppState>>,
+) -> Result<String, String> {
+    let source = PathBuf::from(&path);
+    let allowed = state
+        .database
+        .folders()
+        .map_err(|error| error.to_string())?
+        .iter()
+        .any(|folder| source.starts_with(&folder.path));
+    if !allowed {
+        return Err("L’image ne se trouve pas dans un dossier suivi".into());
+    }
+
+    let state = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        state
+            .thumbnails
+            .get_or_create(&image_id, &source, modified_at)
+            .map(|path| path.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub async fn search_images(
     request: SearchRequest,
@@ -113,7 +158,7 @@ pub async fn search_images(
             &state,
             &request.query,
             request.folder_id.as_deref(),
-            request.limit.unwrap_or(250).min(1_000),
+            request.limit.unwrap_or(2_000).min(50_000),
         )
     })
     .await
