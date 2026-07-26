@@ -1,11 +1,9 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs::File,
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
 };
 
-use image::{GenericImageView, ImageReader, codecs::jpeg::JpegEncoder};
 use rayon::prelude::*;
 use tauri::{AppHandle, Emitter};
 use walkdir::WalkDir;
@@ -15,6 +13,8 @@ use crate::{
     models::{FollowedFolder, ImageAsset, IndexProgress, ModelStatus},
     state::AppState,
 };
+
+const EMBEDDING_CHUNK_SIZE: usize = 32;
 
 pub fn index_folder(
     state: &AppState,
@@ -30,9 +30,19 @@ pub fn index_folder(
         .map(|path| path.to_string_lossy().into_owned())
         .collect();
 
+    // Read the existing fingerprints once. The previous implementation opened a
+    // new SQLite connection for every file, which was disproportionately slow
+    // even for small folders.
+    let existing: HashMap<String, (i64, u64)> = state
+        .database
+        .images(Some(&folder.id))?
+        .into_iter()
+        .map(|asset| (asset.path, (asset.modified_at, asset.size_bytes)))
+        .collect();
+
     let changed: Vec<PathBuf> = paths
         .into_iter()
-        .filter(|path| is_changed(state, path))
+        .filter(|path| is_changed(path, &existing))
         .collect();
 
     emit_progress(
@@ -40,16 +50,33 @@ pub fn index_folder(
         folder,
         0,
         changed.len(),
-        "thumbnails",
-        "Création des aperçus…",
+        "metadata",
+        "Lecture des métadonnées…",
     );
 
+    // Only read image headers here. The WebView displays original files lazily,
+    // so indexing no longer decodes every image and writes a duplicate JPEG.
     let prepared: Vec<ImageAsset> = changed
         .par_iter()
-        .filter_map(|path| prepare_asset(state, folder, path).ok())
+        .filter_map(|path| prepare_asset(folder, path).ok())
         .collect();
 
-    let mut embeddings = Vec::new();
+    emit_progress(
+        app,
+        folder,
+        prepared.len(),
+        prepared.len(),
+        "saving",
+        "Mise à jour de la bibliothèque…",
+    );
+
+    // Save metadata first and invalidate stale vectors for changed files. This
+    // makes the grid available immediately while semantic indexing continues.
+    state.database.save_assets(&prepared, &[])?;
+    state.database.delete_missing(&folder.id, &current_paths)?;
+    state.refresh_vectors()?;
+    let _ = app.emit("library-updated", ());
+
     if !prepared.is_empty() {
         emit_progress(
             app,
@@ -59,53 +86,64 @@ pub fn index_folder(
             "embedding",
             "Compréhension visuelle locale…",
         );
-        let paths: Vec<PathBuf> = prepared
-            .iter()
-            .map(|asset| PathBuf::from(&asset.path))
-            .collect();
-        let embedding_result = state.ml.lock().embed_images(&paths);
-        match embedding_result {
-            Ok(vectors) => {
-                embeddings = prepared
-                    .iter()
-                    .zip(vectors)
-                    .map(|(asset, vector)| (asset.id.clone(), vector))
-                    .collect();
-                let _ = app.emit(
-                    "model-status",
-                    ModelStatus {
-                        ready: true,
-                        backend: crate::ml::MlRuntime::backend_label().to_owned(),
-                    },
-                );
-            }
-            Err(error) => {
-                let _ = app.emit(
-                    "model-status",
-                    ModelStatus {
-                        ready: false,
-                        backend: format!(
-                            "{} · recherche par nom",
-                            crate::ml::MlRuntime::backend_label()
-                        ),
-                    },
-                );
-                eprintln!("Imagyx ML initialization failed: {error}");
+
+        let mut processed = 0;
+        let mut embedding_failed = false;
+
+        for chunk in prepared.chunks(EMBEDDING_CHUNK_SIZE) {
+            let paths: Vec<PathBuf> = chunk
+                .iter()
+                .map(|asset| PathBuf::from(&asset.path))
+                .collect();
+
+            match state.ml.lock().embed_images(&paths) {
+                Ok(vectors) => {
+                    let embeddings: Vec<(String, Vec<f32>)> = chunk
+                        .iter()
+                        .zip(vectors)
+                        .map(|(asset, vector)| (asset.id.clone(), vector))
+                        .collect();
+                    state.database.save_assets(chunk, &embeddings)?;
+                    processed += chunk.len();
+                    emit_progress(
+                        app,
+                        folder,
+                        processed,
+                        prepared.len(),
+                        "embedding",
+                        "Compréhension visuelle locale…",
+                    );
+                }
+                Err(error) => {
+                    embedding_failed = true;
+                    let _ = app.emit(
+                        "model-status",
+                        ModelStatus {
+                            ready: false,
+                            backend: format!(
+                                "{} · recherche par nom",
+                                crate::ml::MlRuntime::backend_label()
+                            ),
+                        },
+                    );
+                    eprintln!("Imagyx ML indexing failed: {error}");
+                    break;
+                }
             }
         }
-    }
 
-    emit_progress(
-        app,
-        folder,
-        prepared.len(),
-        prepared.len(),
-        "saving",
-        "Enregistrement dans SQLite…",
-    );
-    state.database.save_assets(&prepared, &embeddings)?;
-    state.database.delete_missing(&folder.id, &current_paths)?;
-    state.refresh_vectors()?;
+        if !embedding_failed {
+            let _ = app.emit(
+                "model-status",
+                ModelStatus {
+                    ready: true,
+                    backend: crate::ml::MlRuntime::backend_label().to_owned(),
+                },
+            );
+        }
+
+        state.refresh_vectors()?;
+    }
 
     emit_progress(
         app,
@@ -130,25 +168,19 @@ fn discover_images(root: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-fn is_changed(state: &AppState, path: &Path) -> bool {
+fn is_changed(path: &Path, existing: &HashMap<String, (i64, u64)>) -> bool {
     let Ok(metadata) = path.metadata() else {
         return false;
     };
     let modified_at = modified_millis(&metadata);
     let size_bytes = metadata.len();
-    match state.database.fingerprint(&path.to_string_lossy()) {
-        Ok(Some(existing)) => {
-            existing.modified_at != modified_at || existing.size_bytes != size_bytes
-        }
-        Ok(None) | Err(_) => true,
-    }
+    let path_string = path.to_string_lossy();
+    existing
+        .get(path_string.as_ref())
+        .is_none_or(|fingerprint| fingerprint.0 != modified_at || fingerprint.1 != size_bytes)
 }
 
-fn prepare_asset(
-    state: &AppState,
-    folder: &FollowedFolder,
-    path: &Path,
-) -> Result<ImageAsset, AppError> {
+fn prepare_asset(folder: &FollowedFolder, path: &Path) -> Result<ImageAsset, AppError> {
     let metadata = path.metadata()?;
     let modified_at = modified_millis(&metadata);
     let file_name = path
@@ -163,34 +195,21 @@ fn prepare_asset(
         .to_lowercase();
     let path_string = path.to_string_lossy().into_owned();
     let id = blake3::hash(path_string.as_bytes()).to_hex().to_string();
-    let thumbnail_name = format!("{}-{modified_at}.jpg", &id[..20]);
-    let thumbnail_path = state.paths.thumbnails.join(thumbnail_name);
-
-    let image = ImageReader::open(path)?.with_guessed_format()?.decode()?;
-    let (width, height) = image.dimensions();
-    if !thumbnail_path.exists() {
-        let thumbnail = image.thumbnail(720, 720).to_rgb8();
-        let mut output = File::create(&thumbnail_path)?;
-        let mut encoder = JpegEncoder::new_with_quality(&mut output, 84);
-        encoder.encode(
-            thumbnail.as_raw(),
-            thumbnail.width(),
-            thumbnail.height(),
-            image::ExtendedColorType::Rgb8,
-        )?;
-    }
+    let (width, height) = image::image_dimensions(path)?;
 
     Ok(ImageAsset {
         id,
         folder_id: folder.id.clone(),
-        path: path_string,
+        path: path_string.clone(),
         name: file_name,
         extension,
         width,
         height,
         size_bytes: metadata.len(),
         modified_at,
-        thumbnail_path: thumbnail_path.to_string_lossy().into_owned(),
+        // Kept for database compatibility. The UI now renders the original path
+        // directly and relies on lazy WebView decoding instead of a disk cache.
+        thumbnail_path: path_string,
         semantic_score: None,
     })
 }
