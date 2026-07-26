@@ -20,7 +20,8 @@ pub fn get_app_info(state: State<'_, Arc<AppState>>) -> AppInfo {
         database_path: state.database.path().to_string_lossy().into_owned(),
         thumbnails_dir: state.paths.thumbnails.to_string_lossy().into_owned(),
         ai_backend: MlRuntime::backend_label().to_owned(),
-        ai_ready: ml.is_ready() || ml.cache_has_models(),
+        ai_ready: ml.is_ready(),
+        model_progress: state.model_progress.read().clone(),
     }
 }
 
