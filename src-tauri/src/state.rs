@@ -1,6 +1,12 @@
 use parking_lot::{Mutex, MutexGuard, RwLock};
 
-use crate::{AppError, db::Database, ml::MlRuntime, models::VectorEntry, paths::AppPaths};
+use crate::{
+    AppError,
+    db::Database,
+    ml::MlRuntime,
+    models::{ModelDownloadProgress, VectorEntry},
+    paths::AppPaths,
+};
 
 #[derive(Debug)]
 pub struct AppState {
@@ -8,6 +14,7 @@ pub struct AppState {
     pub database: Database,
     pub ml: Mutex<MlRuntime>,
     pub vectors: RwLock<Vec<VectorEntry>>,
+    pub model_progress: RwLock<ModelDownloadProgress>,
     index_lock: Mutex<()>,
 }
 
@@ -20,6 +27,7 @@ impl AppState {
             paths,
             database,
             vectors: RwLock::new(vectors),
+            model_progress: RwLock::new(ModelDownloadProgress::default()),
             index_lock: Mutex::new(()),
         })
     }
