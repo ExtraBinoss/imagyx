@@ -104,3 +104,33 @@ function reindexFromContext(event: MouseEvent, folderId: string) {
     <LocalAiStatus :progress="progress" :model-progress="modelProgress" :runtime-stats="runtimeStats" />
   </aside>
 </template>
+
+<style scoped>
+.sidebar {
+  overflow-x: hidden;
+}
+
+.folder-nav {
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.folder-entry,
+.folder-row,
+.sidebar-model-picker {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.sidebar-model-picker {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-model-picker :deep(.ui-select__trigger) {
+  width: 100%;
+  min-width: 0;
+}
+</style>
