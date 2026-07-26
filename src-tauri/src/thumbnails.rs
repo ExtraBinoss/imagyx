@@ -3,13 +3,13 @@ use std::{
     fs::{self, File},
     path::{Path, PathBuf},
     sync::Arc,
-    time::UNIX_EPOCH,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use image::{ImageReader, codecs::jpeg::JpegEncoder};
 use parking_lot::Mutex;
 
-use crate::{AppError, models::ImageAsset};
+use crate::AppError;
 
 const DEFAULT_CAPACITY: usize = 256;
 const THUMBNAIL_EDGE: u32 = 512;
@@ -17,7 +17,6 @@ const JPEG_QUALITY: u8 = 80;
 
 #[derive(Debug, Default)]
 struct CacheState {
-    tick: u64,
     last_access: HashMap<PathBuf, u64>,
 }
 
@@ -43,14 +42,19 @@ impl ThumbnailCache {
         }
     }
 
-    pub fn get_or_create(&self, asset: &ImageAsset) -> Result<PathBuf, AppError> {
-        let cache_path = self.cache_path(asset);
+    pub fn get_or_create(
+        &self,
+        image_id: &str,
+        source: &Path,
+        modified_at: i64,
+    ) -> Result<PathBuf, AppError> {
+        let cache_path = self.cache_path(image_id, modified_at);
         if cache_path.exists() {
             self.touch(&cache_path);
             return Ok(cache_path);
         }
 
-        let lock = self.lock_for(&asset.id);
+        let lock = self.lock_for(image_id);
         let _guard = lock.lock();
         if cache_path.exists() {
             self.touch(&cache_path);
@@ -58,9 +62,7 @@ impl ThumbnailCache {
         }
 
         fs::create_dir_all(&self.directory)?;
-        let image = ImageReader::open(&asset.path)?
-            .with_guessed_format()?
-            .decode()?;
+        let image = ImageReader::open(source)?.with_guessed_format()?.decode()?;
         let thumbnail = image.thumbnail(THUMBNAIL_EDGE, THUMBNAIL_EDGE).to_rgb8();
         let temporary = cache_path.with_extension(format!("tmp-{}", std::process::id()));
 
@@ -86,10 +88,10 @@ impl ThumbnailCache {
         Ok(cache_path)
     }
 
-    fn cache_path(&self, asset: &ImageAsset) -> PathBuf {
-        let short_id = asset.id.get(..20).unwrap_or(&asset.id);
+    fn cache_path(&self, image_id: &str, modified_at: i64) -> PathBuf {
+        let short_id = image_id.get(..20).unwrap_or(image_id);
         self.directory
-            .join(format!("{short_id}-{}.jpg", asset.modified_at))
+            .join(format!("{short_id}-{modified_at}.jpg"))
     }
 
     fn lock_for(&self, key: &str) -> Arc<Mutex<()>> {
@@ -101,13 +103,14 @@ impl ThumbnailCache {
     }
 
     fn touch(&self, path: &Path) {
-        let mut state = self.state.lock();
-        state.tick = state.tick.saturating_add(1);
-        let tick = state.tick;
-        state.last_access.insert(path.to_path_buf(), tick);
+        self.state
+            .lock()
+            .last_access
+            .insert(path.to_path_buf(), unix_millis());
     }
 
     fn prune(&self, protected: Option<&Path>) -> Result<(), AppError> {
+        let accesses = self.state.lock().last_access.clone();
         let mut entries = Vec::new();
         for entry in fs::read_dir(&self.directory)? {
             let entry = entry?;
@@ -120,15 +123,8 @@ impl ThumbnailCache {
                 .modified()
                 .ok()
                 .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-                .map_or(0, |duration| duration.as_secs());
-            let access = self
-                .state
-                .lock()
-                .last_access
-                .get(&path)
-                .copied()
-                .unwrap_or(fallback);
-            entries.push((path, access));
+                .map_or(0, |duration| duration.as_millis() as u64);
+            entries.push((path.clone(), accesses.get(&path).copied().unwrap_or(fallback)));
         }
 
         if entries.len() <= self.capacity {
@@ -148,13 +144,18 @@ impl ThumbnailCache {
     }
 }
 
+fn unix_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis() as u64)
+}
+
 #[cfg(test)]
 mod tests {
     use image::{Rgb, RgbImage};
     use tempfile::tempdir;
 
     use super::ThumbnailCache;
-    use crate::models::ImageAsset;
 
     #[test]
     fn keeps_the_cache_bounded() {
@@ -170,19 +171,7 @@ mod tests {
                 .save(&source)
                 .expect("source image");
             cache
-                .get_or_create(&ImageAsset {
-                    id: format!("{index:064}"),
-                    folder_id: "folder".into(),
-                    path: source.to_string_lossy().into_owned(),
-                    name: format!("{index}.png"),
-                    extension: "png".into(),
-                    width: 64,
-                    height: 64,
-                    size_bytes: 1,
-                    modified_at: index,
-                    thumbnail_path: String::new(),
-                    semantic_score: None,
-                })
+                .get_or_create(&format!("{index:064}"), &source, index)
                 .expect("thumbnail");
         }
 
