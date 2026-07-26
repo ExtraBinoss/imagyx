@@ -44,6 +44,7 @@ pub fn run() {
             let state = Arc::new(AppState::new(paths)?);
             let folders = state.database.folders()?;
             app.asset_protocol_scope().allow_directory(&state.paths.thumbnails, true)?;
+            app.asset_protocol_scope().allow_directory(&state.paths.models, true)?;
             for folder in &folders {
                 app.asset_protocol_scope().allow_directory(&folder.path, true)?;
             }
@@ -57,6 +58,7 @@ pub fn run() {
             commands::get_runtime_stats,
             commands::update_runtime_stats,
             commands::update_model_progress,
+            commands::prepare_local_model,
             commands::list_folders,
             commands::add_folder,
             commands::remove_folder,
