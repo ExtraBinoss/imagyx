@@ -177,11 +177,9 @@ impl MlRuntime {
             return Ok(());
         }
         if !self.cache_has_models() {
-            return Err(AppError::Model(
-                self.last_error
-                    .clone()
-                    .unwrap_or_else(|| "L’IA locale n’est pas encore prête".to_owned()),
-            ));
+            return Err(AppError::Model(self.last_error.clone().unwrap_or_else(
+                || "L’IA locale n’est pas encore prête".to_owned(),
+            )));
         }
         self.initialize_models()
     }
@@ -213,12 +211,9 @@ impl MlRuntime {
 
     pub fn cache_has_models(&self) -> bool {
         let cache = Cache::new(self.cache_dir.clone());
-        MODEL_FILES.iter().all(|spec| {
-            cache
-                .model(spec.repo.to_owned())
-                .get(spec.file)
-                .is_some()
-        })
+        MODEL_FILES
+            .iter()
+            .all(|spec| cache.model(spec.repo.to_owned()).get(spec.file).is_some())
     }
 
     fn initialize_models(&mut self) -> Result<(), AppError> {
@@ -268,12 +263,7 @@ impl MlRuntime {
         let missing: Vec<ModelFile> = MODEL_FILES
             .iter()
             .copied()
-            .filter(|spec| {
-                cache
-                    .model(spec.repo.to_owned())
-                    .get(spec.file)
-                    .is_none()
-            })
+            .filter(|spec| cache.model(spec.repo.to_owned()).get(spec.file).is_none())
             .collect();
 
         if missing.is_empty() {
