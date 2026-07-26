@@ -22,7 +22,7 @@ const subtitle = computed(() => {
   if (store.query) return `${store.images.length} résultat${store.images.length > 1 ? 's' : ''}`
   return `${store.images.length} image${store.images.length > 1 ? 's' : ''}`
 })
-const viewKey = computed(() => `${store.selectedFolderId ?? 'all'}:${store.query}:${store.selectedModel}`)
+const viewKey = computed(() => `${store.selectedFolderId ?? 'all'}:${store.query}`)
 
 const searchLater = debounce(() => {
   store.setQuery(localQuery.value.trim())
@@ -55,13 +55,11 @@ onBeforeUnmount(() => {
     <AppSidebar
       :folders="store.folders"
       :selected-folder-id="store.selectedFolderId"
-      :selected-model="store.selectedModel"
       :total-images="store.totalImages"
       :progress="store.progress"
       :model-progress="store.modelProgress"
       :runtime-stats="store.runtimeStats"
       @select="store.selectFolder"
-      @model="store.selectModel"
       @add="addFolder"
       @remove="removeFolder"
       @reindex="store.reindexFolder"
