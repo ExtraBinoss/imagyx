@@ -56,20 +56,22 @@ function matches(keywords: string[]) {
 }
 
 function copyDebugInfo() {
-  const infoText = `Imagyx Debug Info:
-- Version: v${platform.appVersion}
-- OS: ${platform.platform}
-- Database: ${dbPath.value}
-- AI Model: ${stats.value?.modelName ?? 'MobileCLIP-S0'}
-- Active Backend: ${stats.value?.backendEffective ?? 'Automatic'} (Requested: ${stats.value?.backendRequested ?? 'WebGPU'})
-- Indexing Stage: ${stats.value?.stage ?? 'Ready'}
-- Progress: ${stats.value?.current ?? 0} / ${stats.value?.total ?? 0}
-- Throughput: ${stats.value?.imagesPerSecond?.toFixed(1) ?? '0.0'} img/s (${stats.value?.averageMsPerImage ? `${Math.round(stats.value.averageMsPerImage)} ms/img` : '—'})
-- Timings: Decode: ${formatMs(stats.value?.decodeMs)} | Inference: ${formatMs(stats.value?.inferenceMs)} | SQLite: ${formatMs(stats.value?.saveMs)}
-- Resources: App CPU: ${stats.value?.processCpuPercent?.toFixed(0) ?? 0}% | System CPU: ${stats.value?.systemCpuPercent?.toFixed(0) ?? 0}% | RAM: ${formatBytes(stats.value?.processMemoryBytes ?? 0)}
-- Library: ${library.folders.length} watched folder(s) (${library.totalImages} images)
-- Shortcut: ${props.shortcut}
-- Theme: ${props.themeMode}`
+  const infoText = `=== System Information ===
+App Version: v${platform.appVersion}
+OS Platform: ${platform.platform}
+Database Location: ${dbPath.value}
+Shortcut: ${props.shortcut}
+Theme Mode: ${props.themeMode}
+
+=== Indexing Information ===
+AI Model: ${stats.value?.modelName ?? 'MobileCLIP-S0'}
+Backend: ${stats.value?.backendEffective ?? 'Automatic'} (Requested: ${stats.value?.backendRequested ?? 'WebGPU'})
+Indexing Stage: ${stats.value?.stage ?? 'Ready'}
+Progress: ${stats.value?.current ?? 0} / ${stats.value?.total ?? 0}
+Throughput: ${stats.value?.imagesPerSecond?.toFixed(1) ?? '0.0'} img/s (${stats.value?.averageMsPerImage ? `${Math.round(stats.value.averageMsPerImage)} ms/img` : '—'})
+Timings: Decode: ${formatMs(stats.value?.decodeMs)} | Inference: ${formatMs(stats.value?.inferenceMs)} | SQLite: ${formatMs(stats.value?.saveMs)}
+Resources: App CPU: ${stats.value?.processCpuPercent?.toFixed(0) ?? 0}% | System CPU: ${stats.value?.systemCpuPercent?.toFixed(0) ?? 0}% | RAM: ${formatBytes(stats.value?.processMemoryBytes ?? 0)}
+Library: ${library.folders.length} watched folder(s) (${library.totalImages} images)`
 
   void navigator.clipboard.writeText(infoText)
   copied.value = true
@@ -143,7 +145,7 @@ function copyDebugInfo() {
               <Check v-if="copied" :size="14" />
               <Copy v-else :size="14" />
             </template>
-            {{ copied ? 'Copied!' : 'Copy Debug Info' }}
+            {{ copied ? 'Copied!' : 'Copy additional information' }}
           </Button>
         </div>
       </Accordion>

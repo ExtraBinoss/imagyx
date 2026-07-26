@@ -8,6 +8,8 @@ import Badge from './ui/Badge/Badge.vue'
 import Button from './ui/Button/Button.vue'
 import Popover from './ui/Popover/Popover.vue'
 
+import { usePlatformStore } from '../stores/platform'
+
 const props = defineProps<{
   progress: IndexProgress | null
   modelProgress: ModelDownloadProgress | null
@@ -15,6 +17,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ pause: []; resume: [] }>()
+const platform = usePlatformStore()
 const liveStats = ref<RuntimeStats | null>(props.runtimeStats)
 const popoverOpen = ref(false)
 const copied = ref(false)
@@ -91,16 +94,20 @@ function formatMilliseconds(value: number) {
 }
 
 function copyAiDetails() {
-  const infoText = `Imagyx Local AI Debug Info:
-- Model: ${liveStats.value?.modelName ?? 'MobileCLIP-S0'}
-- Phase: ${phaseLabel.value}
-- Backend: ${liveStats.value?.backendEffective ?? 'Automatic'} (Requested: ${liveStats.value?.backendRequested ?? 'WebGPU'})
-- Batch: ${liveStats.value?.batchCurrent ?? 0} / ${liveStats.value?.batchTotal ?? 0} (${liveStats.value?.batchSize ?? 0} img)
-- Progress: ${current.value} / ${total.value}
-- Speed: ${liveStats.value?.imagesPerSecond?.toFixed(1) ?? '0.0'} img/s (${liveStats.value?.averageMsPerImage ? `${Math.round(liveStats.value.averageMsPerImage)} ms/img` : '—'})
-- Timings: Decode: ${formatMilliseconds(liveStats.value?.decodeMs ?? 0)} | Inference: ${formatMilliseconds(liveStats.value?.inferenceMs ?? 0)} | SQLite: ${formatMilliseconds(liveStats.value?.saveMs ?? 0)}
-- CPU: App ${liveStats.value?.processCpuPercent?.toFixed(0) ?? 0}% | System ${liveStats.value?.systemCpuPercent?.toFixed(0) ?? 0}%
-- RAM: ${formatBytes(liveStats.value?.processMemoryBytes ?? 0)}`
+  const infoText = `=== System Information ===
+App Version: v${platform.appVersion}
+OS Platform: ${platform.platform}
+
+=== Indexing Information ===
+AI Model: ${liveStats.value?.modelName ?? 'MobileCLIP-S0'}
+Phase: ${phaseLabel.value}
+Hardware Accelerated: ${liveStats.value?.accelerationActive ? 'OK' : 'KO'}
+Backend: ${liveStats.value?.backendEffective ?? 'Automatic'} (Requested: ${liveStats.value?.backendRequested ?? 'WebGPU'})
+Batch: ${liveStats.value?.batchCurrent ?? 0} / ${liveStats.value?.batchTotal ?? 0} (${liveStats.value?.batchSize ?? 0} img)
+Progress: ${current.value} / ${total.value}
+Throughput: ${liveStats.value?.imagesPerSecond?.toFixed(1) ?? '0.0'} img/s (${liveStats.value?.averageMsPerImage ? `${Math.round(liveStats.value.averageMsPerImage)} ms/img` : '—'})
+Timings: Decode: ${formatMilliseconds(liveStats.value?.decodeMs ?? 0)} | Inference: ${formatMilliseconds(liveStats.value?.inferenceMs ?? 0)} | SQLite: ${formatMilliseconds(liveStats.value?.saveMs ?? 0)}
+Resources: App CPU: ${liveStats.value?.processCpuPercent?.toFixed(0) ?? 0}% | System CPU: ${liveStats.value?.systemCpuPercent?.toFixed(0) ?? 0}% | RAM: ${formatBytes(liveStats.value?.processMemoryBytes ?? 0)}`
 
   void navigator.clipboard.writeText(infoText)
   copied.value = true
@@ -112,7 +119,7 @@ function copyAiDetails() {
 
 <template>
   <Transition name="fade">
-    <div v-if="active || paused" class="sidebar-status-container">
+    <div v-if="active || paused || platform.isDev" class="sidebar-status-container">
       <Popover side="top" align="start" width="280px">
         <template #trigger="{ open }">
           <article
@@ -166,15 +173,13 @@ function copyAiDetails() {
                 <strong>{{ liveStats?.modelName ?? 'MobileCLIP-S0' }}</strong>
                 <span>{{ phaseLabel }}</span>
               </div>
-              <Badge :variant="liveStats?.accelerationActive ? 'success' : 'neutral'">
-                {{ liveStats?.accelerationLabel ?? 'WebGPU' }}
-              </Badge>
             </div>
 
             <dl class="ai-simple-dl">
               <div><dt>Progress</dt><dd>{{ current }} / {{ total }}</dd></div>
               <div v-if="liveStats?.imagesPerSecond"><dt>Speed</dt><dd>{{ liveStats.imagesPerSecond.toFixed(1) }} img/s</dd></div>
               <div><dt>Resources</dt><dd>CPU {{ liveStats?.processCpuPercent?.toFixed(0) ?? 0 }}% · RAM {{ formatBytes(liveStats?.processMemoryBytes ?? 0) }}</dd></div>
+              <div><dt>Hardware Accelerated</dt><dd>{{ liveStats?.accelerationActive ? 'OK' : 'KO' }}</dd></div>
             </dl>
 
             <Button variant="secondary" size="sm" block class="ai-copy-btn" @click="copyAiDetails">
@@ -182,7 +187,7 @@ function copyAiDetails() {
                 <Check v-if="copied" :size="14" />
                 <Copy v-else :size="14" />
               </template>
-              {{ copied ? 'Copied!' : 'Copy AI Debug Info' }}
+              {{ copied ? 'Copied!' : 'Copy additional information' }}
             </Button>
 
             <p v-if="liveStats?.fallbackReason" class="ai-stats__warning">{{ liveStats.fallbackReason }}</p>

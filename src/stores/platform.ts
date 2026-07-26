@@ -14,10 +14,12 @@ export const usePlatformStore = defineStore('platform', {
   state: () => ({
     platform: 'unknown' as DesktopPlatform,
     version: '0.1.0',
+    isDevMode: Boolean(import.meta.env.DEV),
     initialized: false,
   }),
   getters: {
     appVersion: (state) => state.version,
+    isDev: (state) => state.isDevMode,
     isWindows: (state) => state.platform === 'windows',
     isMac: (state) => state.platform === 'macos',
     isLinux: (state) => state.platform === 'linux',

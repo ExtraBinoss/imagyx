@@ -15,10 +15,11 @@ withDefaults(
 
 <style scoped>
 .ui-badge {
-  display: inline-flex;
-  align-items: center;
+  display: inline-grid;
+  place-items: center;
+  grid-auto-flow: column;
   gap: var(--space-1);
-  min-height: 24px;
+  height: 22px;
   padding: 0 var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
@@ -26,6 +27,8 @@ withDefaults(
   color: var(--text-secondary);
   font-size: var(--text-xs);
   font-weight: 600;
+  line-height: 1;
+  text-align: center;
   white-space: nowrap;
 }
 
