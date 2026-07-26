@@ -76,6 +76,10 @@ class SemanticRuntime {
     try { await this.loading } finally { this.loading = null }
   }
 
+  async prewarmText() {
+    await this.ensureTextReady()
+  }
+
   async indexPending(folderId?: string) {
     if (this.paused) {
       this.patchStats({ stage: 'paused', imagesPerSecond: 0 })
