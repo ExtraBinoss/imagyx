@@ -18,6 +18,9 @@ export const imagyxApi = {
   updateRuntimeStats: (stats: RuntimeStats) => invoke<void>('update_runtime_stats', { stats }),
   updateModelProgress: (progress: ModelDownloadProgress) =>
     invoke<void>('update_model_progress', { progress }),
+  spotlightShortcut: () => invoke<string>('get_spotlight_shortcut'),
+  setSpotlightShortcut: (shortcut: string) =>
+    invoke<string>('set_spotlight_shortcut', { shortcut }),
   prepareLocalModel: (modelKey: string) => invoke<string>('prepare_local_model', { modelKey }),
   resetEmbeddings: () => invoke<void>('reset_embeddings'),
   folders: () => invoke<FollowedFolder[]>('list_folders'),
