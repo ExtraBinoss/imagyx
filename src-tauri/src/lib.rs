@@ -36,6 +36,12 @@ pub fn run() {
         .setup(|app| {
             let paths = AppPaths::discover()?;
             let state = Arc::new(AppState::new(paths)?);
+
+            for folder in state.database.folders()? {
+                app.asset_protocol_scope()
+                    .allow_directory(&folder.path, true)?;
+            }
+
             app.manage(Arc::clone(&state));
             start_model_preparation(app.handle().clone(), Arc::clone(&state));
             start_background_refresh(app.handle().clone(), state);
