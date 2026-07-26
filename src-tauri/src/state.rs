@@ -1,5 +1,4 @@
 use parking_lot::{Mutex, MutexGuard, RwLock};
-use rusqlite::Connection;
 
 use crate::{
     AppError,
@@ -7,6 +6,7 @@ use crate::{
     ml::MlRuntime,
     models::{ModelDownloadProgress, RuntimeStats, VectorEntry},
     paths::AppPaths,
+    system_stats::SystemMonitor,
     thumbnails::ThumbnailCache,
 };
 
@@ -19,13 +19,13 @@ pub struct AppState {
     pub vectors: RwLock<Vec<VectorEntry>>,
     pub model_progress: RwLock<ModelDownloadProgress>,
     pub runtime_stats: RwLock<RuntimeStats>,
+    pub system_monitor: SystemMonitor,
     index_lock: Mutex<()>,
 }
 
 impl AppState {
     pub fn new(paths: AppPaths) -> Result<Self, AppError> {
         let database = Database::new(paths.database.clone())?;
-        migrate_embedding_model(&paths)?;
         let vectors = database.vectors()?;
         Ok(Self {
             ml: Mutex::new(MlRuntime::new(paths.models.clone())),
@@ -34,13 +34,8 @@ impl AppState {
             database,
             vectors: RwLock::new(vectors),
             model_progress: RwLock::new(ModelDownloadProgress::default()),
-            runtime_stats: RwLock::new(RuntimeStats {
-                model_name: "MobileCLIP2-S0".to_owned(),
-                backend: "En préparation".to_owned(),
-                acceleration: "Non confirmée".to_owned(),
-                stage: "idle".to_owned(),
-                ..RuntimeStats::default()
-            }),
+            runtime_stats: RwLock::new(RuntimeStats::default()),
+            system_monitor: SystemMonitor::new(),
             index_lock: Mutex::new(()),
         })
     }
@@ -53,23 +48,4 @@ impl AppState {
         *self.vectors.write() = self.database.vectors()?;
         Ok(())
     }
-}
-
-fn migrate_embedding_model(paths: &AppPaths) -> Result<(), AppError> {
-    let connection = Connection::open(&paths.database)?;
-    connection.execute(
-        "DELETE FROM embeddings WHERE model != 'mobileclip2-s0'",
-        [],
-    )?;
-    connection.execute_batch(
-        "DROP TRIGGER IF EXISTS normalize_embedding_model;
-         CREATE TRIGGER normalize_embedding_model
-         AFTER INSERT ON embeddings
-         BEGIN
-           UPDATE embeddings
-           SET model = 'mobileclip2-s0'
-           WHERE image_id = NEW.image_id;
-         END;",
-    )?;
-    Ok(())
 }
