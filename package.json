@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
-    "typecheck": "vue-tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "tauri": "tauri"
   },
@@ -23,8 +23,7 @@
     "@vitejs/plugin-vue": "6.0.8",
     "typescript": "7.0.2",
     "vite": "8.1.5",
-    "vitest": "4.1.10",
-    "vue-tsc": "3.3.8"
+    "vitest": "4.1.10"
   },
   "engines": {
     "node": ">=22.12.0"
