@@ -4,7 +4,9 @@ import type {
   FollowedFolder,
   ImageAsset,
   ImageEmbedding,
+  ImageExplanation,
   ModelDownloadProgress,
+  QueryConcept,
   RuntimeStats,
   SearchRequest,
 } from '../types'
@@ -25,6 +27,8 @@ export const imagyxApi = {
   prepareAiImages: (imageIds: string[]) => invoke<string[]>('prepare_ai_images', { imageIds }),
   saveEmbeddings: (embeddings: ImageEmbedding[]) =>
     invoke<void>('save_embeddings', { embeddings }),
+  explainResults: (imageIds: string[], concepts: QueryConcept[]) =>
+    invoke<ImageExplanation[]>('explain_results', { imageIds, concepts }),
   thumbnail: (image: Pick<ImageAsset, 'id' | 'path' | 'modifiedAt'>) =>
     invoke<string>('get_thumbnail', {
       imageId: image.id,
@@ -38,7 +42,6 @@ export const imagyxApi = {
         folderId: request.folderId ?? null,
         limit: request.limit ?? 2_000,
         queryVector: request.queryVector ?? null,
-        concepts: request.concepts ?? [],
       },
     }),
   fileUrl: (path: string) => convertFileSrc(path),
