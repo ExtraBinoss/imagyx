@@ -19,6 +19,7 @@ pub struct AppState {
     pub runtime_stats: RwLock<RuntimeStats>,
     pub system_monitor: SystemMonitor,
     index_lock: Mutex<()>,
+    model_lock: Mutex<()>,
 }
 
 impl AppState {
@@ -34,11 +35,16 @@ impl AppState {
             runtime_stats: RwLock::new(RuntimeStats::default()),
             system_monitor: SystemMonitor::new(),
             index_lock: Mutex::new(()),
+            model_lock: Mutex::new(()),
         })
     }
 
     pub fn lock_indexer(&self) -> MutexGuard<'_, ()> {
         self.index_lock.lock()
+    }
+
+    pub fn lock_model(&self) -> MutexGuard<'_, ()> {
+        self.model_lock.lock()
     }
 
     pub fn refresh_vectors(&self) -> Result<(), AppError> {
