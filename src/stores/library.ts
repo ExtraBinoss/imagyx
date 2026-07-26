@@ -18,6 +18,7 @@ interface LibraryState {
   query: string
   loading: boolean
   initialized: boolean
+  refreshScheduled: boolean
   appInfo: AppInfo | null
   progress: IndexProgress | null
   modelProgress: ModelDownloadProgress | null
@@ -33,6 +34,7 @@ export const useLibraryStore = defineStore('library', {
     query: '',
     loading: false,
     initialized: false,
+    refreshScheduled: false,
     appInfo: null,
     progress: null,
     modelProgress: null,
@@ -72,15 +74,9 @@ export const useLibraryStore = defineStore('library', {
       if (this.listeners.length > 0) return
       const progressUnlisten = await listen<IndexProgress>('index-progress', (event) => {
         this.progress = event.payload
-        if (event.payload.stage === 'complete') {
-          void this.refreshFolders()
-          void this.refreshImages()
-        }
+        if (event.payload.stage === 'complete') this.scheduleRefresh()
       })
-      const updatedUnlisten = await listen('library-updated', () => {
-        void this.refreshFolders()
-        void this.refreshImages()
-      })
+      const updatedUnlisten = await listen('library-updated', () => this.scheduleRefresh())
       const modelUnlisten = await listen<{ ready: boolean; backend: string }>('model-status', (event) => {
         if (this.appInfo) {
           this.appInfo.aiReady = event.payload.ready
@@ -97,6 +93,15 @@ export const useLibraryStore = defineStore('library', {
         modelUnlisten,
         modelProgressUnlisten,
       )
+    },
+
+    scheduleRefresh() {
+      if (this.refreshScheduled) return
+      this.refreshScheduled = true
+      window.setTimeout(() => {
+        this.refreshScheduled = false
+        void Promise.all([this.refreshFolders(), this.refreshImages()])
+      }, 120)
     },
 
     handleModelProgress(progress: ModelDownloadProgress) {
@@ -178,7 +183,7 @@ export const useLibraryStore = defineStore('library', {
         this.images = await imagyxApi.search({
           query: this.query,
           folderId: this.selectedFolderId ?? undefined,
-          limit: 300,
+          limit: 20_000,
         })
       } catch (error) {
         this.reportError(error)
@@ -192,7 +197,7 @@ export const useLibraryStore = defineStore('library', {
         const folder = await imagyxApi.addFolder(path)
         await this.refreshFolders()
         this.selectedFolderId = folder.id
-        await imagyxApi.indexFolder(folder.id)
+        void imagyxApi.indexFolder(folder.id).catch((error) => this.reportError(error))
       } catch (error) {
         this.reportError(error)
       }
@@ -208,12 +213,8 @@ export const useLibraryStore = defineStore('library', {
       }
     },
 
-    async reindexFolder(folderId: string) {
-      try {
-        await imagyxApi.indexFolder(folderId)
-      } catch (error) {
-        this.reportError(error)
-      }
+    reindexFolder(folderId: string) {
+      void imagyxApi.indexFolder(folderId).catch((error) => this.reportError(error))
     },
 
     selectFolder(folderId: string | null) {
