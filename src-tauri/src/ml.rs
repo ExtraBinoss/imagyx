@@ -1,5 +1,5 @@
 use std::{
-    path::{Path, PathBuf},
+    path::PathBuf,
     time::{Duration, Instant},
 };
 
@@ -304,7 +304,7 @@ impl MlRuntime {
                 Ok((spec, size))
             })
             .collect::<Result<_, AppError>>()?;
-        let total_bytes = files_with_sizes.iter().map(|(_, size)| size).sum();
+        let total_bytes: u64 = files_with_sizes.iter().map(|(_, size)| size).sum();
         let total_files = files_with_sizes.len();
         let mut completed_bytes = 0_u64;
 
@@ -373,8 +373,7 @@ impl UiDownloadProgress<'_> {
 }
 
 impl Progress for UiDownloadProgress<'_> {
-    fn init(&mut self, size: usize, filename: &str) {
-        self.file_name = Box::leak(filename.to_owned().into_boxed_str());
+    fn init(&mut self, size: usize, _filename: &str) {
         self.current_file_total = size as u64;
         self.current_file_bytes = 0;
         self.emit(true);
@@ -484,17 +483,4 @@ fn optimal_batch_size() -> usize {
     } else {
         12
     }
-}
-
-#[allow(dead_code)]
-fn directory_contains_onnx(path: &Path) -> bool {
-    let Ok(entries) = std::fs::read_dir(path) else {
-        return false;
-    };
-    entries.flatten().any(|entry| {
-        let path = entry.path();
-        path.extension()
-            .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("onnx"))
-            || (path.is_dir() && directory_contains_onnx(&path))
-    })
 }
