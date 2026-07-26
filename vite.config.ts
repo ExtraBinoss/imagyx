@@ -23,7 +23,7 @@ export default defineConfig({
   },
   build: {
     target: ['es2023', 'chrome120', 'safari17'],
-    minify: 'esbuild',
+    minify: 'oxc',
     sourcemap: true,
   },
 })
