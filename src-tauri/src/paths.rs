@@ -68,10 +68,12 @@ mod tests {
         let paths = AppPaths::from_root(root).expect("paths");
         assert!(paths.models.is_dir());
         assert!(paths.thumbnails.is_dir());
-        assert!(fs::read_dir(&paths.thumbnails)
-            .expect("thumbnail directory")
-            .next()
-            .is_none());
+        assert!(
+            fs::read_dir(&paths.thumbnails)
+                .expect("thumbnail directory")
+                .next()
+                .is_none()
+        );
         assert_eq!(
             paths.database.file_name().and_then(|name| name.to_str()),
             Some("imagyx.sqlite3")
