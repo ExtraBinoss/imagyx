@@ -159,6 +159,12 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .sidebar { overflow-x: hidden; }
+.brand-mark-img {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+}
 .folder-nav { overflow-x: hidden; scrollbar-gutter: stable; }
 .folder-entry,
 .folder-row { min-width: 0; max-width: 100%; }
