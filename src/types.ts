@@ -32,6 +32,26 @@ export interface ModelDownloadProgress {
   message: string
 }
 
+export interface RuntimeStats {
+  modelName: string
+  backend: string
+  acceleration: string
+  gpuActive: boolean
+  stage: string
+  current: number
+  total: number
+  batchSize: number
+  elapsedMs: number
+  imagesPerSecond?: number
+  averageMsPerImage?: number
+  processCpuPercent: number
+  processMemoryBytes: number
+  systemCpuPercent: number
+  systemMemoryUsedBytes: number
+  systemMemoryTotalBytes: number
+  lastError?: string
+}
+
 export interface AppInfo {
   rootDir: string
   modelsDir: string
