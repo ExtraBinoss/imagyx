@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{fs, path::Path, path::PathBuf, sync::Arc};
 
 use chrono::Utc;
 use tauri::{AppHandle, Manager, State};
@@ -14,7 +14,7 @@ use crate::{
 #[tauri::command]
 pub fn get_app_info(state: State<'_, Arc<AppState>>) -> AppInfo {
     let model_progress = state.model_progress.read().clone();
-    let runtime_stats = state.runtime_stats.read().clone();
+    let runtime_stats = collect_runtime_stats(&state);
     AppInfo {
         root_dir: state.paths.root.to_string_lossy().into_owned(),
         models_dir: state.paths.models.to_string_lossy().into_owned(),
@@ -28,22 +28,8 @@ pub fn get_app_info(state: State<'_, Arc<AppState>>) -> AppInfo {
 }
 
 #[tauri::command]
-pub async fn get_runtime_stats(
-    state: State<'_, Arc<AppState>>,
-) -> Result<RuntimeStats, String> {
-    let state = Arc::clone(state.inner());
-    tauri::async_runtime::spawn_blocking(move || {
-        let snapshot = state.system_monitor.snapshot();
-        let mut stats = state.runtime_stats.read().clone();
-        stats.system_cpu_percent = snapshot.system_cpu_percent;
-        stats.process_cpu_percent = snapshot.process_cpu_percent;
-        stats.memory_used_bytes = snapshot.memory_used_bytes;
-        stats.memory_total_bytes = snapshot.memory_total_bytes;
-        stats.process_memory_bytes = snapshot.process_memory_bytes;
-        stats
-    })
-    .await
-    .map_err(|error| error.to_string())
+pub fn get_runtime_stats(state: State<'_, Arc<AppState>>) -> RuntimeStats {
+    collect_runtime_stats(&state)
 }
 
 #[tauri::command]
@@ -184,4 +170,35 @@ pub async fn search_images(
     .await
     .map_err(|error| error.to_string())?
     .map_err(|error| error.to_string())
+}
+
+fn collect_runtime_stats(state: &AppState) -> RuntimeStats {
+    let resources = state.system_monitor.snapshot();
+    let mut stats = state.runtime_stats.read().clone();
+    stats.system_cpu_percent = resources.system_cpu_percent;
+    stats.process_cpu_percent = resources.process_cpu_percent;
+    stats.memory_used_bytes = resources.memory_used_bytes;
+    stats.memory_total_bytes = resources.memory_total_bytes;
+    stats.process_memory_bytes = resources.process_memory_bytes;
+    stats.model_cache_bytes = directory_size(&state.paths.models);
+    stats.thumbnail_cache_items = state.thumbnails.cached_items();
+    stats.updated_at = Utc::now().timestamp_millis();
+    stats
+}
+
+fn directory_size(root: &Path) -> u64 {
+    let Ok(entries) = fs::read_dir(root) else {
+        return 0;
+    };
+    entries
+        .filter_map(Result::ok)
+        .map(|entry| {
+            let path = entry.path();
+            match entry.metadata() {
+                Ok(metadata) if metadata.is_file() => metadata.len(),
+                Ok(metadata) if metadata.is_dir() => directory_size(&path),
+                _ => 0,
+            }
+        })
+        .sum()
 }
