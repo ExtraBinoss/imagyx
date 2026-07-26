@@ -66,6 +66,8 @@ onBeforeUnmount(() => {
       @add="addFolder"
       @remove="removeFolder"
       @reindex="store.reindexFolder"
+      @pause-indexing="store.pauseIndexing"
+      @resume-indexing="store.resumeIndexing"
     />
 
     <section class="workspace">
