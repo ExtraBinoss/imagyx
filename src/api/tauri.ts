@@ -31,6 +31,8 @@ export const imagyxApi = {
     invoke<void>('save_embeddings', { embeddings }),
   explainResults: (imageIds: string[], concepts: QueryConcept[]) =>
     invoke<ImageExplanation[]>('explain_results', { imageIds, concepts }),
+  topImageTags: (concepts: QueryConcept[], limit = 10) =>
+    invoke<string[]>('top_image_tags', { concepts, limit }),
   thumbnail: (image: Pick<ImageAsset, 'id' | 'path' | 'modifiedAt'>) =>
     invoke<string>('get_thumbnail', {
       imageId: image.id,
