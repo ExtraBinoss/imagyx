@@ -47,8 +47,7 @@
         "transparent": true,
         "alwaysOnTop": true,
         "skipTaskbar": true,
-        "shadow": false,
-        "noRedirectionBitmap": true
+        "shadow": false
       }
     ]
   },
