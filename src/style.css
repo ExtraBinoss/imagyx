@@ -1,7 +1,16 @@
+@font-face {
+  font-family: 'Stack Sans Text';
+  src: url('./assets/fonts/StackSansText-VariableFont_wght.ttf') format('truetype-variations'),
+       url('./assets/fonts/StackSansText-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
   font-family:
-    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    "Stack Sans Text", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 
