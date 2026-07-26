@@ -11,6 +11,7 @@ import type { ModelDownloadProgress, QueryConcept, RuntimeStats } from '../types
 
 const MODEL_ID = 'Xenova/mobileclip_s0'
 const MODEL_NAME = 'MobileCLIP-S0'
+const INDEX_PAUSED_KEY = 'imagyx.index-paused'
 const INITIAL_BATCH_SIZE = 4
 const MAX_BATCH_SIZE = 16
 const DEFAULT_IMAGE_LABELS = [
@@ -41,13 +42,29 @@ class SemanticRuntime {
   private device: Device = 'webgpu'
   private loading: Promise<void> | null = null
   private textLoading: Promise<void> | null = null
+  private indexing: Promise<void> | null = null
   private genericConcepts: QueryConcept[] | null = null
   private callbacks: RuntimeCallbacks | null = null
-  private stats: RuntimeStats = defaultStats()
+  private paused = localStorage.getItem(INDEX_PAUSED_KEY) === 'true'
+  private stats: RuntimeStats = { ...defaultStats(), stage: this.paused ? 'paused' : 'idle' }
+
+  get isPaused() { return this.paused }
 
   setCallbacks(callbacks: RuntimeCallbacks) {
     this.callbacks = callbacks
     callbacks.stats(this.stats)
+  }
+
+  pauseIndexing() {
+    this.paused = true
+    localStorage.setItem(INDEX_PAUSED_KEY, 'true')
+    this.patchStats({ stage: 'paused', imagesPerSecond: 0 })
+  }
+
+  async resumeIndexing(folderId?: string) {
+    this.paused = false
+    localStorage.removeItem(INDEX_PAUSED_KEY)
+    await this.indexPending(folderId)
   }
 
   async prepare() {
@@ -58,9 +75,22 @@ class SemanticRuntime {
   }
 
   async indexPending(folderId?: string) {
+    if (this.paused) {
+      this.patchStats({ stage: 'paused', imagesPerSecond: 0 })
+      return
+    }
+    if (this.indexing) return this.indexing
+    this.indexing = this.runPendingIndex(folderId)
+    try { await this.indexing } finally { this.indexing = null }
+  }
+
+  private async runPendingIndex(folderId?: string) {
     await this.prepare()
     const pending = await imagyxApi.pendingImages(folderId)
-    if (pending.length === 0) return
+    if (pending.length === 0) {
+      this.patchStats({ stage: 'ready', current: 0, total: 0 })
+      return
+    }
     const started = performance.now()
     let processed = 0
     let batchSize = INITIAL_BATCH_SIZE
@@ -73,6 +103,10 @@ class SemanticRuntime {
       saveMs: 0, elapsedMs: 0, imagesPerSecond: 0, averageMsPerImage: 0 })
 
     while (processed < pending.length) {
+      if (this.paused) {
+        this.patchStats({ stage: 'paused', current: processed, total: pending.length, imagesPerSecond: 0 })
+        return
+      }
       const batch = pending.slice(processed, processed + batchSize)
       batchCurrent += 1
       this.patchStats({ stage: 'decoding', batchCurrent, batchSize: batch.length })
@@ -143,7 +177,7 @@ class SemanticRuntime {
         AutoTokenizer.from_pretrained(MODEL_ID, options),
         CLIPTextModelWithProjection.from_pretrained(MODEL_ID, options),
       ])
-      this.patchStats({ stage: 'ready' })
+      this.patchStats({ stage: this.paused ? 'paused' : 'ready' })
     })()
     try { await this.textLoading } finally { this.textLoading = null }
   }
@@ -160,11 +194,11 @@ class SemanticRuntime {
     try {
       this.device = 'webgpu'
       await this.loadVisionForDevice('webgpu')
-      this.patchStats({ stage: 'ready', backendEffective: 'Transformers.js · WebGPU', accelerationActive: true, accelerationLabel: 'GPU WebGPU actif', fallbackReason: undefined })
+      this.patchStats({ stage: this.paused ? 'paused' : 'ready', backendEffective: 'Transformers.js · WebGPU', accelerationActive: true, accelerationLabel: 'GPU WebGPU actif', fallbackReason: undefined })
     } catch (error) {
       this.device = 'wasm'; this.visionModel = null; this.processor = null
       await this.loadVisionForDevice('wasm')
-      this.patchStats({ stage: 'ready', backendEffective: 'Transformers.js · WASM', accelerationActive: false, accelerationLabel: 'CPU WASM', fallbackReason: `WebGPU indisponible: ${String(error)}` })
+      this.patchStats({ stage: this.paused ? 'paused' : 'ready', backendEffective: 'Transformers.js · WASM', accelerationActive: false, accelerationLabel: 'CPU WASM', fallbackReason: `WebGPU indisponible: ${String(error)}` })
     }
     this.publishProgress({ stage: 'ready', message: `${MODEL_NAME} prêt hors connexion.`, currentBytes: 0, totalBytes: 0, currentFile: 6, totalFiles: 6 })
   }
