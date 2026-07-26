@@ -239,6 +239,7 @@ watch(() => props.images.length, () => {
 .semantic-marquee {
   width: 100%;
   overflow: hidden;
+  pointer-events: auto;
 }
 .semantic-marquee--animated {
   mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
@@ -252,6 +253,9 @@ watch(() => props.images.length, () => {
 }
 .semantic-marquee--animated .semantic-marquee__track {
   animation: semantic-marquee 10s linear infinite;
+}
+.semantic-marquee:hover .semantic-marquee__track {
+  animation-play-state: paused;
 }
 .semantic-chip {
   display: inline-flex;

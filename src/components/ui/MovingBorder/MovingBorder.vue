@@ -81,9 +81,9 @@ const styleVariables = computed(() => ({
 }
 
 .moving-border__track {
-  stroke: color-mix(in srgb, var(--primary) 20%, var(--border));
-  stroke-width: 1.15;
-  opacity: 0.75;
+  stroke: color-mix(in srgb, var(--primary) 25%, var(--border));
+  stroke-width: 1.5;
+  opacity: 0.8;
 }
 
 .moving-border__aura,
@@ -97,25 +97,25 @@ const styleVariables = computed(() => ({
 
 .moving-border__aura {
   stroke: var(--primary);
-  stroke-width: 6;
+  stroke-width: 8;
   stroke-dasharray: 20 80;
-  filter: blur(4px);
-  opacity: 0.25;
+  filter: blur(5px);
+  opacity: 0.35;
 }
 
 .moving-border__beam {
   stroke: var(--primary);
-  stroke-width: 2.2;
+  stroke-width: 3.5;
   stroke-dasharray: 20 80;
   opacity: 0.95;
 }
 
 .moving-border__spark {
   stroke: var(--primary-text);
-  stroke-width: 1.8;
+  stroke-width: 2.8;
   stroke-dasharray: 10 90;
   animation-delay: calc(var(--moving-border-duration) * -0.02);
-  opacity: 0.9;
+  opacity: 0.95;
 }
 
 .moving-border:not(.moving-border--active) .moving-border__aura,
