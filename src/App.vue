@@ -18,10 +18,11 @@ const localQuery = ref('')
 
 const selectedTitle = computed(() => store.selectedFolder?.name ?? 'Toutes les images')
 const subtitle = computed(() => {
+  if (store.semanticSearching) return 'Recherche IA en cours…'
   if (store.query) return `${store.images.length} résultat${store.images.length > 1 ? 's' : ''}`
   return `${store.images.length} image${store.images.length > 1 ? 's' : ''}`
 })
-const viewKey = computed(() => `${store.selectedFolderId ?? 'all'}:${store.query}`)
+const viewKey = computed(() => `${store.selectedFolderId ?? 'all'}:${store.query}:${store.selectedModel}`)
 
 const searchLater = debounce(() => {
   store.setQuery(localQuery.value.trim())
@@ -54,11 +55,13 @@ onBeforeUnmount(() => {
     <AppSidebar
       :folders="store.folders"
       :selected-folder-id="store.selectedFolderId"
+      :selected-model="store.selectedModel"
       :total-images="store.totalImages"
       :progress="store.progress"
       :model-progress="store.modelProgress"
       :runtime-stats="store.runtimeStats"
       @select="store.selectFolder"
+      @model="store.selectModel"
       @add="addFolder"
       @remove="removeFolder"
       @reindex="store.reindexFolder"
@@ -72,29 +75,17 @@ onBeforeUnmount(() => {
       />
 
       <div class="content-heading">
-        <div>
-          <h1>{{ selectedTitle }}</h1>
-          <p>{{ subtitle }}</p>
-        </div>
+        <div><h1>{{ selectedTitle }}</h1><p>{{ subtitle }}</p></div>
       </div>
 
       <div v-if="store.error" class="error-banner" role="alert">
         <span>{{ store.error }}</span>
-        <Button variant="ghost" size="icon" aria-label="Masquer l’erreur" @click="store.error = null">
-          <X :size="15" />
-        </Button>
+        <Button variant="ghost" size="icon" aria-label="Masquer l’erreur" @click="store.error = null"><X :size="15" /></Button>
       </div>
 
-      <ImageGrid
-        :images="store.images"
-        :loading="store.loading"
-        :has-folders="store.folders.length > 0"
-        :view-key="viewKey"
-      />
-
+      <ImageGrid :images="store.images" :loading="store.loading" :has-folders="store.folders.length > 0" :view-key="viewKey" />
       <StatusBar :progress="null" :database-path="store.appInfo?.databasePath ?? ''" />
     </section>
   </main>
-
   <ToastViewport />
 </template>
