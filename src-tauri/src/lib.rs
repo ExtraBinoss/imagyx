@@ -64,6 +64,7 @@ pub fn run() {
             commands::remove_folder,
             commands::index_folder,
             commands::pending_images,
+            commands::prepare_ai_images,
             commands::save_embeddings,
             commands::get_thumbnail,
             commands::search_images,
