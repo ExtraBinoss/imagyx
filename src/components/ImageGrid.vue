@@ -1,19 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { FileImage, Info, SearchX } from '@lucide/vue'
+import { FileImage, SearchX } from '@lucide/vue'
 import type { ImageAsset } from '../types'
 import { formatBytes } from '../utils'
 import Badge from './ui/Badge/Badge.vue'
-import Button from './ui/Button/Button.vue'
 import Skeleton from './ui/Skeleton/Skeleton.vue'
-import Tooltip from './ui/Tooltip/Tooltip.vue'
 import ThumbnailImage from './ThumbnailImage.vue'
 
 const props = defineProps<{ images: ImageAsset[]; loading: boolean; hasFolders: boolean; viewKey: string }>()
 const emit = defineEmits<{ explain: [imageId: string] }>()
 const GAP = 16
 const MIN_CARD_WIDTH = 180
-const META_HEIGHT = 82
+const META_HEIGHT = 56
 const OVERSCAN_ROWS = 3
 const viewport = ref<HTMLElement | null>(null)
 const viewportWidth = ref(0)
@@ -34,34 +32,44 @@ const visibleEntries = computed(() => props.images.slice(startIndex.value, endIn
 const spacerHeight = computed(() => Math.max(0, totalRows.value * rowStride.value - GAP))
 const windowOffset = computed(() => startRow.value * rowStride.value)
 
-function explanation(image: ImageAsset): string {
-  const matches = image.semanticMatches ?? []
-  if (!matches.length) return 'Survole cette icône pour analyser cette image. Le résultat sera conservé en mémoire.'
-  const concepts = matches
-    .map((match) => `${match.label} (${Math.round(match.score * 100)} %)`)
-    .join(', ')
-  const prefix = image.semanticScore != null
-    ? `Cette image correspond à la recherche à ${Math.round(image.semanticScore * 100)} %. `
-    : ''
-  return `${prefix}Elle semble surtout répondre à des recherches comme : ${concepts}.`
-}
-
 function measure() {
   if (!viewport.value) return
   viewportWidth.value = viewport.value.clientWidth
   viewportHeight.value = viewport.value.clientHeight
   scrollTop.value = viewport.value.scrollTop
 }
+
 function handleScroll() {
   if (scrollFrame) return
-  scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; if (viewport.value) scrollTop.value = viewport.value.scrollTop })
+  scrollFrame = requestAnimationFrame(() => {
+    scrollFrame = 0
+    if (viewport.value) scrollTop.value = viewport.value.scrollTop
+  })
 }
-onMounted(() => { measure(); resizeObserver = new ResizeObserver(measure); if (viewport.value) resizeObserver.observe(viewport.value) })
-onBeforeUnmount(() => { resizeObserver?.disconnect(); if (scrollFrame) cancelAnimationFrame(scrollFrame) })
-watch(() => props.viewKey, async () => { await nextTick(); if (viewport.value) viewport.value.scrollTop = 0; scrollTop.value = 0 })
+
+onMounted(() => {
+  measure()
+  resizeObserver = new ResizeObserver(measure)
+  if (viewport.value) resizeObserver.observe(viewport.value)
+})
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  if (scrollFrame) cancelAnimationFrame(scrollFrame)
+})
+
+watch(() => props.viewKey, async () => {
+  await nextTick()
+  if (viewport.value) viewport.value.scrollTop = 0
+  scrollTop.value = 0
+})
+
 watch(() => props.images.length, () => {
   const maximum = Math.max(0, spacerHeight.value - viewportHeight.value)
-  if (scrollTop.value > maximum && viewport.value) { viewport.value.scrollTop = maximum; scrollTop.value = maximum }
+  if (scrollTop.value > maximum && viewport.value) {
+    viewport.value.scrollTop = maximum
+    scrollTop.value = maximum
+  }
 })
 </script>
 
@@ -70,39 +78,50 @@ watch(() => props.images.length, () => {
     <div v-if="loading && images.length === 0" class="loading-grid" aria-label="Chargement">
       <Skeleton v-for="item in 18" :key="item" class="skeleton-card" radius="lg" />
     </div>
+
     <div v-else-if="images.length > 0" class="virtual-grid-spacer" :style="{ height: `${spacerHeight}px` }" role="list" :aria-label="`${images.length} images`">
       <div class="virtual-grid-window" :style="{ transform: `translateY(${windowOffset}px)`, gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }">
-        <article v-for="entry in visibleEntries" :key="entry.image.id" class="image-card" :title="entry.image.path" role="listitem" :aria-posinset="entry.index + 1" :aria-setsize="images.length">
+        <article
+          v-for="entry in visibleEntries"
+          :key="entry.image.id"
+          class="image-card"
+          :title="entry.image.path"
+          role="listitem"
+          :aria-posinset="entry.index + 1"
+          :aria-setsize="images.length"
+          @mouseenter="emit('explain', entry.image.id)"
+          @focusin="emit('explain', entry.image.id)"
+        >
           <div class="image-frame">
             <ThumbnailImage :image="entry.image" />
-            <Badge v-if="entry.image.semanticScore" class="score-badge" variant="primary">{{ Math.round(entry.image.semanticScore * 100) }}%</Badge>
-            <div class="explanation-action">
-              <Tooltip :text="explanation(entry.image)" side="left">
-                <Button
-                  class="explanation-button"
-                  variant="secondary"
-                  size="icon"
-                  aria-label="Analyser le contenu de cette image"
-                  @mouseenter="emit('explain', entry.image.id)"
-                  @focus="emit('explain', entry.image.id)"
-                >
-                  <Info :size="16" :stroke-width="2" />
-                </Button>
-              </Tooltip>
+            <Badge v-if="entry.image.semanticScore" class="score-badge" variant="primary">
+              {{ Math.round(entry.image.semanticScore * 100) }}%
+            </Badge>
+
+            <div class="semantic-overlay" :class="{ 'semantic-overlay--ready': entry.image.semanticMatches?.length }">
+              <div v-if="entry.image.semanticMatches?.length" class="semantic-marquee">
+                <div class="semantic-marquee__track">
+                  <span
+                    v-for="match in [...entry.image.semanticMatches, ...entry.image.semanticMatches]"
+                    :key="`${entry.image.id}:${match.source}:${match.label}:${Math.random()}`"
+                    class="semantic-chip"
+                  >
+                    {{ match.label }} · {{ Math.round(match.score * 100) }}%
+                  </span>
+                </div>
+              </div>
+              <span v-else class="semantic-overlay__loading">Analyse des tags…</span>
             </div>
           </div>
+
           <div class="image-meta">
             <strong>{{ entry.image.name }}</strong>
             <span>{{ entry.image.width }} × {{ entry.image.height }} · {{ formatBytes(entry.image.sizeBytes) }}</span>
-            <div v-if="entry.image.semanticMatches?.length" class="semantic-match-list">
-              <Badge v-for="match in entry.image.semanticMatches" :key="`${match.source}:${match.label}`" :variant="match.source === 'filename' ? 'neutral' : 'primary'">
-                {{ match.label }} · {{ Math.round(match.score * 100) }}%
-              </Badge>
-            </div>
           </div>
         </article>
       </div>
     </div>
+
     <div v-else class="empty-state">
       <component :is="hasFolders ? SearchX : FileImage" :size="34" :stroke-width="1.5" />
       <strong>{{ hasFolders ? 'Aucune image trouvée' : 'Ajoute ton premier dossier' }}</strong>
@@ -112,46 +131,74 @@ watch(() => props.images.length, () => {
 </template>
 
 <style scoped>
-.explanation-action {
+.semantic-overlay {
   position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 3;
+  min-height: 38px;
   display: flex;
+  align-items: center;
+  overflow: hidden;
+  padding: 7px 0;
+  background: linear-gradient(180deg, transparent, rgb(8 10 14 / 0.88));
   opacity: 0;
-  visibility: hidden;
-  transform: translateY(-2px);
+  transform: translateY(8px);
   pointer-events: none;
-  transition:
-    opacity var(--transition-fast),
-    transform var(--transition-fast),
-    visibility var(--transition-fast);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
 
-.image-card:hover .explanation-action,
-.image-card:focus-within .explanation-action {
+.image-card:hover .semantic-overlay,
+.image-card:focus-within .semantic-overlay {
   opacity: 1;
-  visibility: visible;
   transform: translateY(0);
-  pointer-events: auto;
 }
 
-.explanation-button {
-  width: 30px !important;
-  height: 30px !important;
-  border: 1px solid rgb(255 255 255 / 0.45) !important;
-  background: rgb(20 20 24 / 0.78) !important;
-  color: #fff !important;
-  box-shadow: 0 4px 14px rgb(0 0 0 / 0.22);
+.semantic-overlay__loading {
+  padding: 0 var(--space-3);
+  color: rgb(255 255 255 / 0.75);
+  font-size: 10px;
+}
+
+.semantic-marquee {
+  width: 100%;
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.semantic-marquee__track {
+  display: flex;
+  width: max-content;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  animation: semantic-marquee 14s linear infinite;
+}
+
+.semantic-chip {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  border-radius: var(--radius-full);
+  background: rgb(18 20 26 / 0.72);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
   backdrop-filter: blur(8px);
 }
 
-@media (hover: none) {
-  .explanation-action {
-    opacity: 1;
-    visibility: visible;
-    transform: none;
-    pointer-events: auto;
+.image-card:hover .semantic-marquee__track {
+  animation-play-state: running;
+}
+
+@keyframes semantic-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .semantic-marquee__track {
+    animation: none;
   }
 }
 </style>
