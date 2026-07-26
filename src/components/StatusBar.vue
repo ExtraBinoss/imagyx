@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Clock3, Database, LoaderCircle } from '@lucide/vue'
+import { Clock3, LoaderCircle } from '@lucide/vue'
 import type { IndexProgress } from '../types'
 import ProgressBar from './ui/ProgressBar/ProgressBar.vue'
-import Tooltip from './ui/Tooltip/Tooltip.vue'
 
 const props = defineProps<{
   progress: IndexProgress | null
-  databasePath: string
+  databasePath?: string
 }>()
 
 const active = computed(() => Boolean(props.progress && props.progress.stage !== 'complete'))
@@ -35,34 +34,21 @@ const countLabel = computed(() => {
 </script>
 
 <template>
-  <footer class="status-bar">
+  <footer v-if="active && progress" class="status-bar">
     <div class="status-copy">
-      <template v-if="active && progress">
-        <Clock3 v-if="queued" :size="14" />
-        <LoaderCircle v-else class="spin" :size="14" />
-        <span>{{ progress.message }}</span>
-        <template v-if="!queued">
-          <ProgressBar
-            class="status-progress"
-            :value="percentage"
-            :indeterminate="indeterminate"
-            size="sm"
-            label="Progression de l’indexation"
-          />
-          <span v-if="countLabel" class="status-count">{{ countLabel }}</span>
-        </template>
-      </template>
-      <template v-else>
-        <span class="status-dot" />
-        <span>Bibliothèque locale prête</span>
+      <Clock3 v-if="queued" :size="14" />
+      <LoaderCircle v-else class="spin" :size="14" />
+      <span>{{ progress.message }}</span>
+      <template v-if="!queued">
+        <ProgressBar
+          class="status-progress"
+          :value="percentage"
+          :indeterminate="indeterminate"
+          size="sm"
+          label="Progression de l’indexation"
+        />
+        <span v-if="countLabel" class="status-count">{{ countLabel }}</span>
       </template>
     </div>
-
-    <Tooltip v-if="databasePath" :text="databasePath" side="top">
-      <div class="database-location">
-        <Database :size="14" />
-        <span>{{ databasePath }}</span>
-      </div>
-    </Tooltip>
   </footer>
 </template>
