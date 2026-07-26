@@ -9,7 +9,7 @@ const props = withDefaults(
   }>(),
   {
     borderRadius: '20px',
-    duration: 3200,
+    duration: 4200,
     active: true,
   },
 )
@@ -26,10 +26,18 @@ const styleVariables = computed(() => ({
     :class="{ 'moving-border--active': active }"
     :style="styleVariables"
   >
-    <div class="moving-border__aura" aria-hidden="true" />
-    <div class="moving-border__clip" aria-hidden="true">
-      <div class="moving-border__beam" />
-    </div>
+    <svg
+      class="moving-border__outline"
+      width="100%"
+      height="100%"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <rect class="moving-border__rect moving-border__track" pathLength="100" />
+      <rect class="moving-border__rect moving-border__aura" pathLength="100" />
+      <rect class="moving-border__rect moving-border__beam" pathLength="100" />
+      <rect class="moving-border__rect moving-border__spark" pathLength="100" />
+    </svg>
     <div class="moving-border__surface">
       <slot />
     </div>
@@ -45,15 +53,6 @@ const styleVariables = computed(() => ({
   border-radius: var(--moving-border-radius);
 }
 
-.moving-border__clip {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  overflow: hidden;
-  border-radius: var(--moving-border-radius);
-  pointer-events: none;
-}
-
 .moving-border__surface {
   position: relative;
   z-index: 2;
@@ -61,59 +60,83 @@ const styleVariables = computed(() => ({
   border-radius: calc(var(--moving-border-radius) - 1px);
 }
 
-.moving-border__beam {
+.moving-border__outline {
   position: absolute;
-  inset: -155%;
-  border-radius: 50%;
-  background:
-    conic-gradient(
-      from 0deg,
-      transparent 0deg 242deg,
-      color-mix(in srgb, var(--primary) 10%, transparent) 264deg,
-      color-mix(in srgb, var(--primary) 72%, #93c5fd) 292deg,
-      #dbeafe 312deg,
-      color-mix(in srgb, var(--primary) 90%, #60a5fa) 331deg,
-      transparent 356deg 360deg
-    );
-  opacity: 0.82;
-  animation: moving-border-spin var(--moving-border-duration) linear infinite;
-  transform-origin: center;
-  will-change: transform;
+  z-index: 1;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.moving-border__rect {
+  x: 1px;
+  y: 1px;
+  width: calc(100% - 2px);
+  height: calc(100% - 2px);
+  rx: calc(var(--moving-border-radius) - 1px);
+  ry: calc(var(--moving-border-radius) - 1px);
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+}
+
+.moving-border__track {
+  stroke: color-mix(in srgb, var(--primary) 24%, var(--border));
+  stroke-width: 1.15;
+  opacity: 0.78;
+}
+
+.moving-border__aura,
+.moving-border__beam,
+.moving-border__spark {
+  stroke-dashoffset: 0;
+  animation: moving-border-travel var(--moving-border-duration) linear infinite;
+  will-change: stroke-dashoffset;
 }
 
 .moving-border__aura {
-  position: absolute;
-  z-index: -1;
-  inset: -13px;
-  border-radius: calc(var(--moving-border-radius) + 13px);
-  background:
-    radial-gradient(circle at 24% 52%, color-mix(in srgb, var(--primary) 22%, transparent), transparent 47%),
-    radial-gradient(circle at 78% 46%, rgb(147 197 253 / 0.2), transparent 49%);
-  filter: blur(14px);
-  opacity: 0.42;
-  transform: scale(0.985);
-  transition:
-    opacity 180ms ease,
-    transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
-  pointer-events: none;
+  stroke: color-mix(in srgb, #60a5fa 76%, var(--primary));
+  stroke-width: 7;
+  stroke-dasharray: 17 83;
+  filter: blur(5px);
+  opacity: 0.16;
+}
+
+.moving-border__beam {
+  stroke: color-mix(in srgb, var(--primary) 68%, #60a5fa);
+  stroke-width: 2;
+  stroke-dasharray: 17 83;
+  opacity: 0.9;
+}
+
+.moving-border__spark {
+  stroke: #bfdbfe;
+  stroke-width: 2.4;
+  stroke-dasharray: 3.5 96.5;
+  animation-delay: calc(var(--moving-border-duration) * -0.035);
+  opacity: 0.96;
 }
 
 .moving-border--active .moving-border__aura,
 .moving-border:focus-within .moving-border__aura {
-  opacity: 0.82;
-  transform: scale(1.01);
+  opacity: 0.25;
 }
 
-.moving-border:not(.moving-border--active) .moving-border__beam {
+.moving-border:not(.moving-border--active) .moving-border__aura,
+.moving-border:not(.moving-border--active) .moving-border__beam,
+.moving-border:not(.moving-border--active) .moving-border__spark {
   animation-play-state: paused;
-  opacity: 0.3;
 }
 
-@keyframes moving-border-spin {
-  to { transform: rotate(1turn); }
+@keyframes moving-border-travel {
+  to { stroke-dashoffset: -100; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .moving-border__beam { animation: none; }
+  .moving-border__aura,
+  .moving-border__beam,
+  .moving-border__spark {
+    animation: none;
+  }
 }
 </style>
