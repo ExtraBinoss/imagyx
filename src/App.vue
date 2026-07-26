@@ -83,7 +83,13 @@ onBeforeUnmount(() => {
         <Button variant="ghost" size="icon" aria-label="Masquer l’erreur" @click="store.error = null"><X :size="15" /></Button>
       </div>
 
-      <ImageGrid :images="store.images" :loading="store.loading" :has-folders="store.folders.length > 0" :view-key="viewKey" />
+      <ImageGrid
+        :images="store.images"
+        :loading="store.loading"
+        :has-folders="store.folders.length > 0"
+        :view-key="viewKey"
+        @explain="store.explainImage"
+      />
       <StatusBar :progress="null" :database-path="store.appInfo?.databasePath ?? ''" />
     </section>
   </main>
