@@ -45,9 +45,7 @@ pub fn run() {
             let folders = state.database.folders()?;
             app.asset_protocol_scope().allow_directory(&state.paths.thumbnails, true)?;
             app.asset_protocol_scope().allow_directory(&state.paths.models, true)?;
-            for folder in &folders {
-                app.asset_protocol_scope().allow_directory(&folder.path, true)?;
-            }
+            for folder in &folders { app.asset_protocol_scope().allow_directory(&folder.path, true)?; }
             let folder_watcher = FolderWatcher::start(app.handle().clone(), Arc::clone(&state), folders)?;
             app.manage(folder_watcher);
             app.manage(state);
@@ -59,6 +57,7 @@ pub fn run() {
             commands::update_runtime_stats,
             commands::update_model_progress,
             commands::prepare_local_model,
+            commands::reset_embeddings,
             commands::list_folders,
             commands::add_folder,
             commands::remove_folder,
