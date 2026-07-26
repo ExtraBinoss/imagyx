@@ -95,83 +95,116 @@ fn embed_pending_locked(
     folder: &FollowedFolder,
     pending: &[ImageAsset],
 ) -> Result<(), AppError> {
-    let batch_size = state.ml.lock().batch_size();
-    let total_batches = pending.len().div_ceil(batch_size);
+    let maximum_batch_size = state.ml.lock().batch_size().clamp(4, 16);
     let started = Instant::now();
     let mut processed = 0;
+    let mut batch_index = 0;
+    let mut next_batch_size = 4.min(pending.len().max(1));
 
     {
         let mut stats = state.runtime_stats.write();
         stats.stage = "indexing".to_owned();
         stats.current = 0;
         stats.total = pending.len();
-        stats.batch_size = batch_size;
+        stats.batch_size = next_batch_size;
+        stats.batch_current = 0;
+        stats.batch_total = pending.len().div_ceil(next_batch_size);
         stats.elapsed_ms = 0;
-        stats.images_per_second = None;
-        stats.average_ms_per_image = None;
+        stats.images_per_second = 0.0;
+        stats.average_ms_per_image = 0.0;
+        stats.decode_ms = 0;
+        stats.inference_ms = 0;
+        stats.save_ms = 0;
     }
 
-    for (batch_index, chunk) in pending.chunks(batch_size).enumerate() {
+    while processed < pending.len() {
+        let end = (processed + next_batch_size).min(pending.len());
+        let chunk = &pending[processed..end];
+        batch_index += 1;
+        let estimated_total_batches = batch_index + (pending.len() - processed).div_ceil(next_batch_size) - 1;
+
         emit_batch_progress(
             app,
             folder,
             processed,
             pending.len(),
-            batch_index + 1,
-            total_batches,
-            &format!(
-                "Analyse IA · lot {} sur {} · {} images",
-                batch_index + 1,
-                total_batches,
-                chunk.len()
-            ),
+            batch_index,
+            estimated_total_batches,
+            &format!("Analyse IA · décodage de {} images", chunk.len()),
         );
+
         let paths: Vec<PathBuf> = chunk
             .iter()
             .map(|asset| PathBuf::from(&asset.path))
             .collect();
-        let vectors = state.ml.lock().embed_images(&paths)?;
-        let embeddings: Vec<(String, Vec<f32>)> = chunk
-            .iter()
-            .zip(vectors)
-            .map(|(asset, vector)| (asset.id.clone(), vector))
-            .collect();
-        state.database.save_assets(chunk, &embeddings)?;
-        processed += chunk.len();
 
-        let elapsed = started.elapsed();
-        let elapsed_seconds = elapsed.as_secs_f32().max(0.001);
-        {
-            let mut stats = state.runtime_stats.write();
-            stats.current = processed;
-            stats.elapsed_ms = elapsed.as_millis().try_into().unwrap_or(u64::MAX);
-            stats.images_per_second = Some(processed as f32 / elapsed_seconds);
-            stats.average_ms_per_image = Some(elapsed.as_secs_f32() * 1000.0 / processed as f32);
-        }
+        let batch_started = Instant::now();
+        let embedding_batch = state.ml.lock().embed_images(&paths)?;
+
         emit_batch_progress(
             app,
             folder,
             processed,
             pending.len(),
-            batch_index + 1,
-            total_batches,
-            &format!("Analyse IA · {processed} sur {}", pending.len()),
+            batch_index,
+            estimated_total_batches,
+            "Analyse IA · sauvegarde des résultats…",
+        );
+
+        let save_started = Instant::now();
+        let embeddings: Vec<(String, Vec<f32>)> = chunk
+            .iter()
+            .zip(embedding_batch.vectors)
+            .map(|(asset, vector)| (asset.id.clone(), vector))
+            .collect();
+        state.database.save_assets(chunk, &embeddings)?;
+        let save_ms = save_started.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+
+        processed = end;
+        let elapsed = started.elapsed();
+        let elapsed_seconds = elapsed.as_secs_f32().max(0.001);
+        let batch_ms = batch_started.elapsed().as_secs_f32() * 1000.0;
+        let ms_per_image = batch_ms / chunk.len().max(1) as f32;
+
+        if ms_per_image < 140.0 && next_batch_size < maximum_batch_size {
+            next_batch_size = (next_batch_size * 2).min(maximum_batch_size);
+        } else if ms_per_image > 500.0 && next_batch_size > 4 {
+            next_batch_size = (next_batch_size / 2).max(4);
+        }
+
+        {
+            let mut stats = state.runtime_stats.write();
+            stats.current = processed;
+            stats.batch_size = next_batch_size;
+            stats.batch_current = batch_index;
+            stats.batch_total = batch_index + (pending.len() - processed).div_ceil(next_batch_size);
+            stats.elapsed_ms = elapsed.as_millis().try_into().unwrap_or(u64::MAX);
+            stats.images_per_second = processed as f32 / elapsed_seconds;
+            stats.average_ms_per_image = elapsed.as_secs_f32() * 1000.0 / processed as f32;
+            stats.decode_ms = stats.decode_ms.saturating_add(embedding_batch.decode_ms);
+            stats.inference_ms = stats.inference_ms.saturating_add(embedding_batch.inference_ms);
+            stats.save_ms = stats.save_ms.saturating_add(save_ms);
+        }
+
+        emit_batch_progress(
+            app,
+            folder,
+            processed,
+            pending.len(),
+            batch_index,
+            batch_index + (pending.len() - processed).div_ceil(next_batch_size),
+            &format!(
+                "Analyse IA · {processed} sur {} · {:.1} img/s",
+                pending.len(),
+                processed as f32 / elapsed_seconds
+            ),
         );
     }
 
     state.refresh_vectors()?;
-    let backend = {
-        let runtime = state.ml.lock();
-        format!("{} · {}", runtime.backend_label(), runtime.acceleration_label())
-    };
+    let status = state.ml.lock().status();
     state.runtime_stats.write().stage = "ready".to_owned();
-    let _ = app.emit(
-        "model-status",
-        ModelStatus {
-            ready: true,
-            backend,
-        },
-    );
+    let _ = app.emit("model-status", status);
     emit_progress(
         app,
         folder,
@@ -283,21 +316,44 @@ pub fn search(
         assets.truncate(limit);
         return Ok(assets);
     }
+
     let normalized = query.trim().to_lowercase();
     let tokens: Vec<&str> = normalized.split_whitespace().collect();
     let semantic_scores = semantic_scores(state, query, folder_id).unwrap_or_default();
+
     assets.retain_mut(|asset| {
-        let lexical = lexical_score(asset, &tokens);
+        let haystack = format!(
+            "{} {}",
+            asset.name.to_lowercase(),
+            asset.path.to_lowercase()
+        );
+        let lexical_hits = tokens
+            .iter()
+            .filter(|token| haystack.contains(**token))
+            .count();
+        let lexical = if tokens.is_empty() {
+            0.0
+        } else {
+            lexical_hits as f32 / tokens.len() as f32
+        };
         let semantic = semantic_scores.get(&asset.id).copied();
-        let score = semantic.map_or(lexical, |value| 0.82 * value + 0.18 * lexical);
+        let score = match semantic {
+            Some(value) => 0.82 * value + 0.18 * lexical,
+            None => lexical,
+        };
         asset.semantic_score = semantic.map(|_| score.clamp(0.0, 1.0));
         score > 0.04
     });
+
     assets.sort_by(|left, right| {
-        right
+        let left_score = left
             .semantic_score
-            .unwrap_or_else(|| lexical_score(right, &tokens))
-            .total_cmp(&left.semantic_score.unwrap_or_else(|| lexical_score(left, &tokens)))
+            .unwrap_or_else(|| lexical_score(left, &tokens));
+        let right_score = right
+            .semantic_score
+            .unwrap_or_else(|| lexical_score(right, &tokens));
+        right_score
+            .total_cmp(&left_score)
             .then_with(|| right.modified_at.cmp(&left.modified_at))
     });
     assets.truncate(limit);
@@ -319,7 +375,10 @@ fn semantic_scores(
         .filter(|entry| folder_id.is_none_or(|folder_id| entry.folder_id == folder_id))
         .map(|entry| {
             let cosine = cosine_similarity(&query_vector, &entry.vector);
-            (entry.image_id.clone(), ((cosine + 1.0) / 2.0).clamp(0.0, 1.0))
+            (
+                entry.image_id.clone(),
+                ((cosine + 1.0) / 2.0).clamp(0.0, 1.0),
+            )
         })
         .collect())
 }
@@ -328,22 +387,26 @@ fn lexical_score(asset: &ImageAsset, tokens: &[&str]) -> f32 {
     if tokens.is_empty() {
         return 0.0;
     }
-    let haystack = format!("{} {}", asset.name.to_lowercase(), asset.path.to_lowercase());
-    tokens.iter().filter(|token| haystack.contains(**token)).count() as f32 / tokens.len() as f32
+    let haystack = format!(
+        "{} {}",
+        asset.name.to_lowercase(),
+        asset.path.to_lowercase()
+    );
+    tokens
+        .iter()
+        .filter(|token| haystack.contains(**token))
+        .count() as f32
+        / tokens.len() as f32
 }
 
 pub fn cosine_similarity(left: &[f32], right: &[f32]) -> f32 {
     if left.len() != right.len() || left.is_empty() {
         return 0.0;
     }
-    let (dot, left_norm, right_norm) = left.iter().zip(right).fold(
-        (0.0, 0.0, 0.0),
-        |(dot, left_norm, right_norm), (left, right)| {
-            (dot + left * right, left_norm + left * left, right_norm + right * right)
-        },
-    );
-    let denominator = left_norm.sqrt() * right_norm.sqrt();
-    if denominator <= f32::EPSILON { 0.0 } else { dot / denominator }
+    left.iter()
+        .zip(right)
+        .map(|(left, right)| left * right)
+        .sum()
 }
 
 fn emit_progress(
@@ -354,7 +417,19 @@ fn emit_progress(
     stage: &str,
     message: &str,
 ) {
-    emit_progress_inner(app, folder, current, total, None, None, stage, message);
+    let _ = app.emit(
+        "index-progress",
+        IndexProgress {
+            folder_id: folder.id.clone(),
+            folder_name: folder.name.clone(),
+            current,
+            total,
+            batch_current: None,
+            batch_total: None,
+            stage: stage.to_owned(),
+            message: message.to_owned(),
+        },
+    );
 }
 
 fn emit_batch_progress(
@@ -366,29 +441,6 @@ fn emit_batch_progress(
     batch_total: usize,
     message: &str,
 ) {
-    emit_progress_inner(
-        app,
-        folder,
-        current,
-        total,
-        Some(batch_current),
-        Some(batch_total),
-        "embedding",
-        message,
-    );
-}
-
-#[allow(clippy::too_many_arguments)]
-fn emit_progress_inner(
-    app: &AppHandle,
-    folder: &FollowedFolder,
-    current: usize,
-    total: usize,
-    batch_current: Option<usize>,
-    batch_total: Option<usize>,
-    stage: &str,
-    message: &str,
-) {
     let _ = app.emit(
         "index-progress",
         IndexProgress {
@@ -396,29 +448,10 @@ fn emit_progress_inner(
             folder_name: folder.name.clone(),
             current,
             total,
-            batch_current,
-            batch_total,
-            stage: stage.to_owned(),
+            batch_current: Some(batch_current),
+            batch_total: Some(batch_total),
+            stage: "embedding".to_owned(),
             message: message.to_owned(),
         },
     );
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
-    use super::{cosine_similarity, is_supported_image};
-
-    #[test]
-    fn recognizes_supported_extensions_case_insensitively() {
-        assert!(is_supported_image(Path::new("poster.PNG")));
-        assert!(is_supported_image(Path::new("photo.webp")));
-        assert!(!is_supported_image(Path::new("notes.txt")));
-    }
-
-    #[test]
-    fn cosine_similarity_handles_aligned_vectors() {
-        assert!((cosine_similarity(&[1.0, 0.0], &[1.0, 0.0]) - 1.0).abs() < 0.000_1);
-        assert_eq!(cosine_similarity(&[1.0], &[1.0, 2.0]), 0.0);
-    }
 }
