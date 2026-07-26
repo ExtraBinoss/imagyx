@@ -138,11 +138,11 @@ defineExpose({ scrollToIndex })
   scrollbar-color: color-mix(in srgb, var(--border-strong) 78%, transparent) transparent;
 }
 .spotlight-add-folder { justify-content: flex-start; margin: 4px 4px 8px; min-height: 64px; text-align: left; }
-.spotlight-add-folder__copy { display: block; min-width: 0; }
+.spotlight-add-folder__copy { display: block; min-width: 0; text-align: left; }
 .spotlight-add-folder__copy strong,
 .spotlight-add-folder__copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.spotlight-add-folder__copy strong { font-size: 11px; }
-.spotlight-add-folder__copy small { margin-top: 5px; color: var(--text-muted); font-size: 9px; font-weight: 500; }
+.spotlight-add-folder__copy strong { font-size: 11px; color: var(--text); }
+.spotlight-add-folder__copy small { margin-top: 3px; color: var(--text-secondary); font-size: 10px; font-weight: 500; }
 .spotlight-result {
   position: relative;
   display: grid;

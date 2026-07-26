@@ -71,15 +71,14 @@ withDefaults(
     opacity var(--transition-fast);
 }
 
-/* Depth mode enabled via CSS variables defined in style.css */
-.ui-button:not(.ui-button--flat) {
+.ui-button:not(.ui-button--flat):not(.ui-button--ghost) {
   box-shadow: var(--btn-depth-shadow);
 }
-.ui-button:not(.ui-button--flat):hover:not(:disabled) {
+.ui-button:not(.ui-button--flat):not(.ui-button--ghost):hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: var(--btn-depth-hover);
 }
-.ui-button:not(.ui-button--flat):active:not(:disabled),
+.ui-button:not(.ui-button--flat):not(.ui-button--ghost):active:not(:disabled),
 .ui-button--pressed:not(.ui-button--flat):not(:disabled) {
   transform: translateY(1px);
   box-shadow: var(--btn-depth-active);
@@ -145,18 +144,14 @@ withDefaults(
   background: var(--surface-hover);
 }
 
-.ui-button--ghost,
-.ui-button--ghost:not(.ui-button--flat) {
+.ui-button--ghost {
   border-color: transparent;
   background: transparent;
   color: var(--text-secondary);
-  box-shadow: none;
 }
-.ui-button--ghost:hover:not(:disabled),
-.ui-button--ghost:not(.ui-button--flat):hover:not(:disabled) {
+.ui-button--ghost:hover:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text);
-  box-shadow: none;
 }
 
 .ui-button--danger {

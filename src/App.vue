@@ -26,7 +26,7 @@ const previewImage = ref<ImageAsset | null>(null)
 const searchHeader = ref<{ focusSearch: () => void; selectSearch: () => void } | null>(null)
 let unlistenOpenImage: UnlistenFn | null = null
 
-const folderPrefix = computed(() => store.selectedFolder ? `${store.selectedFolder.name}: ` : 'Toutes les images: ')
+const folderPrefix = computed(() => store.selectedFolder ? `${store.selectedFolder.name}: ` : 'All images: ')
 const searchPlaceholder = computed(() => `${folderPrefix.value}${capitalize(typedTag.value)}…`)
 const viewKey = computed(() => `${store.selectedFolderId ?? 'all'}:${store.query}`)
 

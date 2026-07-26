@@ -4,16 +4,16 @@ import { semanticRuntime } from "./services/semantic";
 
 const TAG_CACHE_KEY = "imagyx.spotlight-top-tags.v1";
 const FALLBACK_TAGS = [
-  "femme",
+  "woman",
   "portrait",
-  "paysage",
-  "chien",
-  "chat",
-  "voiture",
-  "plage",
-  "ville",
-  "nuit",
-  "coucher de soleil",
+  "landscape",
+  "dog",
+  "cat",
+  "car",
+  "beach",
+  "city",
+  "night",
+  "sunset",
 ];
 
 function readCachedTags(): string[] {
