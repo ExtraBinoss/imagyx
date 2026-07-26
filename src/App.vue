@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
+import { X } from '@lucide/vue'
 import AppSidebar from './components/AppSidebar.vue'
 import ImageGrid from './components/ImageGrid.vue'
 import SearchHeader from './components/SearchHeader.vue'
 import StatusBar from './components/StatusBar.vue'
+import Button from './components/ui/Button/Button.vue'
+import ToastViewport from './components/ui/Toast/ToastViewport.vue'
 import { useLibraryStore } from './stores/library'
+import { useThemeStore } from './stores/theme'
 import { debounce } from './utils'
 
 const store = useLibraryStore()
+const theme = useThemeStore()
 const localQuery = ref('')
 
 const selectedTitle = computed(() => store.selectedFolder?.name ?? 'Toutes les images')
@@ -34,6 +39,7 @@ async function removeFolder(folderId: string) {
 }
 
 onMounted(() => {
+  theme.initialize()
   void store.initialize()
 })
 
@@ -68,11 +74,18 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="store.error" class="error-banner">{{ store.error }}</div>
+      <div v-if="store.error" class="error-banner" role="alert">
+        <span>{{ store.error }}</span>
+        <Button variant="ghost" size="icon" aria-label="Masquer l’erreur" @click="store.error = null">
+          <X :size="15" />
+        </Button>
+      </div>
 
       <ImageGrid :images="store.images" :loading="store.loading" :has-folders="store.folders.length > 0" />
 
       <StatusBar :progress="store.progress" :database-path="store.appInfo?.databasePath ?? ''" />
     </section>
   </main>
+
+  <ToastViewport />
 </template>
