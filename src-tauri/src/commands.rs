@@ -1,13 +1,13 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc, thread, time::Duration};
 
 use chrono::Utc;
+use sysinfo::{ProcessesToUpdate, System, get_current_pid};
 use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
 
 use crate::{
     indexer,
-    ml::MlRuntime,
-    models::{AppInfo, FollowedFolder, ImageAsset, SearchRequest},
+    models::{AppInfo, FollowedFolder, ImageAsset, RuntimeStats, SearchRequest},
     state::AppState,
     watcher::FolderWatcher,
 };
@@ -15,15 +15,45 @@ use crate::{
 #[tauri::command]
 pub fn get_app_info(state: State<'_, Arc<AppState>>) -> AppInfo {
     let model_progress = state.model_progress.read().clone();
+    let backend = state.runtime_stats.read().backend.clone();
     AppInfo {
         root_dir: state.paths.root.to_string_lossy().into_owned(),
         models_dir: state.paths.models.to_string_lossy().into_owned(),
         database_path: state.database.path().to_string_lossy().into_owned(),
         thumbnails_dir: state.paths.thumbnails.to_string_lossy().into_owned(),
-        ai_backend: MlRuntime::backend_label().to_owned(),
+        ai_backend: backend,
         ai_ready: model_progress.stage == "ready",
         model_progress,
     }
+}
+
+#[tauri::command]
+pub async fn get_runtime_stats(
+    state: State<'_, Arc<AppState>>,
+) -> Result<RuntimeStats, String> {
+    let state = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut system = System::new_all();
+        thread::sleep(Duration::from_millis(180));
+        system.refresh_cpu_usage();
+        system.refresh_memory();
+
+        let mut stats = state.runtime_stats.read().clone();
+        stats.system_cpu_percent = system.global_cpu_usage();
+        stats.system_memory_used_bytes = system.used_memory();
+        stats.system_memory_total_bytes = system.total_memory();
+
+        if let Ok(pid) = get_current_pid() {
+            system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+            if let Some(process) = system.process(pid) {
+                stats.process_cpu_percent = process.cpu_usage();
+                stats.process_memory_bytes = process.memory();
+            }
+        }
+        stats
+    })
+    .await
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
