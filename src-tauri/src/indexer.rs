@@ -4,13 +4,14 @@ use std::{
     time::{Instant, UNIX_EPOCH},
 };
 
+use chrono::Utc;
 use rayon::prelude::*;
 use tauri::{AppHandle, Emitter};
 use walkdir::WalkDir;
 
 use crate::{
     AppError,
-    models::{FollowedFolder, ImageAsset, IndexProgress, ModelStatus},
+    models::{FollowedFolder, ImageAsset, IndexProgress},
     state::AppState,
 };
 
@@ -95,11 +96,12 @@ fn embed_pending_locked(
     folder: &FollowedFolder,
     pending: &[ImageAsset],
 ) -> Result<(), AppError> {
-    let maximum_batch_size = state.ml.lock().batch_size().clamp(4, 16);
+    let maximum_batch_size = state.ml.lock().batch_size().clamp(4, 64);
     let started = Instant::now();
     let mut processed = 0;
     let mut batch_index = 0;
-    let mut next_batch_size = 4.min(pending.len().max(1));
+    let mut next_batch_size = 2.min(pending.len().max(1));
+    let mut all_embeddings = Vec::with_capacity(pending.len());
 
     {
         let mut stats = state.runtime_stats.write();
@@ -115,14 +117,25 @@ fn embed_pending_locked(
         stats.decode_ms = 0;
         stats.inference_ms = 0;
         stats.save_ms = 0;
+        stats.updated_at = Utc::now().timestamp_millis();
     }
+    emit_runtime_stats(app, state);
 
     while processed < pending.len() {
         let end = (processed + next_batch_size).min(pending.len());
         let chunk = &pending[processed..end];
         batch_index += 1;
-        let estimated_total_batches = batch_index + (pending.len() - processed).div_ceil(next_batch_size) - 1;
+        let estimated_total_batches =
+            batch_index + (pending.len() - processed).div_ceil(next_batch_size) - 1;
 
+        {
+            let mut stats = state.runtime_stats.write();
+            stats.stage = "decoding".to_owned();
+            stats.batch_current = batch_index;
+            stats.batch_total = estimated_total_batches;
+            stats.batch_size = chunk.len();
+            stats.updated_at = Utc::now().timestamp_millis();
+        }
         emit_batch_progress(
             app,
             folder,
@@ -130,62 +143,71 @@ fn embed_pending_locked(
             pending.len(),
             batch_index,
             estimated_total_batches,
-            &format!("Analyse IA · décodage de {} images", chunk.len()),
+            &format!(
+                "Analyse IA · préparation du lot {batch_index} · {} images",
+                chunk.len()
+            ),
         );
+        emit_runtime_stats(app, state);
 
         let paths: Vec<PathBuf> = chunk
             .iter()
             .map(|asset| PathBuf::from(&asset.path))
             .collect();
-
         let batch_started = Instant::now();
-        let embedding_batch = state.ml.lock().embed_images(&paths)?;
+        let embedding_batch = match state.ml.lock().embed_images(&paths) {
+            Ok(batch) => batch,
+            Err(error) => {
+                state.runtime_stats.write().stage = "error".to_owned();
+                emit_progress(
+                    app,
+                    folder,
+                    processed,
+                    pending.len(),
+                    "error",
+                    &format!("Analyse IA interrompue: {error}"),
+                );
+                emit_runtime_stats(app, state);
+                return Err(error);
+            }
+        };
 
-        emit_batch_progress(
-            app,
-            folder,
-            processed,
-            pending.len(),
-            batch_index,
-            estimated_total_batches,
-            "Analyse IA · sauvegarde des résultats…",
+        all_embeddings.extend(
+            chunk
+                .iter()
+                .zip(embedding_batch.vectors)
+                .map(|(asset, vector)| (asset.id.clone(), vector)),
         );
-
-        let save_started = Instant::now();
-        let embeddings: Vec<(String, Vec<f32>)> = chunk
-            .iter()
-            .zip(embedding_batch.vectors)
-            .map(|(asset, vector)| (asset.id.clone(), vector))
-            .collect();
-        state.database.save_assets(chunk, &embeddings)?;
-        let save_ms = save_started.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
-
         processed = end;
+
         let elapsed = started.elapsed();
         let elapsed_seconds = elapsed.as_secs_f32().max(0.001);
         let batch_ms = batch_started.elapsed().as_secs_f32() * 1000.0;
-        let ms_per_image = batch_ms / chunk.len().max(1) as f32;
+        let milliseconds_per_image = batch_ms / chunk.len().max(1) as f32;
 
-        if ms_per_image < 140.0 && next_batch_size < maximum_batch_size {
+        if batch_ms < 2_500.0 && next_batch_size < maximum_batch_size {
             next_batch_size = (next_batch_size * 2).min(maximum_batch_size);
-        } else if ms_per_image > 500.0 && next_batch_size > 4 {
+        } else if milliseconds_per_image > 800.0 && next_batch_size > 4 {
             next_batch_size = (next_batch_size / 2).max(4);
         }
 
         {
             let mut stats = state.runtime_stats.write();
+            stats.stage = "indexing".to_owned();
             stats.current = processed;
-            stats.batch_size = next_batch_size;
+            stats.batch_size = next_batch_size.min(pending.len().saturating_sub(processed).max(1));
             stats.batch_current = batch_index;
-            stats.batch_total = batch_index + (pending.len() - processed).div_ceil(next_batch_size);
+            stats.batch_total =
+                batch_index + (pending.len() - processed).div_ceil(next_batch_size);
             stats.elapsed_ms = elapsed.as_millis().try_into().unwrap_or(u64::MAX);
             stats.images_per_second = processed as f32 / elapsed_seconds;
             stats.average_ms_per_image = elapsed.as_secs_f32() * 1000.0 / processed as f32;
             stats.decode_ms = stats.decode_ms.saturating_add(embedding_batch.decode_ms);
-            stats.inference_ms = stats.inference_ms.saturating_add(embedding_batch.inference_ms);
-            stats.save_ms = stats.save_ms.saturating_add(save_ms);
+            stats.inference_ms = stats
+                .inference_ms
+                .saturating_add(embedding_batch.inference_ms);
+            stats.updated_at = Utc::now().timestamp_millis();
         }
-
         emit_batch_progress(
             app,
             folder,
@@ -199,11 +221,37 @@ fn embed_pending_locked(
                 processed as f32 / elapsed_seconds
             ),
         );
+        emit_runtime_stats(app, state);
     }
 
+    {
+        let mut stats = state.runtime_stats.write();
+        stats.stage = "saving".to_owned();
+        stats.updated_at = Utc::now().timestamp_millis();
+    }
+    emit_progress(
+        app,
+        folder,
+        processed,
+        pending.len(),
+        "saving",
+        "Enregistrement des résultats IA…",
+    );
+    emit_runtime_stats(app, state);
+
+    let save_started = Instant::now();
+    state.database.save_embeddings(&all_embeddings)?;
+    let save_ms = save_started.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
     state.refresh_vectors()?;
+
+    {
+        let mut stats = state.runtime_stats.write();
+        stats.stage = "ready".to_owned();
+        stats.save_ms = save_ms;
+        stats.elapsed_ms = started.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+        stats.updated_at = Utc::now().timestamp_millis();
+    }
     let status = state.ml.lock().status();
-    state.runtime_stats.write().stage = "ready".to_owned();
     let _ = app.emit("model-status", status);
     emit_progress(
         app,
@@ -213,6 +261,7 @@ fn embed_pending_locked(
         "complete",
         "Analyse IA terminée",
     );
+    emit_runtime_stats(app, state);
     let _ = app.emit("library-updated", ());
     Ok(())
 }
@@ -454,4 +503,28 @@ fn emit_batch_progress(
             message: message.to_owned(),
         },
     );
+}
+
+fn emit_runtime_stats(app: &AppHandle, state: &AppState) {
+    let _ = app.emit("runtime-stats", state.runtime_stats.read().clone());
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::{cosine_similarity, is_supported_image};
+
+    #[test]
+    fn recognizes_supported_extensions_case_insensitively() {
+        assert!(is_supported_image(Path::new("poster.PNG")));
+        assert!(is_supported_image(Path::new("photo.webp")));
+        assert!(!is_supported_image(Path::new("notes.txt")));
+    }
+
+    #[test]
+    fn cosine_similarity_handles_normalized_vectors() {
+        assert!((cosine_similarity(&[1.0, 0.0], &[1.0, 0.0]) - 1.0).abs() < 0.000_1);
+        assert_eq!(cosine_similarity(&[1.0], &[1.0, 2.0]), 0.0);
+    }
 }
