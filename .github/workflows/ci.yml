@@ -39,7 +39,21 @@ jobs:
         shell: bash
         run: cat typecheck.log && exit 1
       - run: npm test
-      - run: npm run build
+      - name: Build frontend
+        id: frontend-build
+        continue-on-error: true
+        shell: bash
+        run: npm run build > frontend-build.log 2>&1
+      - name: Upload frontend build diagnostics
+        if: steps.frontend-build.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build-diagnostics
+          path: frontend-build.log
+      - name: Enforce frontend build
+        if: steps.frontend-build.outcome == 'failure'
+        shell: bash
+        run: cat frontend-build.log && exit 1
 
   rust:
     name: Rust (${{ matrix.os }})
@@ -84,8 +98,47 @@ jobs:
         with:
           workspaces: src-tauri -> target
       - name: Tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --quiet
+        id: rust-tests
+        continue-on-error: true
+        shell: bash
+        run: cargo test --manifest-path src-tauri/Cargo.toml --quiet > rust-tests.log 2>&1
+      - name: Upload Rust test diagnostics
+        if: steps.rust-tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-tests-${{ matrix.os }}
+          path: rust-tests.log
+      - name: Enforce Rust tests
+        if: steps.rust-tests.outcome == 'failure'
+        shell: bash
+        run: cat rust-tests.log && exit 1
       - name: Clippy
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --quiet
+        id: rust-clippy
+        continue-on-error: true
+        shell: bash
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --quiet > rust-clippy.log 2>&1
+      - name: Upload Clippy diagnostics
+        if: steps.rust-clippy.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-clippy-${{ matrix.os }}
+          path: rust-clippy.log
+      - name: Enforce Clippy
+        if: steps.rust-clippy.outcome == 'failure'
+        shell: bash
+        run: cat rust-clippy.log && exit 1
       - name: Compile application
-        run: cargo check --manifest-path src-tauri/Cargo.toml --quiet
+        id: rust-check
+        continue-on-error: true
+        shell: bash
+        run: cargo check --manifest-path src-tauri/Cargo.toml --quiet > rust-check.log 2>&1
+      - name: Upload Rust compile diagnostics
+        if: steps.rust-check.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-check-${{ matrix.os }}
+          path: rust-check.log
+      - name: Enforce Rust compilation
+        if: steps.rust-check.outcome == 'failure'
+        shell: bash
+        run: cat rust-check.log && exit 1
