@@ -262,12 +262,12 @@ onBeforeUnmount(() => {
   z-index: 2;
   display: flex;
   align-items: center;
+  border-radius: var(--radius-full);
+  backdrop-filter: blur(8px);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
   transition: opacity var(--transition-fast);
-  background: linear-gradient(90deg, transparent, var(--sidebar) 30%);
-  padding-left: 12px;
 }
 .folder-entry:hover .folder-actions,
 .folder-entry:focus-within .folder-actions {

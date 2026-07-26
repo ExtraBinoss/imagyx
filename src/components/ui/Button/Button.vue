@@ -115,9 +115,10 @@ withDefaults(
 }
 
 .ui-button--icon {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
+  border-radius: var(--radius-full);
 }
 
 .ui-button--block {
