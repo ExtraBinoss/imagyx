@@ -4,6 +4,8 @@ import { LoaderCircle, Search, X } from '@lucide/vue'
 import Button from './ui/Button/Button.vue'
 import Input from './ui/Input/Input.vue'
 import MovingBorder from './ui/MovingBorder/MovingBorder.vue'
+import TitleBar from './TitleBar.vue'
+import { usePlatformStore } from '../stores/platform'
 
 const props = defineProps<{
   modelReady: boolean
@@ -18,6 +20,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
 }>()
 
+const platform = usePlatformStore()
 const searchInput = ref<{ focus: () => void; select: () => void } | null>(null)
 const isFocused = ref(false)
 
@@ -34,6 +37,10 @@ defineExpose({ focusSearch, selectSearch })
 
 <template>
   <header class="search-header" data-tauri-drag-region>
+    <div v-if="platform.controlsPosition === 'right'" class="search-header-controls">
+      <TitleBar />
+    </div>
+
     <div class="search-field">
       <MovingBorder border-radius="14px" :duration="searching ? 2600 : 4200" :active="isFocused">
         <Input
@@ -102,6 +109,17 @@ defineExpose({ focusSearch, selectSearch })
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   pointer-events: none;
+}
+
+.search-header-controls {
+  position: absolute;
+  top: 0;
+  right: 12px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  z-index: 10;
+  pointer-events: auto;
 }
 .search-field {
   width: 100%;

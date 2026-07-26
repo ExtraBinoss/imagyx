@@ -22,6 +22,7 @@ export interface DebugInfoOptions {
   databasePath?: string
   shortcut?: string
   themeMode?: string
+  controlsPosition?: string
   runtimeStats?: RuntimeStats | null
   progress?: IndexProgress | null
   lastIndexedAt?: string | null
@@ -46,6 +47,7 @@ export function buildDebugInfoText(options: DebugInfoOptions): string {
   return `=== System Information ===
 App Version: v${options.appVersion}
 OS Platform: ${options.platform}
+Window Controls: ${options.controlsPosition ?? 'left'}
 Database Location: ${dbPath}${options.shortcut ? `\nShortcut: ${options.shortcut}` : ''}${options.themeMode ? `\nTheme Mode: ${options.themeMode}` : ''}
 
 === Indexing Information ===

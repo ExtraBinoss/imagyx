@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Check, Copy, Info, Keyboard, Monitor, Moon, Palette, SearchX, Sun } from '@lucide/vue'
+import { AlignLeft, AlignRight, Check, Copy, Info, Keyboard, Layout, Monitor, Moon, Palette, SearchX, Sun } from '@lucide/vue'
 import type { ThemeMode } from '../../stores/theme'
 import { usePlatformStore } from '../../stores/platform'
 import { useLibraryStore } from '../../stores/library'
@@ -40,8 +40,9 @@ const isPopover = computed(() => props.variant === 'popover')
 const normalizedQuery = computed(() => (props.query ?? '').trim().toLocaleLowerCase('fr'))
 const showShortcut = computed(() => isPopover.value || matches(['raccourci', 'shortcut', 'clavier', 'keybind', 'spotlight', 'ouvrir']))
 const showTheme = computed(() => isPopover.value || matches(['thème', 'theme', 'apparence', 'clair', 'sombre', 'système', 'couleur']))
+const showControls = computed(() => isPopover.value || matches(['boutons', 'bouton', 'contrôles', 'controles', 'fermeture', 'réduction', 'reduction', 'fenêtre', 'fenetre', 'position', 'gauche', 'droite', 'titlebar', 'barre']))
 const showInfo = computed(() => isPopover.value || matches(['info', 'information', 'version', 'débug', 'debug', 'système', 'imagyx', 'stats', 'indexation', 'base', 'sqlite']))
-const hasResults = computed(() => showShortcut.value || showTheme.value || showInfo.value)
+const hasResults = computed(() => showShortcut.value || showTheme.value || showControls.value || showInfo.value)
 
 const stats = computed(() => library.runtimeStats)
 const dbPath = computed(() => library.appInfo?.databasePath ?? 'Indisponible')
@@ -55,6 +56,7 @@ async function copyDebugInfo() {
   await copyDebugInfoToClipboard({
     appVersion: platform.appVersion,
     platform: platform.platform,
+    controlsPosition: platform.controlsPosition,
     databasePath: dbPath.value,
     shortcut: props.shortcut,
     themeMode: props.themeMode,
@@ -101,6 +103,21 @@ async function copyDebugInfo() {
         </Button>
         <Button variant="ghost" size="md" :pressed="themeMode === 'dark'" @click="emit('themeChange', 'dark')">
           <template #leading><Moon :size="16" /></template>Sombre
+        </Button>
+      </ButtonGroup>
+    </section>
+
+    <section v-if="showControls" class="settings-section">
+      <header>
+        <span class="settings-section__icon"><Layout :size="17" /></span>
+        <div><strong>Boutons de fenêtre</strong><p>Position des contrôles de fermeture, réduction et agrandissement.</p></div>
+      </header>
+      <ButtonGroup full>
+        <Button variant="ghost" size="md" :pressed="platform.controlsPosition === 'left'" @click="platform.setControlsPosition('left')">
+          <template #leading><AlignLeft :size="16" /></template>Gauche
+        </Button>
+        <Button variant="ghost" size="md" :pressed="platform.controlsPosition === 'right'" @click="platform.setControlsPosition('right')">
+          <template #leading><AlignRight :size="16" /></template>Droite
         </Button>
       </ButtonGroup>
     </section>
@@ -152,11 +169,15 @@ async function copyDebugInfo() {
 .spotlight-settings {
   width: 100%;
   max-width: 100%;
+  max-height: 68vh;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 4px;
   box-sizing: border-box;
   scrollbar-width: thin;
+}
+.spotlight-settings--popover {
+  max-height: 480px;
 }
 .settings-section {
   display: grid;

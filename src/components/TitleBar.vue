@@ -2,8 +2,10 @@
 import { ref } from 'vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Minus, Square, X } from '@lucide/vue'
+import { usePlatformStore } from '../stores/platform'
 
 const appWindow = getCurrentWindow()
+const platform = usePlatformStore()
 const isMaximized = ref(false)
 
 async function minimize(event: MouseEvent) {
@@ -27,7 +29,7 @@ async function close(event: MouseEvent) {
 </script>
 
 <template>
-  <div class="titlebar" data-tauri-drag-region>
+  <div class="titlebar" :class="`titlebar--${platform.controlsPosition}`" data-tauri-drag-region>
     <div class="titlebar-traffic-lights" @click.stop @pointerdown.stop>
       <button class="mac-btn mac-close" title="Close" @click="close" @pointerdown.stop>
         <X :size="9" class="mac-icon" />
@@ -46,11 +48,20 @@ async function close(event: MouseEvent) {
 .titlebar {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   height: 38px;
   padding: 0 12px;
   user-select: none;
   background: transparent;
   cursor: default;
+}
+
+.titlebar--left {
+  justify-content: flex-start;
+}
+
+.titlebar--right {
+  justify-content: flex-end;
 }
 
 .titlebar-traffic-lights {

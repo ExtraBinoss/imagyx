@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import {
+  ChevronsUpDown,
   Folder,
   FolderOpen,
   Images,
@@ -98,7 +99,9 @@ onBeforeUnmount(() => {
 
 <template>
   <aside class="sidebar">
-    <TitleBar />
+    <div class="sidebar-header-bar">
+      <TitleBar v-if="platform.controlsPosition === 'left'" />
+    </div>
     <div class="brand">
       <img :src="imagyxLogo" class="brand-mark-img" alt="Imagyx logo" />
       <div><strong>Imagyx</strong><span>Local Intelligence</span></div>
@@ -208,7 +211,8 @@ onBeforeUnmount(() => {
         <template #trigger>
           <Button variant="ghost" size="sm" block class="settings-trigger-btn">
             <template #leading><Settings :size="15" /></template>
-            Settings & Theme
+            Settings
+            <template #trailing><ChevronsUpDown :size="14" class="settings-chevron" /></template>
           </Button>
         </template>
         <template #content>
@@ -320,5 +324,23 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-md);
   background: var(--surface-elevated);
   box-shadow: var(--shadow-popover);
+}
+
+.settings-trigger-btn {
+  justify-content: flex-start !important;
+  width: 100% !important;
+  text-align: left !important;
+}
+.settings-trigger-btn :deep(.ui-button__content) {
+  flex: 1;
+  text-align: left;
+}
+.settings-chevron {
+  margin-left: auto;
+  opacity: 0.5;
+  transition: opacity var(--transition-fast);
+}
+.settings-trigger-btn:hover .settings-chevron {
+  opacity: 1;
 }
 </style>

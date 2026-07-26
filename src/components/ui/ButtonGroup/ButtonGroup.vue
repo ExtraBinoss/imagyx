@@ -28,15 +28,18 @@ withDefaults(defineProps<{ full?: boolean }>(), { full: false })
   box-shadow: none;
 }
 .ui-button-group :slotted(.ui-button:hover:not(:disabled)) { transform: none; }
-.ui-button-group :slotted(.ui-button--pressed) {
-  border-color: var(--border);
-  background: var(--surface-elevated);
-  color: var(--text);
-  transform: none;
+.ui-button-group :slotted(.ui-button--pressed),
+.ui-button-group :slotted(.ui-button--pressed:hover:not(:disabled)),
+.ui-button-group :slotted(.ui-button[aria-pressed="true"]),
+.ui-button-group :slotted(.ui-button[aria-pressed="true"]:hover:not(:disabled)) {
+  border-color: var(--border) !important;
+  background: var(--surface-elevated) !important;
+  color: var(--text) !important;
+  transform: none !important;
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.26),
     0 1px 2px rgb(15 23 42 / 0.08),
-    0 5px 12px -10px rgb(15 23 42 / 0.35);
+    0 5px 12px -10px rgb(15 23 42 / 0.35) !important;
 }
 :global(:root[data-theme='dark']) .ui-button-group {
   background: color-mix(in srgb, var(--background) 76%, black);

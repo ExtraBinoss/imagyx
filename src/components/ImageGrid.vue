@@ -24,8 +24,9 @@ let resizeObserver: ResizeObserver | null = null
 let scrollFrame = 0
 let scrollTimeout: number | undefined
 
-const columns = computed(() => Math.max(1, Math.floor((viewportWidth.value + GAP) / (MIN_CARD_WIDTH + GAP))))
-const cardWidth = computed(() => viewportWidth.value <= 0 ? MIN_CARD_WIDTH : (viewportWidth.value - GAP * (columns.value - 1)) / columns.value)
+const availableWidth = computed(() => Math.max(0, viewportWidth.value - 48))
+const columns = computed(() => Math.max(1, Math.floor((availableWidth.value + GAP) / (MIN_CARD_WIDTH + GAP))))
+const cardWidth = computed(() => availableWidth.value <= 0 ? MIN_CARD_WIDTH : (availableWidth.value - GAP * (columns.value - 1)) / columns.value)
 const rowStride = computed(() => cardWidth.value / 1.08 + META_HEIGHT + GAP)
 const totalRows = computed(() => Math.ceil(props.images.length / columns.value))
 const startRow = computed(() => Math.max(0, Math.floor(scrollTop.value / rowStride.value) - OVERSCAN_ROWS))

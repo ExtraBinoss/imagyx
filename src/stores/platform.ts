@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { imagyxApi } from '../api/tauri'
 
 export type DesktopPlatform = 'windows' | 'macos' | 'linux' | 'unknown'
+export type WindowControlsPosition = 'left' | 'right'
 
 function normalizePlatform(value: string): DesktopPlatform {
   if (value === 'windows') return 'windows'
@@ -10,11 +11,17 @@ function normalizePlatform(value: string): DesktopPlatform {
   return 'unknown'
 }
 
+function initialControlsPosition(): WindowControlsPosition {
+  const saved = localStorage.getItem('imagyx.window-controls-position')
+  return saved === 'right' ? 'right' : 'left'
+}
+
 export const usePlatformStore = defineStore('platform', {
   state: () => ({
     platform: 'unknown' as DesktopPlatform,
     version: '0.1.0',
     isDevMode: Boolean(import.meta.env.DEV),
+    controlsPosition: initialControlsPosition(),
     initialized: false,
   }),
   getters: {
@@ -33,6 +40,14 @@ export const usePlatformStore = defineStore('platform', {
     },
   },
   actions: {
+    setControlsPosition(position: WindowControlsPosition) {
+      this.controlsPosition = position
+      try {
+        localStorage.setItem('imagyx.window-controls-position', position)
+      } catch {
+        /* ignore */
+      }
+    },
     async initialize() {
       if (this.initialized) return
       try {
