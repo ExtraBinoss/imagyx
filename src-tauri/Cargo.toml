@@ -32,17 +32,17 @@ blake3 = "1"
 num_cpus = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 hf-hub = { version = "=0.5.0", default-features = false, features = ["ureq", "rustls-tls"] }
+tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
+ndarray = "0.16"
+sysinfo = "0.37"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-fastembed = { version = "=5.17.3" }
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24", "coreml"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-fastembed = { version = "=5.17.3", features = ["directml"] }
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24", "directml"] }
 
 [target.'cfg(not(any(target_os = "macos", target_os = "windows")))'.dependencies]
-fastembed = { version = "=5.17.3" }
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24"] }
 
 [dev-dependencies]
