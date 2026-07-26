@@ -1,129 +1,48 @@
 # Imagyx
 
-Imagyx est une bibliothèque d’images **locale, offline-first et accélérée automatiquement**. Elle suit les dossiers choisis, affiche rapidement les nouveaux fichiers et génère des embeddings visuels sur la machine, puis permet de retrouver une image par son nom ou avec une description naturelle comme « fille tenant un téléphone ».
+Imagyx est une bibliothèque d’images locale, offline-first et conçue pour retrouver rapidement des visuels par nom ou par description naturelle.
 
-## Ce que contient le prototype
+## Prototype actuel
 
 - application desktop Tauri 2 ;
-- interface Vue 3 + Pinia + TypeScript + Vite ;
-- icônes `@lucide/vue` ;
-- design system local dans `src/components/ui` ;
-- thèmes système, clair et sombre basés sur des variables CSS globales ;
-- explorateur d’images avec dossiers suivis, grille et recherche globale ;
-- grille virtualisée : seules les cartes visibles et trois rangées d’overscan sont montées ;
-- watcher natif récursif Windows, macOS et Linux avec debounce ;
-- miniatures demandées uniquement par les cartes visibles ;
-- quatre générations de miniatures simultanées au maximum ;
-- cache disque LRU borné à 256 miniatures et cache mémoire borné à 512 URL ;
-- téléchargement du modèle au lancement avec toast, progression en octets, Mo et pourcentage ;
-- indexation incrémentale récursive ;
-- lecture parallèle des métadonnées ;
-- recherche hybride nom de fichier + similarité CLIP ;
-- embeddings image/texte FastEmbed exécutés localement avec ONNX Runtime ;
-- CoreML sur macOS, DirectML sur Windows, CUDA optionnel sous Linux, puis CPU en repli silencieux ;
-- SQLite en WAL pour les métadonnées et les vecteurs ;
-- cache vectoriel en mémoire pour une recherche multithread rapide ;
-- tests Rust et TypeScript, CI Linux/macOS/Windows.
+- Vue 3, Pinia, TypeScript et Vite ;
+- grille virtualisée avec miniatures générées uniquement pour les cartes visibles ;
+- cache disque LRU limité à 256 miniatures et cache mémoire limité à 512 URL ;
+- watcher natif récursif Windows, macOS et Linux ;
+- SQLite en WAL pour les métadonnées et les embeddings ;
+- MobileCLIP2-S0 exécuté directement avec ONNX Runtime ;
+- téléchargement au premier lancement de `visual.onnx`, `visual.onnx.data`, `text.onnx`, `text.onnx.data` et `tokenizer.json` ;
+- essai explicite de CoreML, DirectML ou CUDA, puis création de sessions CPU séparées si l’accélérateur échoue ;
+- prétraitement parallèle des images vers 256 × 256 ;
+- lots adaptatifs : 48 images avec accélération GPU confirmée, 12 images sur CPU ;
+- progression et statistiques dans la sidebar avec popover détaillé ;
+- informations CPU/RAM du processus via `sysinfo`.
 
-Il n’existe aucun sélecteur de « mode performance ». Imagyx choisit le meilleur accélérateur disponible et retombe automatiquement sur le CPU si le provider GPU n’est pas utilisable.
+Les poids ONNX utilisés par l’application proviennent du dépôt communautaire `RuteNL/MobileCLIP2-S0-OpenCLIP-ONNX`, exporté depuis MobileCLIP2-S0. Les anciens embeddings CLIP ViT-B/32 sont invalidés automatiquement lors de la migration afin d’éviter de mélanger deux espaces vectoriels différents.
 
-## Design system
+## Sidebar IA
 
-Les composants réutilisables sont regroupés dans `src/components/ui` :
+Le panneau compact de la sidebar affiche :
 
-```text
-components/ui/
-├── Badge/
-├── Button/
-├── Input/
-├── Popover/
-├── ProgressBar/
-├── Select/
-├── Skeleton/
-├── Toast/
-└── Tooltip/
-```
-
-Les couleurs, espacements, rayons, niveaux de texte et états sont définis dans `src/style.css` par des variables globales. Le thème clair est blanc, neutre et bleu SaaS ; le thème sombre utilise les mêmes rôles sémantiques. Aucun glow ou dégradé décoratif n’est utilisé.
-
-## Téléchargement du modèle
-
-Au lancement, Imagyx vérifie silencieusement son cache local. Si des fichiers CLIP manquent :
-
-1. le backend récupère leur taille totale ;
-2. le téléchargement s’exécute dans un worker Rust bloquant séparé ;
-3. un événement Tauri remonte les octets téléchargés, le total, le fichier courant et le nombre de fichiers ;
-4. le toast Vue affiche les Mo, le pourcentage et une barre de progression ;
-5. les modèles sont initialisés avec l’accélérateur disponible ;
-6. le toast confirme que l’IA locale est prête.
-
-L’interface et la recherche par nom restent utilisables pendant cette préparation. Les fichiers découverts sont immédiatement visibles. Leur analyse sémantique est mise en file d’attente et démarre automatiquement dès que le modèle est prêt.
-
-## Indexation rapide
-
-L’indexation est séparée en phases indépendantes :
-
-1. une seule lecture SQLite récupère les empreintes existantes du dossier ;
-2. les dimensions et métadonnées des nouveaux fichiers sont lues en parallèle ;
-3. SQLite est mis à jour et la grille devient disponible ;
-4. si le modèle est encore en préparation, l’analyse IA est indiquée comme mise en attente sans bloquer l’interface ;
-5. CLIP traite ensuite les images par lots de huit ;
-6. la barre d’état affiche le lot courant, le nombre total de lots et le nombre exact d’images terminées ;
-7. les vecteurs sont enregistrés après chaque lot.
-
-Le premier lot utilise une progression indéterminée avec un libellé comme `Lot 1 / 10`, au lieu d’afficher un `0 / 76` immobile. Après le premier lot, la progression devient exacte.
-
-## Virtualisation et miniatures
-
-La grille calcule le nombre de colonnes à partir de la largeur disponible et ne rend que les rangées présentes dans le viewport, avec trois rangées supplémentaires avant et après. Une bibliothèque de plusieurs milliers d’images ne crée donc pas plusieurs milliers de nœuds DOM ni plusieurs milliers de requêtes simultanées.
-
-Lorsqu’une carte devient visible :
-
-1. Vue place sa demande dans une file bornée ;
-2. quatre demandes peuvent être exécutées simultanément ;
-3. Rust retourne immédiatement une miniature déjà présente dans le cache, ou en génère une de 512 px ;
-4. le cache disque élimine les entrées les moins récemment utilisées au-delà de 256 fichiers ;
-5. une file frontend supérieure à 96 demandes abandonne les anciennes demandes devenues hors écran.
-
-Cette stratégie évite de dupliquer toutes les images. Seule une petite fenêtre de miniatures utiles est conservée.
-
-## Surveillance des dossiers
-
-Chaque dossier suivi est enregistré auprès du watcher natif de la plateforme en mode récursif. Les créations, modifications, suppressions, renommages et nouveaux sous-dossiers déclenchent une réindexation incrémentale après un debounce de 700 ms. Les événements provenant du dossier interne `Pictures/imagyx` sont ignorés afin que les miniatures et la base de données ne créent pas de boucle.
-
-Un dossier ajouté ou retiré depuis l’interface est ajouté ou retiré du watcher immédiatement, sans redémarrer l’application.
-
-## Stockage local
-
-Toutes les données créées par Imagyx restent dans le dossier Images/Pictures de l’utilisateur :
-
-```text
-Pictures/
-└── imagyx/
-    ├── models/                  # modèles ONNX téléchargés au premier lancement
-    ├── database/
-    │   └── imagyx.sqlite3       # dossiers, images et embeddings
-    ├── cache/
-    │   └── thumbnails/          # maximum 256 aperçus JPEG de 512 px
-    └── logs/
-```
-
-Les images originales ne sont ni copiées, ni modifiées, ni envoyées vers un serveur.
+- téléchargement ou progression de l’analyse ;
+- backend réellement initialisé ;
+- indication `GPU actif`, `CPU` ou `CPU (repli)` ;
+- taille du lot ;
+- débit en images par seconde ;
+- temps moyen par image ;
+- consommation CPU et mémoire du processus ;
+- dernière erreur du runtime, lorsqu’elle existe.
 
 ## Développement
 
-### Prérequis
-
-- Node.js 22.12 ou supérieur ;
-- Rust 1.88 ou supérieur ;
-- les dépendances système Tauri propres à la plateforme.
+Prérequis : Node.js 22.12+, Rust 1.88+ et les dépendances système Tauri de la plateforme.
 
 ```bash
 npm install
 npm run tauri dev
 ```
 
-### Vérifications
+Vérifications locales recommandées :
 
 ```bash
 npm run typecheck
@@ -132,56 +51,26 @@ npm run build
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 cargo test --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
+cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
-### Build desktop
+GitHub Actions est volontairement configuré avec `workflow_dispatch` uniquement. Aucun commit ou pull request ne déclenche automatiquement un workflow.
 
-```bash
-npm run tauri build
-```
-
-## Accélération automatique
-
-| Plateforme | Provider prioritaire | Repli |
-| --- | --- | --- |
-| macOS | CoreML | CPU ONNX Runtime |
-| Windows | DirectML | CPU ONNX Runtime |
-| Linux | CUDA avec `--features nvidia` | CPU ONNX Runtime |
-| Autre | CPU ONNX Runtime | — |
-
-Sous Linux NVIDIA :
-
-```bash
-npm run build
-cargo build --release --manifest-path src-tauri/Cargo.toml --features nvidia
-```
-
-Le provider accéléré est enregistré avec un échec silencieux : un pilote absent ou incompatible ne bloque pas l’application.
-
-## Architecture
+## Stockage
 
 ```text
-Vue / Pinia
-    ├── grille virtualisée
-    ├── file de miniatures bornée
-    └── événements Tauri
-              ▼
-Rust
-    ├── watcher natif récursif
-    ├── cache de miniatures LRU
-    ├── téléchargement hf-hub avec progression
-    ├── indexeur métadonnées Rayon
-    ├── FastEmbed + ONNX Runtime par lots
-    ├── cache vectoriel en mémoire
-    └── SQLite WAL
+Pictures/imagyx/
+├── models/
+├── database/imagyx.sqlite3
+├── cache/thumbnails/
+└── logs/
 ```
 
-La recherche vectorielle reste volontairement en mémoire dans ce prototype. Pour une bibliothèque normale de designer, cela évite le coût et la complexité de distribution d’une extension SQLite native. Le schéma `embeddings` permet d’ajouter ultérieurement `sqlite-vec` ou `vec1` sans réindexer les fichiers.
+Les fichiers originaux ne sont ni copiés, ni modifiés, ni envoyés vers un serveur.
 
-## Limites actuelles du prototype
+## Limites
 
-- le moteur sémantique est CLIP ViT-B/32, rapide mais moins précis qu’un grand VLM ;
-- la liste de métadonnées chargée par Vue est plafonnée à 20 000 résultats par vue, tandis que le DOM reste virtualisé ;
-- le renommage automatique n’est pas encore appliqué aux fichiers originaux ;
-- la signature/notarisation macOS et la signature Windows ne sont pas configurées ;
-- l’exécution GPU doit encore être testée sur du matériel physique avant une distribution publique.
+- cette migration MobileCLIP n’a pas été compilée dans l’environnement de l’assistant ;
+- l’export ONNX est communautaire et doit être validé sur Windows et macOS ;
+- l’activation GPU doit être testée sur du matériel réel ;
+- la signature et la notarisation ne sont pas configurées.
