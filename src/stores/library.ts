@@ -6,6 +6,8 @@ import { semanticRuntime, type SemanticModelKey } from '../services/semantic'
 import { formatBytes } from '../utils'
 import { useToastStore } from './toasts'
 
+const explainingImages = new Set<string>()
+
 interface LibraryState {
   folders: FollowedFolder[]
   images: ImageAsset[]
@@ -133,6 +135,27 @@ export const useLibraryStore = defineStore('library', {
         } else this.images = images
       } catch (error) { if (sequence === this.searchSequence) this.reportError(error) }
       finally { if (sequence === this.searchSequence) { this.loading = false; this.semanticSearching = false } }
+    },
+    async explainImage(imageId: string) {
+      const image = this.images.find((item) => item.id === imageId)
+      if (!image || image.semanticMatches?.length || explainingImages.has(imageId)) return
+      explainingImages.add(imageId)
+      try {
+        const concepts = await semanticRuntime.genericImageConcepts()
+        const explanation = (await imagyxApi.explainResults([imageId], concepts))[0]
+        if (!explanation) return
+        const index = this.images.findIndex((item) => item.id === imageId)
+        if (index >= 0) {
+          this.images[index] = {
+            ...this.images[index],
+            semanticMatches: explanation.matches.filter((match) => match.score >= 0.5).slice(0, 3),
+          }
+        }
+      } catch (error) {
+        this.reportError(error)
+      } finally {
+        explainingImages.delete(imageId)
+      }
     },
     async selectModel(modelKey: SemanticModelKey) {
       if (modelKey === this.selectedModel) return
