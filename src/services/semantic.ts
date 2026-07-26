@@ -7,7 +7,7 @@ import {
   env,
 } from '@huggingface/transformers'
 import { imagyxApi } from '../api/tauri'
-import type { ModelDownloadProgress, RuntimeStats } from '../types'
+import type { ModelDownloadProgress, QueryConcept, RuntimeStats } from '../types'
 
 const MODEL_ID = 'Xenova/mobileclip_s0'
 const MODEL_NAME = 'MobileCLIP-S0'
@@ -20,6 +20,11 @@ type RuntimeCallbacks = {
   stats: (stats: RuntimeStats) => void
 }
 
+export interface EmbeddedQuery {
+  queryVector: number[]
+  concepts: QueryConcept[]
+}
+
 class SemanticRuntime {
   private visionModel: any = null
   private textModel: any = null
@@ -27,6 +32,7 @@ class SemanticRuntime {
   private tokenizer: any = null
   private device: Device = 'webgpu'
   private loading: Promise<void> | null = null
+  private textLoading: Promise<void> | null = null
   private callbacks: RuntimeCallbacks | null = null
   private stats: RuntimeStats = defaultStats()
 
@@ -71,7 +77,7 @@ class SemanticRuntime {
       batchCurrent += 1
       this.patchStats({ stage: 'decoding', batchCurrent, batchSize: batch.length })
       const decodeStarted = performance.now()
-      const preparedPaths = await imagyxApi.prepareAiImages(batch)
+      const preparedPaths = await imagyxApi.prepareAiImages(batch.map((asset) => asset.id))
       const images = await Promise.all(
         preparedPaths.map((path) => RawImage.read(imagyxApi.fileUrl(path))),
       )
@@ -95,12 +101,8 @@ class SemanticRuntime {
       const elapsedMs = performance.now() - started
       const imagesPerSecond = processed / Math.max(elapsedMs / 1000, 0.001)
       const averageImageMs = (decodeMs + inferenceMs + saveMs) / processed
-      if (averageImageMs < 90 && batchSize < MAX_BATCH_SIZE) {
-        batchSize = Math.min(MAX_BATCH_SIZE, batchSize * 2)
-      }
-      if (averageImageMs > 450 && batchSize > 2) {
-        batchSize = Math.max(2, Math.floor(batchSize / 2))
-      }
+      if (averageImageMs < 90 && batchSize < MAX_BATCH_SIZE) batchSize = Math.min(MAX_BATCH_SIZE, batchSize * 2)
+      if (averageImageMs > 450 && batchSize > 2) batchSize = Math.max(2, Math.floor(batchSize / 2))
 
       this.patchStats({
         stage: 'indexing', current: processed, total: pending.length, batchCurrent,
@@ -114,10 +116,41 @@ class SemanticRuntime {
     this.patchStats({ stage: 'ready', current: pending.length, total: pending.length })
   }
 
+  async embedQuery(query: string): Promise<EmbeddedQuery | undefined> {
+    const trimmed = query.trim()
+    if (!trimmed) return undefined
+    await this.ensureTextReady()
+
+    const labels = queryConceptLabels(trimmed)
+    const texts = [trimmed, ...labels]
+    const inputs = this.tokenizer(texts, {
+      padding: 'max_length',
+      truncation: true,
+      max_length: 77,
+    })
+    const output = await this.textModel(inputs)
+    const vectors = tensorRows(output.text_embeds)
+    const queryVector = vectors[0]
+    if (!queryVector) throw new Error('Embedding de recherche vide')
+
+    return {
+      queryVector,
+      concepts: labels.flatMap((label, index) => {
+        const vector = vectors[index + 1]
+        return vector ? [{ label, vector }] : []
+      }),
+    }
+  }
+
   async embedText(query: string): Promise<number[] | undefined> {
-    if (!query.trim()) return undefined
+    return (await this.embedQuery(query))?.queryVector
+  }
+
+  private async ensureTextReady() {
     await this.prepare()
-    if (!this.textModel || !this.tokenizer) {
+    if (this.textModel && this.tokenizer) return
+    if (this.textLoading) return this.textLoading
+    this.textLoading = (async () => {
       this.patchStats({ stage: 'loading-text' })
       const options = this.modelOptions()
       ;[this.tokenizer, this.textModel] = await Promise.all([
@@ -125,10 +158,12 @@ class SemanticRuntime {
         CLIPTextModelWithProjection.from_pretrained(MODEL_ID, options),
       ])
       this.patchStats({ stage: 'ready' })
+    })()
+    try {
+      await this.textLoading
+    } finally {
+      this.textLoading = null
     }
-    const inputs = this.tokenizer([query], { padding: 'max_length', truncation: true })
-    const output = await this.textModel(inputs)
-    return tensorRows(output.text_embeds)[0]
   }
 
   private async loadVisionRuntime() {
@@ -195,6 +230,21 @@ class SemanticRuntime {
     this.callbacks?.stats(this.stats)
     void imagyxApi.updateRuntimeStats(this.stats)
   }
+}
+
+function queryConceptLabels(query: string): string[] {
+  const seen = new Set<string>()
+  return query
+    .toLocaleLowerCase('fr')
+    .split(/[^\p{L}\p{N}-]+/u)
+    .map((word) => word.trim())
+    .filter((word) => word.length >= 2)
+    .filter((word) => {
+      if (seen.has(word)) return false
+      seen.add(word)
+      return true
+    })
+    .slice(0, 6)
 }
 
 function tensorRows(tensor: any): number[][] {
