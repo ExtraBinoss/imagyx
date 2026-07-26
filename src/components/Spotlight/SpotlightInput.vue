@@ -4,7 +4,7 @@ import { ArrowLeft, LoaderCircle, Search, Settings2 } from '@lucide/vue'
 import Button from '../ui/Button/Button.vue'
 import type { SpotlightView } from './types'
 
-const props = defineProps<{
+defineProps<{
   modelValue: string
   view: SpotlightView
   placeholder: string
@@ -22,6 +22,9 @@ const input = ref<HTMLInputElement | null>(null)
 
 function focus() { input.value?.focus() }
 function select() { input.value?.select() }
+function handleInput(event: Event) {
+  emit('update:modelValue', (event.target as HTMLInputElement).value)
+}
 
 defineExpose({ focus, select })
 </script>
@@ -48,7 +51,7 @@ defineExpose({ focus, select })
       spellcheck="false"
       :placeholder="placeholder"
       :aria-label="view === 'settings' ? 'Rechercher dans les réglages' : 'Recherche rapide'"
-      @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
+      @input="handleInput"
     />
 
     <span v-if="view === 'search' && modelValue.trim() && !searching" class="spotlight-input__count">
