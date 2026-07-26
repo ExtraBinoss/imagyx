@@ -13,6 +13,7 @@ import type {
 
 export const imagyxApi = {
   appInfo: () => invoke<AppInfo>('get_app_info'),
+  platform: () => invoke<string>('get_platform'),
   runtimeStats: () => invoke<RuntimeStats>('get_runtime_stats'),
   updateRuntimeStats: (stats: RuntimeStats) => invoke<void>('update_runtime_stats', { stats }),
   updateModelProgress: (progress: ModelDownloadProgress) =>
@@ -45,5 +46,10 @@ export const imagyxApi = {
         queryVector: request.queryVector ?? null,
       },
     }),
+  openInFileManager: (path: string, reveal = false) =>
+    invoke<void>('open_in_file_manager', { path, reveal }),
+  copyImage: (path: string) => invoke<void>('copy_image_to_clipboard', { path }),
+  openInImagyx: (imageId: string) => invoke<void>('open_in_imagyx', { imageId }),
+  hideSpotlight: () => invoke<void>('hide_spotlight'),
   fileUrl: (path: string) => convertFileSrc(path),
 }
