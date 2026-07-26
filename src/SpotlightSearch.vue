@@ -17,6 +17,7 @@ const FALLBACK_TAGS = [
   'femme', 'portrait', 'paysage', 'chien', 'chat',
   'voiture', 'plage', 'ville', 'nuit', 'coucher de soleil',
 ]
+const initialTags = readCachedTags()
 
 const platform = usePlatformStore()
 const currentWindow = getCurrentWindow()
@@ -29,22 +30,24 @@ const copiedImageId = ref<string | null>(null)
 const visible = ref(false)
 const inputFocused = ref(false)
 const resultsOpen = ref(false)
+const shellMerged = ref(false)
 const searchInput = ref<HTMLInputElement | null>(null)
 const resultsViewport = ref<HTMLElement | null>(null)
 const canScrollDown = ref(false)
-const topTags = ref(readCachedTags())
-const typedTag = ref('')
+const topTags = ref(initialTags)
+const typedTag = ref(initialTags[0] ?? FALLBACK_TAGS[0] ?? 'image')
 const resultCache = new Map<string, ImageAsset[]>()
 
 let searchSequence = 0
+let morphSequence = 0
 let copyTimer: number | undefined
-let warmupTimer: number | undefined
+let tagWarmupTimer: number | undefined
 let typewriterTimer: number | undefined
 let collapseTimer: number | undefined
 let expanded = false
 let expansionPromise: Promise<void> | null = null
 let tagIndex = 0
-let characterIndex = 0
+let characterIndex = typedTag.value.length
 let deleting = false
 let unlistenWillOpen: UnlistenFn | null = null
 let unlistenOpened: UnlistenFn | null = null
@@ -55,53 +58,73 @@ const selectedImage = computed(() => results.value[selectedIndex.value] ?? null)
 const hasQuery = computed(() => Boolean(query.value.trim()))
 const resultLabel = computed(() => {
   if (searching.value && results.value.length === 0) return 'Recherche…'
-  return `${results.value.length} résultat${results.value.length > 1 ? 's' : ''}`
+  return `${results.value.length} résultat${results.value.length === 1 ? '' : 's'}`
 })
-const placeholder = computed(() => typedTag.value ? `${capitalize(typedTag.value)}…` : 'Chercher dans tes images…')
+const placeholder = computed(() => typedTag.value ? `${capitalize(typedTag.value)}…` : '\u00a0')
 
-const searchLater = debounce(() => { void runSearch() }, 90)
+const searchLater = debounce(() => { void runSearch() }, 65)
 
 watch(query, (value) => {
   selectedIndex.value = 0
   error.value = null
   const text = value.trim()
+  const request = ++morphSequence
+
   if (!text) {
     searchSequence += 1
     results.value = []
     searching.value = false
-    closeResults()
+    void closeResults(request)
     return
   }
-  void openResults()
+
+  searchLater()
+  void openResults(request)
 })
 
 watch(() => results.value.length, () => {
   void nextTick(updateScrollShadow)
 })
 
-async function openResults() {
+async function openResults(request: number) {
   if (collapseTimer) {
     window.clearTimeout(collapseTimer)
     collapseTimer = undefined
   }
+
   try {
     await ensureExpanded()
   } catch (reason) {
-    error.value = String(reason)
+    if (request === morphSequence) error.value = String(reason)
+    return
   }
-  if (!query.value.trim()) return
+
+  if (request !== morphSequence || !query.value.trim()) return
+  await nextPaint(2)
+  if (request !== morphSequence || !query.value.trim()) return
+
+  shellMerged.value = true
+  await nextPaint()
+  if (request !== morphSequence || !query.value.trim()) return
+
   resultsOpen.value = true
-  searchLater()
+  await nextTick()
+  await nextPaint()
+  updateScrollShadow()
 }
 
-function closeResults() {
+async function closeResults(request: number) {
   resultsOpen.value = false
   canScrollDown.value = false
+  await nextPaint()
+  if (request !== morphSequence || query.value.trim()) return
+
+  shellMerged.value = false
   if (collapseTimer) window.clearTimeout(collapseTimer)
   collapseTimer = window.setTimeout(() => {
-    if (query.value.trim()) return
+    if (request !== morphSequence || query.value.trim()) return
     void setCompact()
-  }, 210)
+  }, 280)
 }
 
 async function ensureExpanded() {
@@ -250,18 +273,18 @@ function prepareOpen() {
   selectedIndex.value = 0
   error.value = null
   resultsOpen.value = false
+  shellMerged.value = false
   expanded = false
   expansionPromise = null
   canScrollDown.value = false
+  morphSequence += 1
 }
 
 function animateOpen() {
   prepareOpen()
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => {
-      visible.value = true
-      searchInput.value?.focus()
-    })
+  void nextPaint(2).then(() => {
+    visible.value = true
+    searchInput.value?.focus()
   })
 }
 
@@ -271,9 +294,11 @@ function prepareHide() {
   query.value = ''
   results.value = []
   resultsOpen.value = false
+  shellMerged.value = false
   expanded = false
   expansionPromise = null
   canScrollDown.value = false
+  morphSequence += 1
 }
 
 function readCachedTags(): string[] {
@@ -287,7 +312,12 @@ function readCachedTags(): string[] {
   return [...FALLBACK_TAGS]
 }
 
-async function warmSpotlight() {
+async function warmSearchRuntime() {
+  try { await semanticRuntime.prewarmText() }
+  catch { /* la recherche lexicale reste immédiatement disponible */ }
+}
+
+async function warmTagSuggestions() {
   try {
     await semanticRuntime.prewarmText()
     const concepts = await semanticRuntime.genericImageConcepts()
@@ -325,18 +355,31 @@ function runTypewriter() {
   if (characterIndex === 0) {
     deleting = false
     tagIndex = (tagIndex + 1) % tags.length
-    typewriterTimer = window.setTimeout(runTypewriter, 180)
+    typewriterTimer = window.setTimeout(runTypewriter, 150)
     return
   }
-  typewriterTimer = window.setTimeout(runTypewriter, 30)
+  typewriterTimer = window.setTimeout(runTypewriter, 32)
 }
 
 function capitalize(value: string) {
   return value ? value.charAt(0).toLocaleUpperCase('fr') + value.slice(1) : value
 }
 
+function nextPaint(frames = 1): Promise<void> {
+  return new Promise((resolve) => {
+    let remaining = Math.max(1, frames)
+    const tick = () => {
+      remaining -= 1
+      if (remaining <= 0) resolve()
+      else window.requestAnimationFrame(tick)
+    }
+    window.requestAnimationFrame(tick)
+  })
+}
+
 onMounted(async () => {
   void platform.initialize()
+  void warmSearchRuntime()
   window.addEventListener('keydown', handleKeydown)
   unlistenWillOpen = await listen('spotlight-will-open', prepareOpen)
   unlistenOpened = await listen('spotlight-opened', animateOpen)
@@ -344,8 +387,8 @@ onMounted(async () => {
   unlistenFocus = await currentWindow.onFocusChanged(({ payload }) => {
     if (!payload) void imagyxApi.hideSpotlight()
   })
-  warmupTimer = window.setTimeout(() => { void warmSpotlight() }, 650)
-  typewriterTimer = window.setTimeout(runTypewriter, 320)
+  tagWarmupTimer = window.setTimeout(() => { void warmTagSuggestions() }, 1100)
+  typewriterTimer = window.setTimeout(runTypewriter, 900)
 })
 
 onBeforeUnmount(() => {
@@ -355,7 +398,7 @@ onBeforeUnmount(() => {
   unlistenWillHide?.()
   unlistenFocus?.()
   if (copyTimer) window.clearTimeout(copyTimer)
-  if (warmupTimer) window.clearTimeout(warmupTimer)
+  if (tagWarmupTimer) window.clearTimeout(tagWarmupTimer)
   if (typewriterTimer) window.clearTimeout(typewriterTimer)
   if (collapseTimer) window.clearTimeout(collapseTimer)
 })
@@ -364,13 +407,13 @@ onBeforeUnmount(() => {
 <template>
   <main class="spotlight-root">
     <section class="spotlight-stage" :class="{ 'spotlight-stage--visible': visible }" aria-label="Recherche rapide Imagyx">
-      <div class="spotlight-shell" :class="{ 'spotlight-shell--expanded': resultsOpen }">
-        <MovingBorder
-          class="spotlight-moving-border"
-          border-radius="22px"
-          :duration="inputFocused || searching ? 2100 : 3600"
-          :active="visible"
-        >
+      <MovingBorder
+        class="spotlight-moving-border"
+        border-radius="22px"
+        :duration="inputFocused || searching ? 3200 : 4700"
+        :active="visible"
+      >
+        <div class="spotlight-surface" :class="{ 'spotlight-surface--expanded': shellMerged }">
           <div class="spotlight-search">
             <Search :size="22" :stroke-width="1.9" />
             <input
@@ -388,75 +431,75 @@ onBeforeUnmount(() => {
             <LoaderCircle v-if="searching" class="spin" :size="18" />
             <kbd v-else-if="!hasQuery">Ctrl · Num 9</kbd>
           </div>
-        </MovingBorder>
 
-        <Transition name="results-morph">
-          <section v-if="resultsOpen" class="spotlight-results-panel" aria-live="polite">
-            <div class="spotlight-results-shell">
-              <div
-                ref="resultsViewport"
-                class="spotlight-results"
-                role="listbox"
-                :aria-label="resultLabel"
-                @scroll.passive="updateScrollShadow"
-              >
+          <Transition name="results-morph">
+            <section v-if="resultsOpen" class="spotlight-results-panel" aria-live="polite">
+              <div class="spotlight-results-shell">
                 <div
-                  v-for="(image, index) in results"
-                  :key="image.id"
-                  class="spotlight-result"
-                  :class="{ 'spotlight-result--selected': index === selectedIndex }"
-                  :data-result-index="index"
-                  :aria-selected="index === selectedIndex"
-                  role="option"
-                  tabindex="-1"
-                  :style="{ animationDelay: `${Math.min(index, 10) * 18}ms` }"
-                  @mouseenter="selectedIndex = index"
-                  @focus="selectedIndex = index"
-                  @click="selectedIndex = index"
-                  @dblclick="openImage(image)"
+                  ref="resultsViewport"
+                  class="spotlight-results"
+                  role="listbox"
+                  :aria-label="resultLabel"
+                  @scroll.passive="updateScrollShadow"
                 >
-                  <span class="spotlight-thumb"><ThumbnailImage :image="image" /></span>
-                  <span class="spotlight-copy">
-                    <strong>{{ image.name }}</strong>
-                    <small>{{ image.width }} × {{ image.height }} · {{ formatBytes(image.sizeBytes) }}</small>
-                  </span>
-                  <span v-if="image.semanticScore != null" class="spotlight-score">{{ Math.round(image.semanticScore * 100) }}%</span>
-                  <span class="spotlight-actions">
-                    <Button class="spotlight-action-button" variant="secondary" size="sm" aria-label="Copier l’image" @click.stop="copyImage(image)">
-                      <template #leading>
-                        <Check v-if="copiedImageId === image.id" :size="14" />
-                        <Copy v-else :size="14" />
-                      </template>
-                      {{ copiedImageId === image.id ? 'Copiée' : 'Copier' }}
-                    </Button>
-                    <Button class="spotlight-action-button" variant="secondary" size="sm" :aria-label="platform.openFolderLabel" @click.stop="revealImage(image)">
-                      <template #leading><FolderOpen :size="14" /></template>
-                      {{ platform.fileManagerName }}
-                    </Button>
-                    <Button class="spotlight-action-button" variant="primary" size="sm" aria-label="Ouvrir dans Imagyx" @click.stop="openImage(image)">
-                      <template #leading><ExternalLink :size="14" /></template>
-                      Imagyx
-                    </Button>
-                  </span>
-                </div>
+                  <div
+                    v-for="(image, index) in results"
+                    :key="image.id"
+                    class="spotlight-result"
+                    :class="{ 'spotlight-result--selected': index === selectedIndex }"
+                    :data-result-index="index"
+                    :aria-selected="index === selectedIndex"
+                    role="option"
+                    tabindex="-1"
+                    :style="{ animationDelay: `${Math.min(index, 10) * 18}ms` }"
+                    @mouseenter="selectedIndex = index"
+                    @focus="selectedIndex = index"
+                    @click="selectedIndex = index"
+                    @dblclick="openImage(image)"
+                  >
+                    <span class="spotlight-thumb"><ThumbnailImage :image="image" /></span>
+                    <span class="spotlight-copy">
+                      <strong>{{ image.name }}</strong>
+                      <small>{{ image.width }} × {{ image.height }} · {{ formatBytes(image.sizeBytes) }}</small>
+                    </span>
+                    <span v-if="image.semanticScore != null" class="spotlight-score">{{ Math.round(image.semanticScore * 100) }}%</span>
+                    <span class="spotlight-actions">
+                      <Button class="spotlight-action-button" variant="secondary" size="sm" aria-label="Copier l’image" @click.stop="copyImage(image)">
+                        <template #leading>
+                          <Check v-if="copiedImageId === image.id" :size="14" />
+                          <Copy v-else :size="14" />
+                        </template>
+                        {{ copiedImageId === image.id ? 'Copiée' : 'Copier' }}
+                      </Button>
+                      <Button class="spotlight-action-button" variant="secondary" size="sm" :aria-label="platform.openFolderLabel" @click.stop="revealImage(image)">
+                        <template #leading><FolderOpen :size="14" /></template>
+                        {{ platform.fileManagerName }}
+                      </Button>
+                      <Button class="spotlight-action-button" variant="primary" size="sm" aria-label="Ouvrir dans Imagyx" @click.stop="openImage(image)">
+                        <template #leading><ExternalLink :size="14" /></template>
+                        Imagyx
+                      </Button>
+                    </span>
+                  </div>
 
-                <div v-if="searching && results.length === 0" class="spotlight-loading-list" aria-label="Recherche en cours">
-                  <span v-for="item in 5" :key="item" :style="{ animationDelay: `${item * 45}ms` }" />
-                </div>
+                  <div v-if="searching && results.length === 0" class="spotlight-loading-list" aria-label="Recherche en cours">
+                    <span v-for="item in 5" :key="item" :style="{ animationDelay: `${item * 45}ms` }" />
+                  </div>
 
-                <div v-else-if="!searching && !results.length && !error" class="spotlight-empty">
-                  <Search :size="24" />
-                  <strong>Aucun résultat convaincant</strong>
-                  <span>Essaie une description plus courte ou un mot plus visuel.</span>
-                </div>
+                  <div v-else-if="!searching && !results.length && !error" class="spotlight-empty">
+                    <Search :size="24" />
+                    <strong>Aucun résultat convaincant</strong>
+                    <span>Essaie une description plus courte ou un mot plus visuel.</span>
+                  </div>
 
-                <div v-if="error" class="spotlight-error">{{ error }}</div>
+                  <div v-if="error" class="spotlight-error">{{ error }}</div>
+                </div>
+                <div v-if="canScrollDown" class="spotlight-scroll-shadow" aria-hidden="true" />
               </div>
-              <div v-if="canScrollDown" class="spotlight-scroll-shadow" aria-hidden="true" />
-            </div>
-          </section>
-        </Transition>
-      </div>
+            </section>
+          </Transition>
+        </div>
+      </MovingBorder>
     </section>
   </main>
 </template>
@@ -466,15 +509,15 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  padding: 16px 14px 14px;
+  padding: 14px 14px 24px;
   background: transparent;
 }
 
 .spotlight-stage {
   width: 100%;
   opacity: 0;
-  transform: translateY(-8px) scale(0.965);
-  filter: blur(7px);
+  transform: translateY(-7px) scale(0.97);
+  filter: blur(6px);
   pointer-events: none;
   transform-origin: 50% 18px;
 }
@@ -484,85 +527,76 @@ onBeforeUnmount(() => {
   transform: none;
   filter: none;
   pointer-events: auto;
-  animation: spotlight-pop 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.spotlight-shell {
-  position: relative;
-  width: 100%;
-  border-radius: 22px;
-  transition: filter 220ms ease;
-}
-
-.spotlight-shell--expanded {
-  filter: drop-shadow(0 30px 58px rgb(2 6 23 / 0.24));
+  animation: spotlight-pop 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .spotlight-moving-border {
-  position: relative;
-  z-index: 3;
   width: 100%;
-  transition: border-radius 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  filter: drop-shadow(0 10px 22px rgb(15 23 42 / 0.09));
+  transition: filter 240ms ease;
 }
 
-.spotlight-shell--expanded .spotlight-moving-border,
-.spotlight-shell--expanded .spotlight-moving-border :deep(.moving-border__clip) {
-  border-radius: 22px 22px 0 0;
+.spotlight-moving-border:has(.spotlight-surface--expanded) {
+  filter: drop-shadow(0 18px 36px rgb(15 23 42 / 0.13));
 }
 
-.spotlight-shell--expanded .spotlight-moving-border :deep(.moving-border__surface) {
-  border-radius: 21px 21px 0 0;
+:global(:root[data-theme='dark']) .spotlight-moving-border {
+  filter: drop-shadow(0 11px 24px rgb(0 0 0 / 0.2));
 }
 
-.spotlight-shell--expanded .spotlight-moving-border::after {
-  content: '';
-  position: absolute;
-  z-index: 4;
-  right: 1px;
-  bottom: -1px;
-  left: 1px;
-  height: 3px;
-  background: color-mix(in srgb, var(--surface-elevated) 96%, transparent);
-  pointer-events: none;
+:global(:root[data-theme='dark']) .spotlight-moving-border:has(.spotlight-surface--expanded) {
+  filter: drop-shadow(0 20px 40px rgb(0 0 0 / 0.28));
+}
+
+.spotlight-surface {
+  overflow: hidden;
+  border-radius: 21px;
+  background: color-mix(in srgb, var(--surface-elevated) 95%, transparent);
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.08),
+    inset 0 -1px rgb(15 23 42 / 0.045);
+  backdrop-filter: blur(26px) saturate(1.16);
+  transition:
+    background-color 180ms ease,
+    box-shadow 220ms ease;
+}
+
+.spotlight-surface:focus-within {
+  background: color-mix(in srgb, var(--surface-elevated) 98%, transparent);
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.1),
+    inset 0 -1px rgb(15 23 42 / 0.04);
 }
 
 .spotlight-search {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 13px;
   min-height: 70px;
   padding: 0 18px;
-  border-radius: 21px;
-  background: color-mix(in srgb, var(--surface-elevated) 94%, transparent);
   color: var(--text-muted);
-  box-shadow:
-    inset 0 1px rgb(255 255 255 / 0.1),
-    inset 0 -1px rgb(0 0 0 / 0.06),
-    0 18px 46px rgb(2 6 23 / 0.22);
-  backdrop-filter: blur(28px) saturate(1.2);
+}
+
+.spotlight-search::after {
+  content: '';
+  position: absolute;
+  right: 16px;
+  bottom: 0;
+  left: 16px;
+  height: 1px;
+  background: color-mix(in srgb, var(--border) 76%, transparent);
+  opacity: 0;
+  transform: scaleX(0.92);
   transition:
-    border-radius 220ms cubic-bezier(0.16, 1, 0.3, 1),
-    background-color 180ms ease,
-    box-shadow 220ms ease;
+    opacity 160ms ease,
+    transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.spotlight-shell--expanded .spotlight-search {
-  border-radius: 21px 21px 0 0;
-  box-shadow: inset 0 1px rgb(255 255 255 / 0.1);
-}
-
-.spotlight-search:focus-within {
-  background: color-mix(in srgb, var(--surface-elevated) 98%, transparent);
-  box-shadow:
-    inset 0 1px rgb(255 255 255 / 0.13),
-    0 20px 55px rgb(2 6 23 / 0.2),
-    0 0 0 5px color-mix(in srgb, var(--primary) 9%, transparent);
-}
-
-.spotlight-shell--expanded .spotlight-search:focus-within {
-  box-shadow:
-    inset 0 1px rgb(255 255 255 / 0.13),
-    0 0 0 4px color-mix(in srgb, var(--primary) 8%, transparent);
+.spotlight-surface--expanded .spotlight-search::after {
+  opacity: 1;
+  transform: scaleX(1);
 }
 
 .spotlight-search input {
@@ -605,7 +639,7 @@ onBeforeUnmount(() => {
   padding: 5px 8px;
   border-bottom-color: var(--border-strong);
   border-radius: 7px;
-  box-shadow: 0 2px 0 var(--border);
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--border) 80%, transparent);
 }
 
 .spotlight-result-count {
@@ -615,47 +649,23 @@ onBeforeUnmount(() => {
 }
 
 .spotlight-results-panel {
-  position: relative;
-  z-index: 2;
-  margin-top: -1px;
+  max-height: 458px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--border-strong) 76%, transparent);
-  border-top: 0;
-  border-radius: 0 0 22px 22px;
-  background: color-mix(in srgb, var(--surface-elevated) 96%, transparent);
-  box-shadow:
-    inset 1px 0 rgb(255 255 255 / 0.035),
-    inset -1px 0 rgb(255 255 255 / 0.025),
-    inset 0 -1px rgb(255 255 255 / 0.04);
-  backdrop-filter: blur(28px) saturate(1.18);
   transform-origin: 50% 0;
-}
-
-.spotlight-results-panel::before {
-  content: '';
-  position: absolute;
-  z-index: 3;
-  top: 0;
-  right: 18px;
-  left: 18px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary) 18%, var(--border)) 30%, color-mix(in srgb, var(--primary) 18%, var(--border)) 70%, transparent);
-  opacity: 0.65;
-  pointer-events: none;
 }
 
 .spotlight-results-shell {
   position: relative;
-  height: 472px;
+  height: 458px;
   overflow: hidden;
 }
 
 .spotlight-results {
   height: 100%;
   overflow-y: auto;
-  padding: 9px 9px 20px;
+  padding: 8px 9px 20px;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--border-strong) 80%, transparent) transparent;
+  scrollbar-color: color-mix(in srgb, var(--border-strong) 78%, transparent) transparent;
 }
 
 .spotlight-result {
@@ -675,10 +685,10 @@ onBeforeUnmount(() => {
   text-align: left;
   cursor: default;
   opacity: 0;
-  animation: result-rise 235ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: result-rise 230ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
   transition:
-    background-color 150ms ease,
-    border-color 150ms ease,
+    background-color 145ms ease,
+    border-color 145ms ease,
     transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
     box-shadow 180ms ease;
 }
@@ -686,8 +696,8 @@ onBeforeUnmount(() => {
 .spotlight-result:hover,
 .spotlight-result--selected {
   border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
-  background: color-mix(in srgb, var(--primary-soft) 70%, var(--surface));
-  box-shadow: inset 0 1px rgb(255 255 255 / 0.05);
+  background: color-mix(in srgb, var(--primary-soft) 68%, var(--surface));
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.045);
   transform: translateX(2px) scale(0.998);
 }
 
@@ -698,13 +708,13 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border);
   border-radius: 11px;
   background: var(--surface-hover);
-  box-shadow: 0 6px 16px rgb(2 6 23 / 0.12);
+  box-shadow: 0 5px 14px rgb(2 6 23 / 0.1);
   transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .spotlight-result:hover .spotlight-thumb,
 .spotlight-result--selected .spotlight-thumb {
-  transform: scale(1.035) rotate(-0.35deg);
+  transform: scale(1.035) rotate(-0.3deg);
 }
 
 .spotlight-thumb :deep(img) { width: 100%; height: 100%; object-fit: cover; }
@@ -733,8 +743,8 @@ onBeforeUnmount(() => {
 
 .spotlight-actions {
   position: absolute;
-  top: 50%;
   right: 10px;
+  top: 50%;
   z-index: 2;
   display: flex;
   align-items: center;
@@ -743,8 +753,8 @@ onBeforeUnmount(() => {
   opacity: 0;
   transform: translate(10px, -50%) scale(0.97);
   pointer-events: none;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary-soft) 93%, var(--surface)) 32%);
-  transition: opacity 150ms ease, transform 190ms cubic-bezier(0.16, 1, 0.3, 1);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary-soft) 92%, var(--surface)) 32%);
+  transition: opacity 145ms ease, transform 185ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .spotlight-result:hover .spotlight-actions,
@@ -760,8 +770,8 @@ onBeforeUnmount(() => {
   padding-inline: 9px;
   border-radius: 9px;
   font-size: 10px;
-  box-shadow: 0 6px 18px rgb(2 6 23 / 0.12);
-  transition: transform 150ms ease, background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  box-shadow: 0 5px 15px rgb(2 6 23 / 0.1);
+  transition: transform 145ms ease, background-color 145ms ease, border-color 145ms ease, color 145ms ease;
 }
 
 .spotlight-actions :deep(.ui-button:hover) { transform: translateY(-1px); }
@@ -802,61 +812,61 @@ onBeforeUnmount(() => {
   bottom: 0;
   left: 0;
   z-index: 4;
-  height: 70px;
+  height: 58px;
   pointer-events: none;
-  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--surface-elevated) 98%, transparent) 84%);
-  box-shadow: inset 0 -18px 22px -18px rgb(2 6 23 / 0.42);
-  animation: shadow-breathe 1.8s ease-in-out infinite;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--surface-elevated) 97%, transparent) 88%);
+  box-shadow: inset 0 -14px 18px -18px rgb(2 6 23 / 0.32);
 }
 
 .results-morph-enter-active,
 .results-morph-leave-active {
   transition:
-    opacity 190ms ease,
-    transform 280ms cubic-bezier(0.16, 1, 0.3, 1),
-    clip-path 280ms cubic-bezier(0.16, 1, 0.3, 1),
-    filter 180ms ease;
+    max-height 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 170ms ease,
+    transform 250ms cubic-bezier(0.16, 1, 0.3, 1),
+    clip-path 250ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 170ms ease;
 }
 
 .results-morph-enter-from,
 .results-morph-leave-to {
+  max-height: 0;
   opacity: 0;
-  transform: translateY(-8px) scaleY(0.9) scaleX(0.992);
-  clip-path: inset(0 0 98% 0 round 0 0 22px 22px);
-  filter: blur(5px);
+  transform: translateY(-7px) scaleY(0.965);
+  clip-path: inset(0 2.5% 100% 2.5% round 0 0 20px 20px);
+  filter: blur(4px);
 }
 
 .results-morph-enter-to,
 .results-morph-leave-from {
+  max-height: 458px;
   opacity: 1;
   transform: none;
-  clip-path: inset(0 round 0 0 22px 22px);
+  clip-path: inset(0 round 0 0 20px 20px);
   filter: none;
 }
 
 .spin { animation: spin 0.85s linear infinite; }
 
 @keyframes spotlight-pop {
-  0% { opacity: 0; transform: translateY(-12px) scale(0.94); filter: blur(8px); }
-  68% { opacity: 1; transform: translateY(1px) scale(1.006); filter: blur(0); }
+  0% { opacity: 0; transform: translateY(-10px) scale(0.95); filter: blur(7px); }
+  70% { opacity: 1; transform: translateY(1px) scale(1.004); filter: blur(0); }
   100% { opacity: 1; transform: none; filter: none; }
 }
 
 @keyframes result-rise {
-  from { opacity: 0; transform: translateY(7px) scale(0.992); }
+  from { opacity: 0; transform: translateY(6px) scale(0.993); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes skeleton-in { to { opacity: 1; } }
 @keyframes skeleton-shimmer { to { background-position: -160% 0; } }
-@keyframes shadow-breathe { 50% { opacity: 0.72; } }
 @keyframes spin { to { transform: rotate(1turn); } }
 
 @media (prefers-reduced-motion: reduce) {
   .spotlight-stage--visible,
   .spotlight-result,
-  .spotlight-loading-list span,
-  .spotlight-scroll-shadow { animation-duration: 0.01ms; }
+  .spotlight-loading-list span { animation-duration: 0.01ms; }
   .results-morph-enter-active,
   .results-morph-leave-active { transition-duration: 0.01ms; }
 }
