@@ -21,7 +21,6 @@ const MODEL_FILES: &[&str] = &[
     "preprocessor_config.json",
     "tokenizer.json",
     "tokenizer_config.json",
-    "special_tokens_map.json",
     "onnx/vision_model.onnx",
     "onnx/text_model.onnx",
 ];
@@ -68,9 +67,8 @@ pub fn prepare_local_model(
     let mut known_total = 0_u64;
     let mut file_sizes = Vec::with_capacity(missing.len());
     for relative in &missing {
-        let url = model_url(relative);
         let size = client
-            .head(&url)
+            .head(model_url(relative))
             .send()
             .ok()
             .and_then(|response| response.content_length())
