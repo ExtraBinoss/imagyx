@@ -57,8 +57,6 @@ defineExpose({ scrollToIndex })
 <template>
   <div class="spotlight-results-shell">
     <div ref="viewport" class="spotlight-results" role="listbox" @scroll.passive="updateScrollShadow">
-      <SpotlightIndexProgress v-for="job in jobs" :key="job.folderId" :job="job" />
-
       <Button
         v-if="showAddAction"
         class="spotlight-add-folder"
@@ -73,6 +71,8 @@ defineExpose({ scrollToIndex })
           <small>Choisir un dossier et lancer l’indexation en arrière-plan</small>
         </span>
       </Button>
+
+      <SpotlightIndexProgress v-for="job in jobs" :key="job.folderId" :job="job" />
 
       <div
         v-for="(image, index) in results"
@@ -138,7 +138,6 @@ defineExpose({ scrollToIndex })
   scrollbar-color: color-mix(in srgb, var(--border-strong) 78%, transparent) transparent;
 }
 .spotlight-add-folder { justify-content: flex-start; margin: 4px 4px 8px; min-height: 64px; text-align: left; }
-.spotlight-add-folder :deep(.ui-button__content) { flex: 1; }
 .spotlight-add-folder__copy { display: block; min-width: 0; }
 .spotlight-add-folder__copy strong,
 .spotlight-add-folder__copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -218,7 +217,7 @@ defineExpose({ scrollToIndex })
 .spotlight-result:hover .spotlight-actions,
 .spotlight-result--selected .spotlight-actions,
 .spotlight-result:focus-within .spotlight-actions { opacity: 1; transform: translate(0, -50%) scale(1); pointer-events: auto; }
-.spotlight-actions :deep(.ui-button) { min-height: 31px; padding-inline: 9px; border-radius: 9px; font-size: 10px; }
+.spotlight-action-button { min-height: 31px; padding-inline: 9px; border-radius: 9px; font-size: 10px; }
 .spotlight-loading-list { display: grid; gap: 8px; padding: 4px; }
 .spotlight-loading-list span {
   height: 70px;
