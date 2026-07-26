@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type { AppInfo, FollowedFolder, ImageAsset, IndexProgress, ModelDownloadProgress, ModelStatus, QueryConcept, RuntimeStats, SemanticMatch } from '../types'
 import { imagyxApi } from '../api/tauri'
-import { semanticRuntime, type SemanticModelKey } from '../services/semantic'
+import { semanticRuntime } from '../services/semantic'
 import { formatBytes } from '../utils'
 import { useToastStore } from './toasts'
 
@@ -12,7 +12,6 @@ interface LibraryState {
   folders: FollowedFolder[]
   images: ImageAsset[]
   selectedFolderId: string | null
-  selectedModel: SemanticModelKey
   query: string
   activeConcepts: QueryConcept[]
   loading: boolean
@@ -30,7 +29,7 @@ interface LibraryState {
 
 export const useLibraryStore = defineStore('library', {
   state: (): LibraryState => ({
-    folders: [], images: [], selectedFolderId: null, selectedModel: semanticRuntime.modelKey,
+    folders: [], images: [], selectedFolderId: null,
     query: '', activeConcepts: [], loading: false, semanticSearching: false, searchSequence: 0,
     initialized: false, refreshScheduled: false, appInfo: null, progress: null,
     modelProgress: null, runtimeStats: null, error: null, listeners: [],
@@ -44,6 +43,7 @@ export const useLibraryStore = defineStore('library', {
       if (this.initialized) return
       this.loading = true
       try {
+        localStorage.removeItem('imagyx.semantic-model')
         semanticRuntime.setCallbacks({
           progress: (progress) => this.handleModelProgress(progress),
           stats: (stats) => {
@@ -133,9 +133,7 @@ export const useLibraryStore = defineStore('library', {
       if (!image || image.semanticMatches?.length || explainingImages.has(imageId)) return
       explainingImages.add(imageId)
       try {
-        const concepts = this.activeConcepts.length
-          ? this.activeConcepts
-          : await semanticRuntime.genericImageConcepts()
+        const concepts = this.activeConcepts.length ? this.activeConcepts : await semanticRuntime.genericImageConcepts()
         const explanation = (await imagyxApi.explainResults([imageId], concepts))[0]
         if (!explanation) return
         const haystack = `${image.name} ${image.path}`.toLocaleLowerCase('fr')
@@ -144,28 +142,12 @@ export const useLibraryStore = defineStore('library', {
           .map((concept) => ({ label: concept.label, score: 1, source: 'filename' as const }))
         const semantic = explanation.matches.filter((match) => match.score >= 0.5)
         const index = this.images.findIndex((item) => item.id === imageId)
-        if (index >= 0) {
-          this.images[index] = {
-            ...this.images[index],
-            semanticMatches: [...filename, ...semantic].slice(0, 3),
-          }
-        }
+        if (index >= 0) this.images[index] = { ...this.images[index], semanticMatches: [...filename, ...semantic].slice(0, 5) }
       } catch (error) {
         this.reportError(error)
       } finally {
         explainingImages.delete(imageId)
       }
-    },
-    async selectModel(modelKey: SemanticModelKey) {
-      if (modelKey === this.selectedModel) return
-      this.selectedModel = modelKey
-      this.activeConcepts = []
-      this.semanticSearching = true
-      try {
-        await semanticRuntime.selectModel(modelKey)
-        await this.refreshImages()
-      } catch (error) { this.reportError(error) }
-      finally { this.semanticSearching = false }
     },
     async addFolder(path: string) {
       try { const folder = await imagyxApi.addFolder(path); await this.refreshFolders(); this.selectedFolderId = folder.id; void imagyxApi.indexFolder(folder.id).catch((error) => this.reportError(error)) }
