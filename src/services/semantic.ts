@@ -9,14 +9,8 @@ import {
 import { imagyxApi } from '../api/tauri'
 import type { ModelDownloadProgress, QueryConcept, RuntimeStats } from '../types'
 
-export type SemanticModelKey = 'mobileclip-s0' | 'mobileclip2-s2'
-
-export const SEMANTIC_MODELS = [
-  { key: 'mobileclip-s0' as const, name: 'MobileCLIP-S0', description: 'Rapide · ~220 Mo' },
-  { key: 'mobileclip2-s2' as const, name: 'MobileCLIP2-S2', description: 'Plus précis · téléchargement requis' },
-]
-
-const MODEL_STORAGE_KEY = 'imagyx.semantic-model'
+const MODEL_ID = 'Xenova/mobileclip_s0'
+const MODEL_NAME = 'MobileCLIP-S0'
 const INITIAL_BATCH_SIZE = 4
 const MAX_BATCH_SIZE = 16
 const DEFAULT_IMAGE_LABELS = [
@@ -39,27 +33,6 @@ export interface EmbeddedQuery {
   concepts: QueryConcept[]
 }
 
-const modelSpecs = {
-  'mobileclip-s0': {
-    key: 'mobileclip-s0' as const,
-    name: 'MobileCLIP-S0',
-    modelId: 'Xenova/mobileclip_s0',
-    directorySuffix: /[\\/]+Xenova[\\/]mobileclip_s0$/,
-    visionFile: undefined,
-    textFile: undefined,
-    inputSize: 224,
-  },
-  'mobileclip2-s2': {
-    key: 'mobileclip2-s2' as const,
-    name: 'MobileCLIP2-S2',
-    modelId: 'plhery/mobileclip2-onnx',
-    directorySuffix: /[\\/]+plhery[\\/]mobileclip2-onnx$/,
-    visionFile: 's2/vision_model',
-    textFile: 's2/text_model',
-    inputSize: 256,
-  },
-}
-
 class SemanticRuntime {
   private visionModel: any = null
   private textModel: any = null
@@ -70,32 +43,11 @@ class SemanticRuntime {
   private textLoading: Promise<void> | null = null
   private genericConcepts: QueryConcept[] | null = null
   private callbacks: RuntimeCallbacks | null = null
-  private selectedModel: SemanticModelKey = readStoredModel()
-  private stats: RuntimeStats = defaultStats(this.selectedModel)
-
-  get modelKey() { return this.selectedModel }
+  private stats: RuntimeStats = defaultStats()
 
   setCallbacks(callbacks: RuntimeCallbacks) {
     this.callbacks = callbacks
     callbacks.stats(this.stats)
-  }
-
-  async selectModel(modelKey: SemanticModelKey) {
-    if (modelKey === this.selectedModel && this.visionModel) return
-    this.selectedModel = modelKey
-    localStorage.setItem(MODEL_STORAGE_KEY, modelKey)
-    this.visionModel = null
-    this.textModel = null
-    this.processor = null
-    this.tokenizer = null
-    this.genericConcepts = null
-    this.loading = null
-    this.textLoading = null
-    this.stats = defaultStats(modelKey)
-    this.callbacks?.stats(this.stats)
-    await this.prepare()
-    await imagyxApi.resetEmbeddings()
-    await this.indexPending()
   }
 
   async prepare() {
@@ -186,12 +138,10 @@ class SemanticRuntime {
     if (this.textLoading) return this.textLoading
     this.textLoading = (async () => {
       this.patchStats({ stage: 'loading-text' })
-      const spec = modelSpecs[this.selectedModel]
-      const base = this.modelOptions()
-      const textOptions = spec.textFile ? { ...base, model_file_name: spec.textFile } : base
+      const options = this.modelOptions()
       ;[this.tokenizer, this.textModel] = await Promise.all([
-        AutoTokenizer.from_pretrained(spec.modelId, base),
-        CLIPTextModelWithProjection.from_pretrained(spec.modelId, textOptions),
+        AutoTokenizer.from_pretrained(MODEL_ID, options),
+        CLIPTextModelWithProjection.from_pretrained(MODEL_ID, options),
       ])
       this.patchStats({ stage: 'ready' })
     })()
@@ -199,11 +149,10 @@ class SemanticRuntime {
   }
 
   private async loadVisionRuntime() {
-    const spec = modelSpecs[this.selectedModel]
-    this.publishProgress({ stage: 'checking', message: `Vérification de ${spec.name}…`, currentBytes: 0, totalBytes: 0, currentFile: 0, totalFiles: 0 })
-    this.patchStats({ stage: 'loading', modelName: spec.name, backendRequested: 'WebGPU' })
-    const modelRoot = await imagyxApi.prepareLocalModel(spec.key)
-    const modelsDir = modelRoot.replace(spec.directorySuffix, '')
+    this.publishProgress({ stage: 'checking', message: `Vérification de ${MODEL_NAME}…`, currentBytes: 0, totalBytes: 0, currentFile: 0, totalFiles: 0 })
+    this.patchStats({ stage: 'loading', modelName: MODEL_NAME, backendRequested: 'WebGPU' })
+    const modelRoot = await imagyxApi.prepareLocalModel('mobileclip-s0')
+    const modelsDir = modelRoot.replace(/[\\/]+Xenova[\\/]mobileclip_s0$/, '')
     env.allowLocalModels = true
     env.allowRemoteModels = false
     env.localModelPath = `${imagyxApi.fileUrl(modelsDir).replace(/\/$/, '')}/`
@@ -217,30 +166,22 @@ class SemanticRuntime {
       await this.loadVisionForDevice('wasm')
       this.patchStats({ stage: 'ready', backendEffective: 'Transformers.js · WASM', accelerationActive: false, accelerationLabel: 'CPU WASM', fallbackReason: `WebGPU indisponible: ${String(error)}` })
     }
-    this.publishProgress({ stage: 'ready', message: `${spec.name} prêt hors connexion.`, currentBytes: 0, totalBytes: 0, currentFile: 6, totalFiles: 6 })
+    this.publishProgress({ stage: 'ready', message: `${MODEL_NAME} prêt hors connexion.`, currentBytes: 0, totalBytes: 0, currentFile: 6, totalFiles: 6 })
   }
 
   private async loadVisionForDevice(device: Device) {
-    const spec = modelSpecs[this.selectedModel]
-    const base = this.modelOptions(device)
-    const visionOptions = spec.visionFile ? { ...base, model_file_name: spec.visionFile } : base
+    const options = this.modelOptions(device)
     ;[this.processor, this.visionModel] = await Promise.all([
-      AutoProcessor.from_pretrained(spec.modelId, base),
-      CLIPVisionModelWithProjection.from_pretrained(spec.modelId, visionOptions),
+      AutoProcessor.from_pretrained(MODEL_ID, options),
+      CLIPVisionModelWithProjection.from_pretrained(MODEL_ID, options),
     ])
-    const size = spec.inputSize
-    const blank = new RawImage(new Uint8ClampedArray(size * size * 4), size, size, 4)
+    const blank = new RawImage(new Uint8ClampedArray(224 * 224 * 4), 224, 224, 4)
     await this.visionModel(await this.processor(blank))
   }
 
   private modelOptions(device: Device = this.device) { return { device, dtype: 'fp32', local_files_only: true } as const }
   private publishProgress(progress: ModelDownloadProgress) { this.callbacks?.progress(progress); void imagyxApi.updateModelProgress(progress) }
   private patchStats(patch: Partial<RuntimeStats>) { this.stats = { ...this.stats, ...patch, updatedAt: Date.now() }; this.callbacks?.stats(this.stats); void imagyxApi.updateRuntimeStats(this.stats) }
-}
-
-function readStoredModel(): SemanticModelKey {
-  const value = localStorage.getItem(MODEL_STORAGE_KEY)
-  return value === 'mobileclip2-s2' ? value : 'mobileclip-s0'
 }
 
 function queryConceptLabels(query: string): string[] {
@@ -253,8 +194,8 @@ function tensorRows(tensor: any): number[][] {
   return (tensor.normalize().tolist() as number[][]).map((row) => Array.from(row, Number))
 }
 
-function defaultStats(modelKey: SemanticModelKey): RuntimeStats {
-  return { modelName: modelSpecs[modelKey].name, stage: 'idle', backendRequested: 'WebGPU', backendEffective: 'En attente', accelerationActive: false,
+function defaultStats(): RuntimeStats {
+  return { modelName: MODEL_NAME, stage: 'idle', backendRequested: 'WebGPU', backendEffective: 'En attente', accelerationActive: false,
     accelerationLabel: 'Non initialisée', batchSize: INITIAL_BATCH_SIZE, current: 0, total: 0, batchCurrent: 0, batchTotal: 0,
     imagesPerSecond: 0, averageMsPerImage: 0, decodeMs: 0, inferenceMs: 0, saveMs: 0, elapsedMs: 0, systemCpuPercent: 0,
     processCpuPercent: 0, memoryUsedBytes: 0, memoryTotalBytes: 0, processMemoryBytes: 0, modelCacheBytes: 0, thumbnailCacheItems: 0, updatedAt: Date.now() }
