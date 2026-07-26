@@ -6,6 +6,12 @@ export interface FollowedFolder {
   createdAt: number
 }
 
+export interface SemanticMatch {
+  label: string
+  score: number
+  source: 'semantic' | 'filename'
+}
+
 export interface ImageAsset {
   id: string
   folderId: string
@@ -18,10 +24,16 @@ export interface ImageAsset {
   modifiedAt: number
   thumbnailPath: string
   semanticScore?: number
+  semanticMatches?: SemanticMatch[]
 }
 
 export interface ImageEmbedding {
   imageId: string
+  vector: number[]
+}
+
+export interface QueryConcept {
+  label: string
   vector: number[]
 }
 
@@ -101,4 +113,5 @@ export interface SearchRequest {
   folderId?: string
   limit?: number
   queryVector?: number[]
+  concepts?: QueryConcept[]
 }
