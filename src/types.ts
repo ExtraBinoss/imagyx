@@ -47,7 +47,9 @@ export interface IndexProgress {
   folderName: string
   current: number
   total: number
-  stage: 'discovering' | 'thumbnails' | 'embedding' | 'saving' | 'complete' | 'error'
+  batchCurrent?: number
+  batchTotal?: number
+  stage: 'discovering' | 'metadata' | 'embedding' | 'saving' | 'queued' | 'complete' | 'error'
   message: string
 }
 
