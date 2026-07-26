@@ -8,6 +8,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
     AppError,
+    ml::MODEL_ID,
     models::{FollowedFolder, ImageAsset, ImageFingerprint, VectorEntry},
 };
 
@@ -67,7 +68,12 @@ impl Database {
                 dimensions INTEGER NOT NULL,
                 vector BLOB NOT NULL,
                 updated_at INTEGER NOT NULL
-            );",
+            );
+            CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings(model);",
+        )?;
+        connection.execute(
+            "DELETE FROM embeddings WHERE model <> ?1",
+            params![MODEL_ID],
         )?;
         Ok(())
     }
@@ -184,39 +190,33 @@ impl Database {
             }
         }
 
-        {
-            let embedding_ids: HashSet<&str> = embeddings
-                .iter()
-                .map(|(image_id, _)| image_id.as_str())
-                .collect();
-            for asset in assets {
-                if !embedding_ids.contains(asset.id.as_str()) {
-                    transaction.execute(
-                        "DELETE FROM embeddings WHERE image_id = ?1",
-                        params![asset.id],
-                    )?;
-                }
-            }
-
-            let mut statement = transaction.prepare(
-                "INSERT INTO embeddings (image_id, model, dimensions, vector, updated_at)
-                 VALUES (?1, 'clip-vit-b32', ?2, ?3, ?4)
-                 ON CONFLICT(image_id) DO UPDATE SET
-                    model = excluded.model,
-                    dimensions = excluded.dimensions,
-                    vector = excluded.vector,
-                    updated_at = excluded.updated_at",
-            )?;
-            for (image_id, vector) in embeddings {
-                statement.execute(params![
-                    image_id,
-                    i64::try_from(vector.len()).unwrap_or_default(),
-                    encode_vector(vector),
-                    now
-                ])?;
+        let embedding_ids: HashSet<&str> = embeddings
+            .iter()
+            .map(|(image_id, _)| image_id.as_str())
+            .collect();
+        for asset in assets {
+            if !embedding_ids.contains(asset.id.as_str()) {
+                transaction.execute(
+                    "DELETE FROM embeddings WHERE image_id = ?1",
+                    params![asset.id],
+                )?;
             }
         }
+        insert_embeddings(&transaction, embeddings, now)?;
 
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// Persists several inference batches with one SQLite transaction.
+    /// Metadata was already written before semantic indexing starts.
+    pub fn save_embeddings(&self, embeddings: &[(String, Vec<f32>)]) -> Result<(), AppError> {
+        if embeddings.is_empty() {
+            return Ok(());
+        }
+        let mut connection = self.connect()?;
+        let transaction = connection.transaction()?;
+        insert_embeddings(&transaction, embeddings, Utc::now().timestamp_millis())?;
         transaction.commit()?;
         Ok(())
     }
@@ -267,9 +267,10 @@ impl Database {
         let connection = self.connect()?;
         let mut statement = connection.prepare(
             "SELECT e.image_id, i.folder_id, e.vector
-             FROM embeddings e JOIN images i ON i.id = e.image_id",
+             FROM embeddings e JOIN images i ON i.id = e.image_id
+             WHERE e.model = ?1",
         )?;
-        let rows = statement.query_map([], |row| {
+        let rows = statement.query_map(params![MODEL_ID], |row| {
             let blob: Vec<u8> = row.get(2)?;
             Ok(VectorEntry {
                 image_id: row.get(0)?,
@@ -279,6 +280,32 @@ impl Database {
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(AppError::from)
     }
+}
+
+fn insert_embeddings(
+    transaction: &rusqlite::Transaction<'_>,
+    embeddings: &[(String, Vec<f32>)],
+    now: i64,
+) -> Result<(), AppError> {
+    let mut statement = transaction.prepare(
+        "INSERT INTO embeddings (image_id, model, dimensions, vector, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(image_id) DO UPDATE SET
+            model = excluded.model,
+            dimensions = excluded.dimensions,
+            vector = excluded.vector,
+            updated_at = excluded.updated_at",
+    )?;
+    for (image_id, vector) in embeddings {
+        statement.execute(params![
+            image_id,
+            MODEL_ID,
+            i64::try_from(vector.len()).unwrap_or_default(),
+            encode_vector(vector),
+            now
+        ])?;
+    }
+    Ok(())
 }
 
 fn map_folder(row: &rusqlite::Row<'_>) -> rusqlite::Result<FollowedFolder> {
@@ -360,7 +387,7 @@ mod tests {
                     thumbnail_path: "/tmp/thumb.jpg".into(),
                     semantic_score: None,
                 }],
-                &[("image".into(), vec![0.1, 0.2])],
+                &[('image'.to_string(), vec![0.1, 0.2])],
             )
             .expect("save image");
         assert_eq!(database.folders().expect("folders")[0].image_count, 1);
