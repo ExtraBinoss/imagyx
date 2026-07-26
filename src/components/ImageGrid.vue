@@ -19,8 +19,10 @@ const viewportHeight = ref(0)
 const scrollTop = ref(0)
 const activeImageId = ref<string | null>(null)
 const selectedImageId = ref<string | null>(null)
+const isScrolling = ref<boolean>(false)
 let resizeObserver: ResizeObserver | null = null
 let scrollFrame = 0
+let scrollTimeout: number | undefined
 
 const columns = computed(() => Math.max(1, Math.floor((viewportWidth.value + GAP) / (MIN_CARD_WIDTH + GAP))))
 const cardWidth = computed(() => viewportWidth.value <= 0 ? MIN_CARD_WIDTH : (viewportWidth.value - GAP * (columns.value - 1)) / columns.value)
@@ -35,6 +37,7 @@ const spacerHeight = computed(() => Math.max(0, totalRows.value * rowStride.valu
 const windowOffset = computed(() => startRow.value * rowStride.value)
 
 function activate(image: ImageAsset) {
+  if (isScrolling.value) return
   activeImageId.value = image.id
   emit('explain', image.id)
 }
@@ -69,6 +72,12 @@ function measure() {
 }
 
 function handleScroll() {
+  isScrolling.value = true
+  if (scrollTimeout) window.clearTimeout(scrollTimeout)
+  scrollTimeout = window.setTimeout(() => {
+    isScrolling.value = false
+  }, 120)
+
   if (scrollFrame) return
   scrollFrame = requestAnimationFrame(() => {
     scrollFrame = 0
@@ -86,6 +95,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   if (scrollFrame) cancelAnimationFrame(scrollFrame)
+  if (scrollTimeout) window.clearTimeout(scrollTimeout)
   window.removeEventListener('keydown', handleGlobalKeydown)
 })
 
@@ -114,7 +124,11 @@ watch(() => props.images.length, () => {
     </div>
 
     <div v-else-if="images.length > 0" class="virtual-grid-spacer" :style="{ height: `${spacerHeight}px` }" role="list" :aria-label="`${images.length} images`">
-      <div class="virtual-grid-window" :style="{ transform: `translateY(${windowOffset}px)`, gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }">
+      <div
+        class="virtual-grid-window"
+        :class="{ 'is-scrolling': isScrolling }"
+        :style="{ transform: `translateY(${windowOffset}px)`, gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }"
+      >
         <article
           v-for="entry in visibleEntries"
           :key="entry.image.id"
@@ -168,6 +182,12 @@ watch(() => props.images.length, () => {
 </template>
 
 <style scoped>
+.virtual-grid-window {
+  will-change: transform;
+}
+.virtual-grid-window.is-scrolling {
+  pointer-events: none;
+}
 .image-card {
   min-width: 0;
   padding: 3px;
