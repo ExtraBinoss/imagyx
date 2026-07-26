@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { X } from '@lucide/vue'
 import AppSidebar from './components/AppSidebar.vue'
@@ -11,13 +12,17 @@ import Button from './components/ui/Button/Button.vue'
 import ToastViewport from './components/ui/Toast/ToastViewport.vue'
 import type { ImageAsset } from './types'
 import { useLibraryStore } from './stores/library'
+import { usePlatformStore } from './stores/platform'
 import { useThemeStore } from './stores/theme'
 import { debounce } from './utils'
 
 const store = useLibraryStore()
+const platform = usePlatformStore()
 const theme = useThemeStore()
 const localQuery = ref('')
 const previewImage = ref<ImageAsset | null>(null)
+const searchHeader = ref<{ focusSearch: () => void; selectSearch: () => void } | null>(null)
+let unlistenOpenImage: UnlistenFn | null = null
 
 const selectedTitle = computed(() => store.selectedFolder?.name ?? 'Toutes les images')
 const subtitle = computed(() => {
@@ -43,12 +48,44 @@ async function removeFolder(folderId: string) {
   await store.removeFolder(folderId)
 }
 
-onMounted(() => {
+function handleTypeToSearch(event: KeyboardEvent) {
+  if (previewImage.value) return
+  const target = event.target as HTMLElement | null
+  if (target?.matches('input, textarea, select, [contenteditable="true"]')) return
+
+  if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 'k') {
+    event.preventDefault()
+    searchHeader.value?.selectSearch()
+    return
+  }
+
+  if (event.ctrlKey || event.metaKey || event.altKey || event.key.length !== 1 || event.key.trim().length === 0) return
+  event.preventDefault()
+  localQuery.value += event.key
+  void nextTick(() => searchHeader.value?.focusSearch())
+}
+
+async function openImageFromSpotlight(imageId: string) {
+  localQuery.value = ''
+  store.query = ''
+  store.selectedFolderId = null
+  await store.refreshImages()
+  previewImage.value = store.images.find((image) => image.id === imageId) ?? null
+}
+
+onMounted(async () => {
   theme.initialize()
+  void platform.initialize()
   void store.initialize()
+  window.addEventListener('keydown', handleTypeToSearch)
+  unlistenOpenImage = await listen<string>('open-image-requested', (event) => {
+    void openImageFromSpotlight(event.payload)
+  })
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleTypeToSearch)
+  unlistenOpenImage?.()
   for (const unlisten of store.listeners) unlisten()
 })
 </script>
@@ -72,6 +109,7 @@ onBeforeUnmount(() => {
 
     <section class="workspace">
       <SearchHeader
+        ref="searchHeader"
         v-model="localQuery"
         :model-ready="store.appInfo?.aiReady ?? false"
         :model-backend="store.appInfo?.aiBackend ?? 'Automatique'"
@@ -98,5 +136,5 @@ onBeforeUnmount(() => {
     </section>
   </main>
   <ToastViewport />
-  <ImagePreviewDialog v-if="previewImage" :image="previewImage" @close="previewImage = null" />
+  <ImagePreviewDialog :image="previewImage" @close="previewImage = null" />
 </template>
