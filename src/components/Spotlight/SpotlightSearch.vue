@@ -10,20 +10,18 @@ import { usePlatformStore } from '../../stores/platform'
 import { useShortcutStore } from '../../stores/shortcut'
 import { useThemeStore } from '../../stores/theme'
 import { debounce } from '../../utils'
+import { capitalize, useTagTypewriter } from '../../useTagTypewriter'
 import MovingBorder from '../ui/MovingBorder/MovingBorder.vue'
 import SpotlightInput from './SpotlightInput.vue'
 import SpotlightResults from './SpotlightResults.vue'
 import SpotlightSettings from './SpotlightSettings.vue'
 import type { SpotlightIndexJob, SpotlightView } from './types'
 
-const TAG_CACHE_KEY = 'imagyx.spotlight-top-tags.v1'
-const FALLBACK_TAGS = ['femme', 'portrait', 'paysage', 'chien', 'chat', 'voiture', 'plage', 'ville', 'nuit', 'coucher de soleil']
-const initialTags = readCachedTags()
-
 const platform = usePlatformStore()
 const shortcut = useShortcutStore()
 const theme = useThemeStore()
 const currentWindow = getCurrentWindow()
+const { typedTag } = useTagTypewriter()
 const view = ref<SpotlightView>('search')
 const searchQuery = ref('')
 const settingsQuery = ref('')
@@ -37,8 +35,6 @@ const resultsOpen = ref(false)
 const shellMerged = ref(false)
 const dialogOpen = ref(false)
 const jobs = ref<SpotlightIndexJob[]>([])
-const topTags = ref(initialTags)
-const typedTag = ref(initialTags[0] ?? FALLBACK_TAGS[0] ?? 'image')
 const inputView = ref<InstanceType<typeof SpotlightInput> | null>(null)
 const resultsView = ref<InstanceType<typeof SpotlightResults> | null>(null)
 const resultCache = new Map<string, ImageAsset[]>()
@@ -306,47 +302,6 @@ function prepareHide() {
   expansionPromise = null
 }
 
-async function warmSpotlight() {
-  try {
-    await semanticRuntime.prewarmText()
-    const concepts = await semanticRuntime.genericImageConcepts()
-    const ranked = await imagyxApi.topImageTags(concepts, 10)
-    if (ranked.length) {
-      topTags.value = ranked
-      localStorage.setItem(TAG_CACHE_KEY, JSON.stringify(ranked))
-      tagIndex %= ranked.length
-    }
-  } catch { /* le fallback garde le launcher utilisable */ }
-}
-
-function runTypewriter() {
-  if (view.value !== 'search' || searchQuery.value.trim()) { typewriterTimer = window.setTimeout(runTypewriter, 220); return }
-  const tags = topTags.value.length ? topTags.value : FALLBACK_TAGS
-  const target = tags[tagIndex % tags.length] ?? 'image'
-  if (!deleting) {
-    characterIndex = Math.min(target.length, characterIndex + 1)
-    typedTag.value = target.slice(0, characterIndex)
-    if (characterIndex >= target.length) { deleting = true; typewriterTimer = window.setTimeout(runTypewriter, 1250); return }
-    typewriterTimer = window.setTimeout(runTypewriter, 58)
-    return
-  }
-  characterIndex = Math.max(0, characterIndex - 1)
-  typedTag.value = target.slice(0, characterIndex)
-  if (characterIndex === 0) { deleting = false; tagIndex = (tagIndex + 1) % tags.length; typewriterTimer = window.setTimeout(runTypewriter, 180); return }
-  typewriterTimer = window.setTimeout(runTypewriter, 30)
-}
-
-function readCachedTags(): string[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(TAG_CACHE_KEY) ?? '[]') as unknown
-    if (Array.isArray(parsed)) {
-      const tags = parsed.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0).slice(0, 10)
-      if (tags.length) return tags
-    }
-  } catch { /* cache facultatif */ }
-  return [...FALLBACK_TAGS]
-}
-function capitalize(value: string) { return value ? value.charAt(0).toLocaleUpperCase('fr') + value.slice(1) : value }
 function nextPaint(count = 1): Promise<void> {
   return new Promise((resolve) => {
     const step = (remaining: number) => window.requestAnimationFrame(() => remaining <= 1 ? resolve() : step(remaining - 1))
@@ -365,15 +320,12 @@ onMounted(async () => {
   unlistenIndex = await listen<IndexProgress>('index-progress', (event) => handleIndexProgress(event.payload))
   unlistenRuntime = await listen<RuntimeStats>('runtime-stats', (event) => handleRuntimeStats(event.payload))
   unlistenFocus = await currentWindow.onFocusChanged(({ payload }) => { if (!payload && !dialogOpen.value) void imagyxApi.hideSpotlight() })
-  void warmSpotlight()
-  typewriterTimer = window.setTimeout(runTypewriter, 320)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeydown)
   unlistenWillOpen?.(); unlistenOpened?.(); unlistenWillHide?.(); unlistenFocus?.(); unlistenIndex?.(); unlistenRuntime?.()
   if (copyTimer) window.clearTimeout(copyTimer)
-  if (typewriterTimer) window.clearTimeout(typewriterTimer)
   if (collapseTimer) window.clearTimeout(collapseTimer)
   if (jobTimer) window.clearTimeout(jobTimer)
 })

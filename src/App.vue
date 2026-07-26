@@ -14,22 +14,20 @@ import type { ImageAsset } from './types'
 import { useLibraryStore } from './stores/library'
 import { usePlatformStore } from './stores/platform'
 import { useThemeStore } from './stores/theme'
+import { capitalize, useTagTypewriter } from './useTagTypewriter'
 import { debounce } from './utils'
 
 const store = useLibraryStore()
 const platform = usePlatformStore()
 const theme = useThemeStore()
+const { typedTag } = useTagTypewriter()
 const localQuery = ref('')
 const previewImage = ref<ImageAsset | null>(null)
 const searchHeader = ref<{ focusSearch: () => void; selectSearch: () => void } | null>(null)
 let unlistenOpenImage: UnlistenFn | null = null
 
-const selectedTitle = computed(() => store.selectedFolder?.name ?? 'Toutes les images')
-const subtitle = computed(() => {
-  if (store.semanticSearching) return 'Recherche IA en cours…'
-  if (store.query) return `${store.images.length} résultat${store.images.length > 1 ? 's' : ''}`
-  return `${store.images.length} image${store.images.length > 1 ? 's' : ''}`
-})
+const folderPrefix = computed(() => store.selectedFolder ? `${store.selectedFolder.name}: ` : 'Toutes les images: ')
+const searchPlaceholder = computed(() => `${folderPrefix.value}${capitalize(typedTag.value)}…`)
 const viewKey = computed(() => `${store.selectedFolderId ?? 'all'}:${store.query}`)
 
 const searchLater = debounce(() => {
@@ -111,15 +109,12 @@ onBeforeUnmount(() => {
       <SearchHeader
         ref="searchHeader"
         v-model="localQuery"
+        :placeholder="searchPlaceholder"
         :model-ready="store.appInfo?.aiReady ?? false"
         :model-backend="store.appInfo?.aiBackend ?? 'Automatique'"
         :searching="store.semanticSearching"
-        :result-count="localQuery ? store.images.length : undefined"
+        :result-count="store.images.length"
       />
-
-      <div class="content-heading">
-        <div><h1>{{ selectedTitle }}</h1><p>{{ subtitle }}</p></div>
-      </div>
 
       <div v-if="store.error" class="error-banner" role="alert">
         <span>{{ store.error }}</span>

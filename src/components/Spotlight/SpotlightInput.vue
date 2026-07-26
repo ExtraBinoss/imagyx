@@ -41,7 +41,12 @@ defineExpose({ focus, select })
     >
       <ArrowLeft :size="18" />
     </Button>
-    <Search v-else class="spotlight-input__search-icon" :size="22" :stroke-width="1.9" />
+    <div v-else class="spotlight-input__icon-wrapper">
+      <Transition name="icon-swap" mode="out-in">
+        <LoaderCircle v-if="searching" key="loader" class="spotlight-input__search-icon spin" :size="22" :stroke-width="2.2" />
+        <Search v-else key="search" class="spotlight-input__search-icon" :size="22" :stroke-width="1.9" />
+      </Transition>
+    </div>
 
     <input
       ref="input"
@@ -54,10 +59,9 @@ defineExpose({ focus, select })
       @input="handleInput"
     />
 
-    <span v-if="view === 'search' && modelValue.trim() && !searching" class="spotlight-input__count">
+    <span v-if="view === 'search' && modelValue.trim()" class="spotlight-input__count">
       {{ resultLabel }}
     </span>
-    <LoaderCircle v-if="view === 'search' && searching" class="spin" :size="18" />
     <Button
       v-if="modelValue"
       class="spotlight-input__clear"
@@ -117,7 +121,12 @@ defineExpose({ focus, select })
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
+.spotlight-input__icon-wrapper { flex: 0 0 22px; display: flex; align-items: center; justify-content: center; }
 .spotlight-input__settings { flex: 0 0 auto; }
-.spin { animation: spin 0.85s linear infinite; }
+.spin { animation: spin 0.85s linear infinite; color: var(--primary); }
+.icon-swap-enter-active,
+.icon-swap-leave-active { transition: opacity 160ms ease, transform 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+.icon-swap-enter-from { opacity: 0; transform: scale(0.7) rotate(-45deg); }
+.icon-swap-leave-to { opacity: 0; transform: scale(0.7) rotate(45deg); }
 @keyframes spin { to { transform: rotate(1turn); } }
 </style>

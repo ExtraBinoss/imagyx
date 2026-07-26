@@ -356,10 +356,12 @@ body,
 }
 
 .workspace {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
+  height: 100%;
 }
 
 .search-header {
@@ -415,8 +417,9 @@ body,
 }
 
 .image-area {
+  flex: 1;
   min-height: 0;
-  padding: var(--space-2) var(--space-6) var(--space-6);
+  padding: 84px var(--space-6) var(--space-6);
   overflow: auto;
 }
 
