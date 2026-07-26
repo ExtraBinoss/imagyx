@@ -8,6 +8,16 @@ import { useToastStore } from './toasts'
 
 const explainingImages = new Set<string>()
 
+function deduplicateMatches(matches: SemanticMatch[], limit = 8): SemanticMatch[] {
+  const byLabel = new Map<string, SemanticMatch>()
+  for (const match of matches) {
+    const key = match.label.trim().toLocaleLowerCase('fr')
+    const existing = byLabel.get(key)
+    if (!existing || match.score > existing.score) byLabel.set(key, match)
+  }
+  return [...byLabel.values()].sort((a, b) => b.score - a.score).slice(0, limit)
+}
+
 interface LibraryState {
   folders: FollowedFolder[]
   images: ImageAsset[]
@@ -142,7 +152,10 @@ export const useLibraryStore = defineStore('library', {
           .map((concept) => ({ label: concept.label, score: 1, source: 'filename' as const }))
         const semantic = explanation.matches.filter((match) => match.score >= 0.5)
         const index = this.images.findIndex((item) => item.id === imageId)
-        if (index >= 0) this.images[index] = { ...this.images[index], semanticMatches: [...filename, ...semantic].slice(0, 8) }
+        if (index >= 0) this.images[index] = {
+          ...this.images[index],
+          semanticMatches: deduplicateMatches([...filename, ...semantic]),
+        }
       } catch (error) {
         this.reportError(error)
       } finally {
