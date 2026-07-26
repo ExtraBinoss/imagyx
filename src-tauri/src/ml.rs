@@ -1,71 +1,83 @@
 use std::{
+    fs,
+    io::Read,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
-use hf_hub::{
-    Cache,
-    api::{Progress, sync::ApiBuilder},
-};
-use image::imageops::FilterType;
-use ndarray::Array4;
+use hf_hub::api::{Progress, sync::ApiBuilder};
+use image::{DynamicImage, imageops::FilterType};
+use ndarray::{Array2, Array4, Axis};
 use ort::{
     ep::ExecutionProviderDispatch,
-    session::Session,
-    value::Tensor,
+    session::{Session, builder::GraphOptimizationLevel},
+    value::TensorRef,
 };
 use parking_lot::RwLock;
 use rayon::prelude::*;
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter};
-use tokenizers::{PaddingParams, PaddingStrategy, Tokenizer, TruncationParams};
+use tokenizers::Tokenizer;
 
 use crate::{
     AppError,
     models::{ModelDownloadProgress, ModelStatus, RuntimeStats},
 };
 
-const MODEL_REPO: &str = "RuteNL/MobileCLIP2-S0-OpenCLIP-ONNX";
-const IMAGE_SIZE: usize = 256;
-const CONTEXT_LENGTH: usize = 77;
+pub const MODEL_ID: &str = "mobileclip2-s0";
+pub const MODEL_NAME: &str = "MobileCLIP2-S0";
+const MODEL_REPOSITORY: &str = "plhery/mobileclip2-onnx";
+const IMAGE_EDGE: usize = 256;
+const TEXT_CONTEXT: usize = 77;
 
 #[derive(Clone, Copy)]
 struct ModelFile {
-    file: &'static str,
+    remote: &'static str,
+    local: &'static str,
     label: &'static str,
+    sha256: Option<&'static str>,
 }
 
-const MODEL_FILES: [ModelFile; 5] = [
+const MODEL_FILES: [ModelFile; 3] = [
     ModelFile {
-        file: "visual.onnx",
-        label: "Encodeur visuel",
+        remote: "onnx/s0/vision_model.onnx",
+        local: "mobileclip2-s0-image.onnx",
+        label: "Encodeur visuel MobileCLIP2-S0",
+        sha256: Some("13d20ebfa8a8f63890eb2727fe4dc63009ff970f43e0f7d9d2ed999659f70c8a"),
     },
     ModelFile {
-        file: "visual.onnx.data",
-        label: "Poids visuels",
+        remote: "onnx/s0/text_model.onnx",
+        local: "mobileclip2-s0-text.onnx",
+        label: "Encodeur texte MobileCLIP2-S0",
+        sha256: Some("df590d47744f2ee9f3ccb67c4414d17419568c05bca0c4d166f2faeedf8b92f3"),
     },
     ModelFile {
-        file: "text.onnx",
-        label: "Encodeur texte",
-    },
-    ModelFile {
-        file: "text.onnx.data",
-        label: "Poids texte",
-    },
-    ModelFile {
-        file: "tokenizer.json",
+        remote: "tokenizer.json",
+        local: "mobileclip2-tokenizer.json",
         label: "Tokenizer CLIP",
+        sha256: None,
     },
 ];
+
+#[derive(Debug)]
+pub struct EmbeddingBatch {
+    pub vectors: Vec<Vec<f32>>,
+    pub decode_ms: u64,
+    pub inference_ms: u64,
+}
 
 pub struct MlRuntime {
     cache_dir: PathBuf,
     image_session: Option<Session>,
     text_session: Option<Session>,
     tokenizer: Option<Tokenizer>,
-    backend: String,
-    acceleration: String,
-    gpu_active: bool,
+    backend_requested: String,
+    backend_effective: String,
+    acceleration_active: bool,
+    acceleration_label: String,
+    batch_size: usize,
     last_error: Option<String>,
+    fallback_reason: Option<String>,
 }
 
 impl std::fmt::Debug for MlRuntime {
@@ -74,9 +86,11 @@ impl std::fmt::Debug for MlRuntime {
             .debug_struct("MlRuntime")
             .field("cache_dir", &self.cache_dir)
             .field("ready", &self.is_ready())
-            .field("backend", &self.backend)
-            .field("gpu_active", &self.gpu_active)
+            .field("backend_requested", &self.backend_requested)
+            .field("backend_effective", &self.backend_effective)
+            .field("batch_size", &self.batch_size)
             .field("last_error", &self.last_error)
+            .field("fallback_reason", &self.fallback_reason)
             .finish()
     }
 }
@@ -88,10 +102,13 @@ impl MlRuntime {
             image_session: None,
             text_session: None,
             tokenizer: None,
-            backend: "En préparation".to_owned(),
-            acceleration: "Non confirmée".to_owned(),
-            gpu_active: false,
+            backend_requested: requested_backend_label().to_owned(),
+            backend_effective: "En attente".to_owned(),
+            acceleration_active: false,
+            acceleration_label: "Non initialisée".to_owned(),
+            batch_size: cpu_batch_size(),
             last_error: None,
+            fallback_reason: None,
         }
     }
 
@@ -99,20 +116,22 @@ impl MlRuntime {
         self.image_session.is_some() && self.text_session.is_some() && self.tokenizer.is_some()
     }
 
-    pub fn backend_label(&self) -> &str {
-        &self.backend
-    }
-
-    pub fn acceleration_label(&self) -> &str {
-        &self.acceleration
-    }
-
-    pub fn gpu_active(&self) -> bool {
-        self.gpu_active
+    pub fn backend_requested(&self) -> &str {
+        &self.backend_requested
     }
 
     pub fn batch_size(&self) -> usize {
-        if self.gpu_active { 48 } else { 12 }
+        self.batch_size
+    }
+
+    pub fn status(&self) -> ModelStatus {
+        ModelStatus {
+            ready: self.is_ready(),
+            backend: self.backend_effective.clone(),
+            acceleration_active: self.acceleration_active,
+            acceleration_label: self.acceleration_label.clone(),
+            fallback_reason: self.fallback_reason.clone(),
+        }
     }
 
     pub fn prepare(
@@ -139,11 +158,16 @@ impl MlRuntime {
                 message: "Vérification de MobileCLIP2-S0…".to_owned(),
             },
         );
+        {
+            let mut stats = runtime_stats.write();
+            stats.stage = "checking".to_owned();
+            stats.model_name = MODEL_NAME.to_owned();
+            stats.backend_requested = self.backend_requested.clone();
+        }
 
         if let Err(error) = self.download_missing_files(app, progress_state) {
             self.last_error = Some(error.to_string());
-            runtime_stats.write().last_error = self.last_error.clone();
-            publish_error(app, progress_state, &error.to_string());
+            publish_error(app, progress_state, runtime_stats, self, &error.to_string());
             return Err(error);
         }
 
@@ -157,9 +181,13 @@ impl MlRuntime {
                 total_bytes: 0,
                 current_file: MODEL_FILES.len(),
                 total_files: MODEL_FILES.len(),
-                message: "Initialisation de MobileCLIP2-S0…".to_owned(),
+                message: format!(
+                    "Initialisation de MobileCLIP2-S0 avec {}…",
+                    self.backend_requested
+                ),
             },
         );
+        runtime_stats.write().stage = "loading".to_owned();
 
         match self.initialize_models() {
             Ok(()) => {
@@ -168,24 +196,61 @@ impl MlRuntime {
             }
             Err(error) => {
                 self.last_error = Some(error.to_string());
-                runtime_stats.write().last_error = self.last_error.clone();
-                publish_error(app, progress_state, &error.to_string());
+                publish_error(app, progress_state, runtime_stats, self, &error.to_string());
                 Err(error)
             }
         }
     }
 
-    pub fn embed_images(&mut self, paths: &[PathBuf]) -> Result<Vec<Vec<f32>>, AppError> {
+    pub fn ensure_ready(&mut self) -> Result<(), AppError> {
+        if self.is_ready() {
+            return Ok(());
+        }
+        if !self.cache_has_models() {
+            return Err(AppError::Model(self.last_error.clone().unwrap_or_else(|| {
+                "MobileCLIP2-S0 n’est pas encore prêt".to_owned()
+            })));
+        }
+        self.initialize_models()
+    }
+
+    pub fn embed_images(&mut self, paths: &[PathBuf]) -> Result<EmbeddingBatch, AppError> {
         self.ensure_ready()?;
-        let tensor = preprocess_images(paths)?;
-        let input = Tensor::from_array(tensor).map_err(model_error)?;
-        let outputs = self
+        let decode_started = Instant::now();
+        let decoded = paths
+            .par_iter()
+            .map(|path| decode_mobileclip_image(path))
+            .collect::<Result<Vec<_>, _>>()?;
+        let decode_ms = millis(decode_started.elapsed());
+
+        let flat = decoded.into_iter().flatten().collect::<Vec<_>>();
+        let input = Array4::from_shape_vec((paths.len(), 3, IMAGE_EDGE, IMAGE_EDGE), flat)
+            .map_err(|error| AppError::Model(error.to_string()))?;
+        let tensor = TensorRef::from_array_view(&input)
+            .map_err(|error| AppError::Model(error.to_string()))?;
+
+        let inference_started = Instant::now();
+        let session = self
             .image_session
             .as_mut()
-            .ok_or_else(|| AppError::Model("encodeur visuel indisponible".into()))?
-            .run(ort::inputs![input])
-            .map_err(model_error)?;
-        vectors_from_output(&outputs[0], paths.len())
+            .ok_or_else(|| AppError::Model("encodeur image indisponible".into()))?;
+        let outputs = session
+            .run(ort::inputs!["pixel_values" => tensor])
+            .map_err(|error| AppError::Model(error.to_string()))?;
+        let output = outputs["image_embeds"]
+            .try_extract_array::<f32>()
+            .map_err(|error| AppError::Model(error.to_string()))?;
+        let vectors = output
+            .axis_iter(Axis(0))
+            .map(|row| normalize(row.iter().copied().collect()))
+            .collect();
+        let inference_ms = millis(inference_started.elapsed());
+
+        Ok(EmbeddingBatch {
+            vectors,
+            decode_ms,
+            inference_ms,
+        })
     }
 
     pub fn embed_text(&mut self, query: &str) -> Result<Vec<f32>, AppError> {
@@ -194,102 +259,109 @@ impl MlRuntime {
             .tokenizer
             .as_ref()
             .ok_or_else(|| AppError::Model("tokenizer indisponible".into()))?;
-        let encoding = tokenizer.encode(query, true).map_err(model_error)?;
-        let mut ids: Vec<i64> = encoding.get_ids().iter().map(|id| i64::from(*id)).collect();
-        ids.resize(CONTEXT_LENGTH, 0);
-        ids.truncate(CONTEXT_LENGTH);
-        let input = Tensor::from_array(([1_usize, CONTEXT_LENGTH], ids)).map_err(model_error)?;
-        let outputs = self
+        let encoding = tokenizer
+            .encode(query, true)
+            .map_err(|error| AppError::Model(error.to_string()))?;
+        let mut ids = encoding
+            .get_ids()
+            .iter()
+            .take(TEXT_CONTEXT)
+            .map(|value| i64::from(*value))
+            .collect::<Vec<_>>();
+        ids.resize(TEXT_CONTEXT, 0);
+        let input = Array2::from_shape_vec((1, TEXT_CONTEXT), ids)
+            .map_err(|error| AppError::Model(error.to_string()))?;
+        let tensor = TensorRef::from_array_view(&input)
+            .map_err(|error| AppError::Model(error.to_string()))?;
+        let session = self
             .text_session
             .as_mut()
-            .ok_or_else(|| AppError::Model("encodeur texte indisponible".into()))?
-            .run(ort::inputs![input])
-            .map_err(model_error)?;
-        vectors_from_output(&outputs[0], 1)?
-            .into_iter()
+            .ok_or_else(|| AppError::Model("encodeur texte indisponible".into()))?;
+        let outputs = session
+            .run(ort::inputs!["input_ids" => tensor])
+            .map_err(|error| AppError::Model(error.to_string()))?;
+        let output = outputs["text_embeds"]
+            .try_extract_array::<f32>()
+            .map_err(|error| AppError::Model(error.to_string()))?;
+        let first = output
+            .axis_iter(Axis(0))
             .next()
-            .ok_or_else(|| AppError::Model("embedding texte vide".into()))
+            .ok_or_else(|| AppError::Model("embedding texte vide".into()))?;
+        Ok(normalize(first.iter().copied().collect()))
     }
 
-    fn ensure_ready(&mut self) -> Result<(), AppError> {
-        if self.is_ready() {
-            return Ok(());
+    pub fn cache_has_models(&self) -> bool {
+        MODEL_FILES
+            .iter()
+            .all(|file| self.file_is_verified(*file).unwrap_or(false))
+    }
+
+    fn file_is_verified(&self, file: ModelFile) -> Result<bool, AppError> {
+        let path = self.cache_dir.join(file.local);
+        if !path.is_file() {
+            return Ok(false);
         }
-        if !self.cache_has_models() {
-            return Err(AppError::Model("MobileCLIP2-S0 n’est pas encore prêt".into()));
+        let Some(expected) = file.sha256 else {
+            return Ok(true);
+        };
+        let marker = verified_marker(&path);
+        if fs::read_to_string(&marker).ok().as_deref() == Some(expected) {
+            return Ok(true);
         }
-        self.initialize_models()
+        if !verify_sha256(&path, expected)? {
+            return Ok(false);
+        }
+        fs::write(marker, expected)?;
+        Ok(true)
     }
 
     fn initialize_models(&mut self) -> Result<(), AppError> {
-        let cache = Cache::new(self.cache_dir.clone());
-        let repo = cache.model(MODEL_REPO.to_owned());
-        let visual = repo
-            .get("visual.onnx")
-            .ok_or_else(|| AppError::Model("visual.onnx absent".into()))?;
-        let text = repo
-            .get("text.onnx")
-            .ok_or_else(|| AppError::Model("text.onnx absent".into()))?;
-        let tokenizer_path = repo
-            .get("tokenizer.json")
-            .ok_or_else(|| AppError::Model("tokenizer.json absent".into()))?;
+        let image_path = self.cache_dir.join(MODEL_FILES[0].local);
+        let text_path = self.cache_dir.join(MODEL_FILES[1].local);
+        let tokenizer_path = self.cache_dir.join(MODEL_FILES[2].local);
+        let tokenizer = Tokenizer::from_file(&tokenizer_path)
+            .map_err(|error| AppError::Model(format!("tokenizer MobileCLIP2-S0: {error}")))?;
 
-        let gpu_result = create_sessions(&visual, &text, preferred_execution_providers());
-        let (image_session, text_session, backend, acceleration, gpu_active) = match gpu_result {
-            Ok((image, text)) if preferred_gpu_available() => (
-                image,
-                text,
-                preferred_backend_name().to_owned(),
-                "GPU".to_owned(),
-                true,
-            ),
-            Ok((image, text)) => (
-                image,
-                text,
-                "ONNX Runtime CPU".to_owned(),
-                "CPU".to_owned(),
-                false,
-            ),
-            Err(gpu_error) => {
-                eprintln!("Imagyx GPU provider unavailable, using CPU: {gpu_error}");
-                let (image, text) = create_sessions(&visual, &text, cpu_execution_provider())?;
-                (
-                    image,
-                    text,
-                    "ONNX Runtime CPU".to_owned(),
-                    "CPU (repli)".to_owned(),
-                    false,
-                )
+        if let Some(acceleration) = acceleration_profile() {
+            let accelerated = build_session(&image_path, acceleration.provider(), true, 1)
+                .and_then(|image_session| {
+                    build_session(&text_path, acceleration.provider(), true, 1)
+                        .map(|text_session| (image_session, text_session))
+                });
+            match accelerated {
+                Ok((image_session, text_session)) => {
+                    self.image_session = Some(image_session);
+                    self.text_session = Some(text_session);
+                    self.tokenizer = Some(tokenizer);
+                    self.backend_effective = acceleration.backend.to_owned();
+                    self.acceleration_active = true;
+                    self.acceleration_label = acceleration.label.to_owned();
+                    self.batch_size = 48;
+                    self.fallback_reason = None;
+                    self.last_error = None;
+                    return Ok(());
+                }
+                Err(error) => {
+                    let reason = format!(
+                        "{} indisponible ou modèle non entièrement pris en charge: {error}",
+                        acceleration.backend
+                    );
+                    eprintln!("Imagyx hardware acceleration fallback: {reason}");
+                    self.fallback_reason = Some(reason);
+                }
             }
-        };
+        }
 
-        let mut tokenizer = Tokenizer::from_file(tokenizer_path).map_err(model_error)?;
-        tokenizer
-            .with_padding(Some(PaddingParams {
-                strategy: PaddingStrategy::Fixed(CONTEXT_LENGTH),
-                ..PaddingParams::default()
-            }));
-        tokenizer
-            .with_truncation(Some(TruncationParams {
-                max_length: CONTEXT_LENGTH,
-                ..TruncationParams::default()
-            }))
-            .map_err(model_error)?;
-
-        self.image_session = Some(image_session);
-        self.text_session = Some(text_session);
+        let threads = num_cpus::get().max(1);
+        self.image_session = Some(build_session(&image_path, None, false, threads)?);
+        self.text_session = Some(build_session(&text_path, None, false, threads)?);
         self.tokenizer = Some(tokenizer);
-        self.backend = backend;
-        self.acceleration = acceleration;
-        self.gpu_active = gpu_active;
+        self.backend_effective = "ONNX Runtime CPU".to_owned();
+        self.acceleration_active = false;
+        self.acceleration_label = "CPU".to_owned();
+        self.batch_size = cpu_batch_size();
         self.last_error = None;
         Ok(())
-    }
-
-    fn cache_has_models(&self) -> bool {
-        let cache = Cache::new(self.cache_dir.clone());
-        let repo = cache.model(MODEL_REPO.to_owned());
-        MODEL_FILES.iter().all(|spec| repo.get(spec.file).is_some())
     }
 
     fn download_missing_files(
@@ -297,46 +369,50 @@ impl MlRuntime {
         app: &AppHandle,
         progress_state: &RwLock<ModelDownloadProgress>,
     ) -> Result<(), AppError> {
-        let cache = Cache::new(self.cache_dir.clone());
-        let cached_repo = cache.model(MODEL_REPO.to_owned());
-        let missing: Vec<ModelFile> = MODEL_FILES
+        fs::create_dir_all(&self.cache_dir)?;
+        let missing = MODEL_FILES
             .iter()
             .copied()
-            .filter(|spec| cached_repo.get(spec.file).is_none())
-            .collect();
+            .filter(|file| !self.file_is_verified(*file).unwrap_or(false))
+            .collect::<Vec<_>>();
         if missing.is_empty() {
             return Ok(());
         }
 
-        let api = ApiBuilder::new()
-            .with_cache_dir(self.cache_dir.clone())
+        let download_cache = self.cache_dir.join(".hf-cache");
+        let mut builder = ApiBuilder::new()
+            .with_cache_dir(download_cache.clone())
             .with_progress(false)
             .with_retries(3)
-            .with_user_agent("imagyx", env!("CARGO_PKG_VERSION"))
+            .with_user_agent("imagyx", env!("CARGO_PKG_VERSION"));
+        if let Ok(endpoint) = std::env::var("HF_ENDPOINT") {
+            builder = builder.with_endpoint(endpoint);
+        }
+        let api = builder
             .build()
-            .map_err(model_error)?;
-        let repo = api.model(MODEL_REPO.to_owned());
-        let files_with_sizes: Vec<(ModelFile, u64)> = missing
+            .map_err(|error| AppError::Model(error.to_string()))?;
+        let repo = api.model(MODEL_REPOSITORY.to_owned());
+        let files_with_sizes = missing
             .iter()
             .copied()
-            .map(|spec| {
+            .map(|file| {
                 let size = api
-                    .metadata(&repo.url(spec.file))
-                    .map_err(model_error)?
+                    .metadata(&repo.url(file.remote))
+                    .map_err(|error| AppError::Model(error.to_string()))?
                     .size() as u64;
-                Ok((spec, size))
+                Ok((file, size))
             })
-            .collect::<Result<_, AppError>>()?;
+            .collect::<Result<Vec<_>, AppError>>()?;
         let total_bytes = files_with_sizes.iter().map(|(_, size)| size).sum();
         let total_files = files_with_sizes.len();
         let mut completed_bytes = 0_u64;
 
-        for (index, (spec, file_size)) in files_with_sizes.into_iter().enumerate() {
+        for (index, (file, file_size)) in files_with_sizes.into_iter().enumerate() {
             let progress = UiDownloadProgress {
                 app,
                 state: progress_state,
-                label: spec.label,
-                file_name: spec.file,
+                label: file.label,
+                file_name: file.local,
                 current_file: index + 1,
                 total_files,
                 completed_bytes,
@@ -345,131 +421,202 @@ impl MlRuntime {
                 current_file_total: file_size,
                 last_emit: Instant::now() - Duration::from_secs(1),
             };
-            repo.download_with_progress(spec.file, progress)
-                .map_err(model_error)?;
+            let downloaded = repo
+                .download_with_progress(file.remote, progress)
+                .map_err(|error| AppError::Model(error.to_string()))?;
+            let destination = self.cache_dir.join(file.local);
+            let temporary = destination.with_extension("download");
+            fs::copy(&downloaded, &temporary)?;
+            if let Some(expected) = file.sha256 {
+                if !verify_sha256(&temporary, expected)? {
+                    let _ = fs::remove_file(&temporary);
+                    return Err(AppError::Model(format!(
+                        "empreinte invalide pour {}",
+                        file.local
+                    )));
+                }
+            }
+            if destination.exists() {
+                fs::remove_file(&destination)?;
+            }
+            fs::rename(&temporary, &destination)?;
+            if let Some(expected) = file.sha256 {
+                fs::write(verified_marker(&destination), expected)?;
+            }
             completed_bytes = completed_bytes.saturating_add(file_size);
         }
+
+        let _ = fs::remove_dir_all(download_cache);
         Ok(())
     }
 }
 
-fn create_sessions(
-    visual: &Path,
-    text: &Path,
-    providers: Vec<ExecutionProviderDispatch>,
-) -> Result<(Session, Session), AppError> {
-    let threads = num_cpus::get().max(1);
-    let image_session = Session::builder()
-        .map_err(model_error)?
-        .with_execution_providers(providers.clone())
-        .map_err(model_error)?
-        .with_intra_threads(threads)
-        .map_err(model_error)?
-        .commit_from_file(visual)
-        .map_err(model_error)?;
-    let text_session = Session::builder()
-        .map_err(model_error)?
-        .with_execution_providers(providers)
-        .map_err(model_error)?
-        .with_intra_threads(threads)
-        .map_err(model_error)?
-        .commit_from_file(text)
-        .map_err(model_error)?;
-    Ok((image_session, text_session))
+#[derive(Clone, Copy)]
+struct AccelerationProfile {
+    backend: &'static str,
+    label: &'static str,
 }
 
-fn preprocess_images(paths: &[PathBuf]) -> Result<Array4<f32>, AppError> {
-    let prepared: Result<Vec<Vec<f32>>, AppError> = paths
-        .par_iter()
-        .map(|path| {
-            let image = image::open(path)?
-                .resize_to_fill(IMAGE_SIZE as u32, IMAGE_SIZE as u32, FilterType::Triangle)
-                .to_rgb8();
-            let mut channels = vec![0_f32; 3 * IMAGE_SIZE * IMAGE_SIZE];
-            for (pixel_index, pixel) in image.pixels().enumerate() {
-                channels[pixel_index] = f32::from(pixel[0]) / 255.0;
-                channels[IMAGE_SIZE * IMAGE_SIZE + pixel_index] = f32::from(pixel[1]) / 255.0;
-                channels[2 * IMAGE_SIZE * IMAGE_SIZE + pixel_index] = f32::from(pixel[2]) / 255.0;
-            }
-            Ok(channels)
-        })
-        .collect();
-    let prepared = prepared?;
-    let flat: Vec<f32> = prepared.into_iter().flatten().collect();
-    Array4::from_shape_vec((paths.len(), 3, IMAGE_SIZE, IMAGE_SIZE), flat).map_err(model_error)
-}
-
-fn vectors_from_output(
-    output: &ort::value::DynValue,
-    batch: usize,
-) -> Result<Vec<Vec<f32>>, AppError> {
-    let (_, values) = output.try_extract_tensor::<f32>().map_err(model_error)?;
-    if batch == 0 || values.len() % batch != 0 {
-        return Err(AppError::Model("forme de sortie MobileCLIP invalide".into()));
+impl AccelerationProfile {
+    fn provider(self) -> Option<ExecutionProviderDispatch> {
+        accelerated_provider()
     }
-    let dimensions = values.len() / batch;
-    Ok(values
-        .chunks(dimensions)
-        .map(|values| normalize(values.to_vec()))
-        .collect())
+}
+
+fn acceleration_profile() -> Option<AccelerationProfile> {
+    #[cfg(target_os = "macos")]
+    {
+        Some(AccelerationProfile {
+            backend: "CoreML",
+            label: "CoreML actif",
+        })
+    }
+    #[cfg(target_os = "windows")]
+    {
+        Some(AccelerationProfile {
+            backend: "DirectML",
+            label: "GPU DirectML actif",
+        })
+    }
+    #[cfg(all(target_os = "linux", feature = "nvidia"))]
+    {
+        Some(AccelerationProfile {
+            backend: "CUDA",
+            label: "GPU CUDA actif",
+        })
+    }
+    #[cfg(all(target_os = "linux", not(feature = "nvidia")))]
+    {
+        None
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        None
+    }
+}
+
+fn accelerated_provider() -> Option<ExecutionProviderDispatch> {
+    #[cfg(target_os = "macos")]
+    {
+        Some(ort::ep::CoreML::default().build())
+    }
+    #[cfg(target_os = "windows")]
+    {
+        Some(ort::ep::DirectML::default().build())
+    }
+    #[cfg(all(target_os = "linux", feature = "nvidia"))]
+    {
+        Some(ort::ep::CUDA::default().build())
+    }
+    #[cfg(all(target_os = "linux", not(feature = "nvidia")))]
+    {
+        None
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        None
+    }
+}
+
+fn requested_backend_label() -> &'static str {
+    acceleration_profile().map_or("ONNX Runtime CPU", |profile| profile.backend)
+}
+
+fn build_session(
+    model_path: &Path,
+    provider: Option<ExecutionProviderDispatch>,
+    disable_cpu_fallback: bool,
+    threads: usize,
+) -> Result<Session, AppError> {
+    let mut builder = Session::builder()
+        .map_err(|error| AppError::Model(error.to_string()))?
+        .with_optimization_level(GraphOptimizationLevel::Level3)
+        .map_err(|error| AppError::Model(error.to_string()))?
+        .with_intra_threads(threads)
+        .map_err(|error| AppError::Model(error.to_string()))?;
+    if let Some(provider) = provider {
+        builder = builder
+            .with_execution_providers([provider])
+            .map_err(|error| AppError::Model(error.to_string()))?;
+    }
+    if disable_cpu_fallback {
+        builder = builder
+            .with_disable_cpu_fallback()
+            .map_err(|error| AppError::Model(error.to_string()))?;
+    }
+    builder
+        .commit_from_file(model_path)
+        .map_err(|error| AppError::Model(error.to_string()))
+}
+
+fn decode_mobileclip_image(path: &Path) -> Result<Vec<f32>, AppError> {
+    let image = image::open(path)?.into_rgb8();
+    let (width, height) = image.dimensions();
+    let shortest = width.min(height).max(1);
+    let resized_width =
+        ((u64::from(width) * IMAGE_EDGE as u64) / u64::from(shortest)) as u32;
+    let resized_height =
+        ((u64::from(height) * IMAGE_EDGE as u64) / u64::from(shortest)) as u32;
+    let resized = DynamicImage::ImageRgb8(image)
+        .resize_exact(resized_width, resized_height, FilterType::CatmullRom)
+        .to_rgb8();
+    let x = resized_width.saturating_sub(IMAGE_EDGE as u32) / 2;
+    let y = resized_height.saturating_sub(IMAGE_EDGE as u32) / 2;
+    let cropped = image::imageops::crop_imm(
+        &resized,
+        x,
+        y,
+        IMAGE_EDGE as u32,
+        IMAGE_EDGE as u32,
+    )
+    .to_image();
+    let plane = IMAGE_EDGE * IMAGE_EDGE;
+    let mut output = vec![0.0; plane * 3];
+    for (index, pixel) in cropped.pixels().enumerate() {
+        output[index] = f32::from(pixel[0]) / 255.0;
+        output[plane + index] = f32::from(pixel[1]) / 255.0;
+        output[plane * 2 + index] = f32::from(pixel[2]) / 255.0;
+    }
+    Ok(output)
 }
 
 fn normalize(mut vector: Vec<f32>) -> Vec<f32> {
     let norm = vector.iter().map(|value| value * value).sum::<f32>().sqrt();
     if norm > f32::EPSILON {
-        for value in &mut vector {
-            *value /= norm;
-        }
+        vector.iter_mut().for_each(|value| *value /= norm);
     }
     vector
 }
 
-fn preferred_execution_providers() -> Vec<ExecutionProviderDispatch> {
-    #[cfg(target_os = "macos")]
-    {
-        vec![ort::ep::CoreML::default().build()]
-    }
-    #[cfg(target_os = "windows")]
-    {
-        vec![ort::ep::DirectML::default().build()]
-    }
-    #[cfg(all(target_os = "linux", feature = "nvidia"))]
-    {
-        vec![ort::ep::CUDA::default().build()]
-    }
-    #[cfg(all(target_os = "linux", not(feature = "nvidia")))]
-    {
-        cpu_execution_provider()
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-    {
-        cpu_execution_provider()
-    }
+fn verified_marker(path: &Path) -> PathBuf {
+    path.with_extension(format!(
+        "{}.verified",
+        path.extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("model")
+    ))
 }
 
-fn cpu_execution_provider() -> Vec<ExecutionProviderDispatch> {
-    vec![ort::ep::CPU::default().build()]
+fn verify_sha256(path: &Path, expected: &str) -> Result<bool, AppError> {
+    let mut file = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 1024 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()) == expected)
 }
 
-fn preferred_gpu_available() -> bool {
-    cfg!(target_os = "macos") || cfg!(target_os = "windows") || cfg!(feature = "nvidia")
+fn cpu_batch_size() -> usize {
+    (num_cpus::get().max(4) * 2).clamp(8, 16)
 }
 
-fn preferred_backend_name() -> &'static str {
-    #[cfg(target_os = "macos")]
-    { "CoreML" }
-    #[cfg(target_os = "windows")]
-    { "DirectML" }
-    #[cfg(all(target_os = "linux", feature = "nvidia"))]
-    { "CUDA" }
-    #[cfg(all(target_os = "linux", not(feature = "nvidia")))]
-    { "ONNX Runtime CPU" }
-    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-    { "ONNX Runtime CPU" }
-}
-
-fn model_error(error: impl std::fmt::Display) -> AppError {
-    AppError::Model(error.to_string())
+fn millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 struct UiDownloadProgress<'a> {
@@ -492,13 +639,17 @@ impl UiDownloadProgress<'_> {
             return;
         }
         self.last_emit = Instant::now();
+        let current_bytes = self
+            .completed_bytes
+            .saturating_add(self.current_file_bytes.min(self.current_file_total))
+            .min(self.total_bytes);
         publish_progress(
             self.app,
             self.state,
             ModelDownloadProgress {
                 stage: "downloading".to_owned(),
                 file_name: Some(self.file_name.to_owned()),
-                current_bytes: self.completed_bytes.saturating_add(self.current_file_bytes),
+                current_bytes,
                 total_bytes: self.total_bytes,
                 current_file: self.current_file,
                 total_files: self.total_files,
@@ -556,27 +707,29 @@ fn publish_ready(
     );
     {
         let mut stats = runtime_stats.write();
-        stats.model_name = "MobileCLIP2-S0".to_owned();
-        stats.backend = runtime.backend_label().to_owned();
-        stats.acceleration = runtime.acceleration_label().to_owned();
-        stats.gpu_active = runtime.gpu_active();
-        stats.batch_size = runtime.batch_size();
+        stats.model_name = MODEL_NAME.to_owned();
         stats.stage = "ready".to_owned();
-        stats.last_error = None;
+        stats.backend_requested = runtime.backend_requested.clone();
+        stats.backend_effective = runtime.backend_effective.clone();
+        stats.acceleration_active = runtime.acceleration_active;
+        stats.acceleration_label = runtime.acceleration_label.clone();
+        stats.batch_size = runtime.batch_size;
+        stats.fallback_reason = runtime.fallback_reason.clone();
     }
-    let _ = app.emit(
-        "model-status",
-        ModelStatus {
-            ready: true,
-            backend: format!("{} · {}", runtime.backend_label(), runtime.acceleration_label()),
-        },
-    );
+    let _ = app.emit("model-status", runtime.status());
+    let _ = app.emit("runtime-stats", runtime_stats.read().clone());
 }
 
-fn publish_error(app: &AppHandle, state: &RwLock<ModelDownloadProgress>, error: &str) {
+fn publish_error(
+    app: &AppHandle,
+    progress_state: &RwLock<ModelDownloadProgress>,
+    runtime_stats: &RwLock<RuntimeStats>,
+    runtime: &MlRuntime,
+    error: &str,
+) {
     publish_progress(
         app,
-        state,
+        progress_state,
         ModelDownloadProgress {
             stage: "error".to_owned(),
             file_name: None,
@@ -587,11 +740,6 @@ fn publish_error(app: &AppHandle, state: &RwLock<ModelDownloadProgress>, error: 
             message: error.to_owned(),
         },
     );
-    let _ = app.emit(
-        "model-status",
-        ModelStatus {
-            ready: false,
-            backend: "Recherche par nom uniquement".to_owned(),
-        },
-    );
+    runtime_stats.write().stage = "error".to_owned();
+    let _ = app.emit("model-status", runtime.status());
 }
