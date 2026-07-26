@@ -6,7 +6,6 @@ import { SEMANTIC_MODELS, type SemanticModelKey } from '../services/semantic'
 import Button from './ui/Button/Button.vue'
 import Popover from './ui/Popover/Popover.vue'
 import Select from './ui/Select/Select.vue'
-import Tooltip from './ui/Tooltip/Tooltip.vue'
 import LocalAiStatus from './LocalAiStatus.vue'
 
 const props = defineProps<{
@@ -37,6 +36,7 @@ const contextMenu = ref<{ folderId: string; x: number; y: number } | null>(null)
 
 function openContextMenu(event: MouseEvent, folderId: string) {
   event.preventDefault()
+  event.stopPropagation()
   contextMenu.value = {
     folderId,
     x: Math.min(event.clientX, window.innerWidth - 220),
@@ -56,12 +56,12 @@ function runContextAction(action: 'reindex' | 'remove') {
 }
 
 onMounted(() => {
-  window.addEventListener('click', closeContextMenu)
+  window.addEventListener('pointerdown', closeContextMenu)
   window.addEventListener('blur', closeContextMenu)
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('click', closeContextMenu)
+  window.removeEventListener('pointerdown', closeContextMenu)
   window.removeEventListener('blur', closeContextMenu)
 })
 </script>
@@ -97,22 +97,24 @@ onBeforeUnmount(() => {
           <span class="folder-name">{{ folder.name }}</span>
           <span class="folder-count">{{ folder.imageCount }}</span>
         </Button>
-        <div class="folder-actions">
-          <Tooltip text="Actions du dossier" side="right">
-            <Popover align="end" width="210px">
-              <template #trigger><Button variant="ghost" size="icon" aria-label="Actions du dossier"><MoreHorizontal :size="16" /></Button></template>
-              <template #content="{ close }">
-                <div class="folder-menu">
-                  <Button variant="ghost" size="sm" block @click="emit('reindex', folder.id); close()">
-                    <template #leading><RefreshCw :size="15" /></template>Réindexer
-                  </Button>
-                  <Button variant="danger" size="sm" block @click="emit('remove', folder.id); close()">
-                    <template #leading><Trash2 :size="15" /></template>Ne plus suivre
-                  </Button>
-                </div>
-              </template>
-            </Popover>
-          </Tooltip>
+        <div class="folder-actions" @click.stop @pointerdown.stop>
+          <Popover align="end" width="210px">
+            <template #trigger>
+              <Button variant="ghost" size="icon" aria-label="Actions du dossier" title="Actions du dossier">
+                <MoreHorizontal :size="16" />
+              </Button>
+            </template>
+            <template #content="{ close }">
+              <div class="folder-menu">
+                <Button variant="ghost" size="sm" block @click="emit('reindex', folder.id); close()">
+                  <template #leading><RefreshCw :size="15" /></template>Réindexer
+                </Button>
+                <Button variant="danger" size="sm" block @click="emit('remove', folder.id); close()">
+                  <template #leading><Trash2 :size="15" /></template>Ne plus suivre
+                </Button>
+              </div>
+            </template>
+          </Popover>
         </div>
       </div>
     </nav>
@@ -133,6 +135,7 @@ onBeforeUnmount(() => {
       v-if="contextMenu"
       class="folder-context-menu"
       :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+      @pointerdown.stop
       @click.stop
     >
       <Button variant="ghost" size="sm" block @click="runContextAction('reindex')">
