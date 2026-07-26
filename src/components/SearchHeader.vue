@@ -86,16 +86,21 @@ defineExpose({ focusSearch, selectSearch })
   top: 0;
   left: 0;
   right: 0;
-  z-index: 20;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
   min-height: 76px;
   padding: 14px 24px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 82%, transparent) 0%, color-mix(in srgb, var(--surface) 40%, transparent) 75%, transparent 100%);
-  backdrop-filter: blur(24px) saturate(1.25);
-  -webkit-backdrop-filter: blur(24px) saturate(1.25);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--background) 92%, transparent) 0%,
+    color-mix(in srgb, var(--background) 60%, transparent) 60%,
+    transparent 100%
+  );
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   pointer-events: none;
 }
 .search-field {
@@ -106,11 +111,10 @@ defineExpose({ focusSearch, selectSearch })
 
 .floating-search-input {
   min-height: 48px;
-  border: 1px solid transparent !important;
+  border: 1px solid var(--border) !important;
   border-radius: 13px;
-  background: color-mix(in srgb, var(--surface-elevated) 88%, transparent);
-  box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(16px);
+  background: var(--surface-elevated);
+  box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.1);
 }
 .floating-search-input:focus-within,
 .floating-search-input:hover {
