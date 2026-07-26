@@ -32,24 +32,41 @@ export interface ModelDownloadProgress {
   message: string
 }
 
+export interface ModelStatus {
+  ready: boolean
+  backend: string
+  accelerationActive: boolean
+  accelerationLabel: string
+  fallbackReason?: string
+}
+
 export interface RuntimeStats {
   modelName: string
-  backend: string
-  acceleration: string
-  gpuActive: boolean
   stage: string
+  backendRequested: string
+  backendEffective: string
+  accelerationActive: boolean
+  accelerationLabel: string
+  batchSize: number
   current: number
   total: number
-  batchSize: number
+  batchCurrent: number
+  batchTotal: number
+  imagesPerSecond: number
+  averageMsPerImage: number
+  decodeMs: number
+  inferenceMs: number
+  saveMs: number
   elapsedMs: number
-  imagesPerSecond?: number
-  averageMsPerImage?: number
-  processCpuPercent: number
-  processMemoryBytes: number
   systemCpuPercent: number
-  systemMemoryUsedBytes: number
-  systemMemoryTotalBytes: number
-  lastError?: string
+  processCpuPercent: number
+  memoryUsedBytes: number
+  memoryTotalBytes: number
+  processMemoryBytes: number
+  modelCacheBytes: number
+  thumbnailCacheItems: number
+  fallbackReason?: string
+  updatedAt: number
 }
 
 export interface AppInfo {
@@ -60,6 +77,7 @@ export interface AppInfo {
   aiBackend: string
   aiReady: boolean
   modelProgress: ModelDownloadProgress
+  runtimeStats: RuntimeStats
 }
 
 export interface IndexProgress {
