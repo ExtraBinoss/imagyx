@@ -22,7 +22,13 @@ defineProps<{
     <div v-else-if="images.length > 0" class="image-grid">
       <article v-for="image in images" :key="image.id" class="image-card" :title="image.path">
         <div class="image-frame">
-          <img :src="imagyxApi.thumbnailUrl(image.thumbnailPath)" :alt="image.name" loading="lazy" />
+          <img
+            :src="imagyxApi.thumbnailUrl(image.path)"
+            :alt="image.name"
+            loading="lazy"
+            decoding="async"
+            fetchpriority="low"
+          />
           <Badge v-if="image.semanticScore" class="score-badge" variant="primary">
             {{ Math.round(image.semanticScore * 100) }}%
           </Badge>
