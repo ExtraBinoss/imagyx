@@ -41,10 +41,10 @@ sysinfo = "=0.37.1"
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24", "download-binaries", "copy-dylibs", "tls-rustls", "coreml"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24", "download-binaries", "copy-dylibs", "tls-rustls", "directml"] }
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24", "download-binaries", "copy-dylibs", "tls-rustls", "directml", "webgpu"] }
 
 [target.'cfg(not(any(target_os = "macos", target_os = "windows")))'.dependencies]
-ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24", "download-binaries", "copy-dylibs", "tls-rustls"] }
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24", "download-binaries", "copy-dylibs", "tls-rustls", "webgpu"] }
 
 [dev-dependencies]
 tempfile = "3"
