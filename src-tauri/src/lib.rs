@@ -53,8 +53,10 @@ pub fn run() {
                         let _ = window.emit("spotlight-will-hide", ());
                         let _ = window.hide();
                     } else {
-                        let _ = window.center();
                         let _ = window.emit("spotlight-will-open", ());
+                        if let Err(error) = commands::layout_spotlight_window(&window, false) {
+                            eprintln!("Impossible de positionner Spotlight: {error}");
+                        }
                         let _ = window.show();
                         let _ = window.set_focus();
                         let _ = window.emit("spotlight-opened", ());
@@ -120,6 +122,7 @@ pub fn run() {
             commands::open_in_file_manager,
             commands::copy_image_to_clipboard,
             commands::open_in_imagyx,
+            commands::set_spotlight_expanded,
             commands::hide_spotlight,
         ])
         .run(tauri::generate_context!())
