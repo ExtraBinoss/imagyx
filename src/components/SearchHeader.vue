@@ -19,6 +19,7 @@ const emit = defineEmits<{
 }>()
 
 const searchInput = ref<{ focus: () => void; select: () => void } | null>(null)
+const isFocused = ref(false)
 
 function focusSearch() {
   searchInput.value?.focus()
@@ -34,7 +35,7 @@ defineExpose({ focusSearch, selectSearch })
 <template>
   <header class="search-header" data-tauri-drag-region>
     <div class="search-field">
-      <MovingBorder border-radius="14px" :duration="searching ? 2600 : 4200" :active="true">
+      <MovingBorder border-radius="14px" :duration="searching ? 2600 : 4200" :active="isFocused">
         <Input
           ref="searchInput"
           :model-value="props.modelValue"
@@ -42,6 +43,8 @@ defineExpose({ focusSearch, selectSearch })
           :placeholder="placeholder ?? 'Nom de fichier ou description naturelle…'"
           aria-label="Rechercher des images"
           class="floating-search-input"
+          @focus="isFocused = true"
+          @blur="isFocused = false"
           @update:model-value="emit('update:modelValue', $event)"
         >
           <template #leading>
@@ -103,11 +106,16 @@ defineExpose({ focusSearch, selectSearch })
 
 .floating-search-input {
   min-height: 48px;
-  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border: 1px solid transparent !important;
   border-radius: 13px;
   background: color-mix(in srgb, var(--surface-elevated) 88%, transparent);
   box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(16px);
+}
+.floating-search-input:focus-within,
+.floating-search-input:hover {
+  border-color: transparent !important;
+  outline: none !important;
 }
 
 .header-icon-wrapper {

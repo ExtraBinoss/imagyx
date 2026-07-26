@@ -91,7 +91,8 @@ const styleVariables = computed(() => ({
 .moving-border__spark {
   stroke-dashoffset: 0;
   animation: moving-border-travel var(--moving-border-duration) linear infinite;
-  will-change: stroke-dashoffset;
+  will-change: stroke-dashoffset, opacity;
+  transition: opacity 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .moving-border__aura {
@@ -117,15 +118,11 @@ const styleVariables = computed(() => ({
   opacity: 0.9;
 }
 
-.moving-border--active .moving-border__aura,
-.moving-border:focus-within .moving-border__aura {
-  opacity: 0.25;
-}
-
 .moving-border:not(.moving-border--active) .moving-border__aura,
 .moving-border:not(.moving-border--active) .moving-border__beam,
 .moving-border:not(.moving-border--active) .moving-border__spark {
-  animation-play-state: paused;
+  opacity: 0;
+  pointer-events: none;
 }
 
 @keyframes moving-border-travel {

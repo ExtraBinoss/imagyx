@@ -21,6 +21,8 @@ withDefaults(
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
+  focus: [event: FocusEvent]
+  blur: [event: FocusEvent]
 }>()
 
 const input = ref<HTMLInputElement | null>(null)
@@ -48,6 +50,8 @@ defineExpose({ focus, select })
       :spellcheck="spellcheck"
       :aria-label="ariaLabel"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
+      @focus="emit('focus', $event)"
+      @blur="emit('blur', $event)"
     />
     <span v-if="$slots.trailing" class="ui-input__slot"><slot name="trailing" /></span>
   </label>
