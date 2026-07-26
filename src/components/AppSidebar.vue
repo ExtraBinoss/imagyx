@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Folder, FolderOpen, Images, MoreHorizontal, Plus, RefreshCw, Trash2 } from '@lucide/vue'
-import type { FollowedFolder, IndexProgress, ModelDownloadProgress } from '../types'
+import type { FollowedFolder, IndexProgress, ModelDownloadProgress, RuntimeStats } from '../types'
 import Button from './ui/Button/Button.vue'
 import Popover from './ui/Popover/Popover.vue'
 import Tooltip from './ui/Tooltip/Tooltip.vue'
@@ -13,6 +13,7 @@ const props = defineProps<{
   totalImages: number
   progress: IndexProgress | null
   modelProgress: ModelDownloadProgress | null
+  runtimeStats: RuntimeStats | null
 }>()
 
 const emit = defineEmits<{
@@ -110,6 +111,10 @@ const allSelected = computed(() => props.selectedFolderId === null)
       </div>
     </nav>
 
-    <LocalAiStatus :progress="progress" :model-progress="modelProgress" />
+    <LocalAiStatus
+      :progress="progress"
+      :model-progress="modelProgress"
+      :runtime-stats="runtimeStats"
+    />
   </aside>
 </template>
