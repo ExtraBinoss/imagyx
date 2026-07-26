@@ -23,7 +23,7 @@ const props = defineProps<{
 
 const GAP = 16
 const MIN_CARD_WIDTH = 180
-const META_HEIGHT = 48
+const META_HEIGHT = 82
 const OVERSCAN_ROWS = 3
 
 const viewport = ref<HTMLElement | null>(null)
@@ -151,6 +151,16 @@ watch(
               {{ entry.image.width }} × {{ entry.image.height }} ·
               {{ formatBytes(entry.image.sizeBytes) }}
             </span>
+            <div v-if="entry.image.semanticMatches?.length" class="semantic-match-list">
+              <Badge
+                v-for="match in entry.image.semanticMatches"
+                :key="`${match.source}:${match.label}`"
+                :variant="match.source === 'filename' ? 'neutral' : 'primary'"
+                :title="`${match.source === 'filename' ? 'Nom de fichier' : 'Similarité IA'} · ${Math.round(match.score * 100)} %`"
+              >
+                {{ match.label }} · {{ Math.round(match.score * 100) }}%
+              </Badge>
+            </div>
           </div>
         </article>
       </div>
