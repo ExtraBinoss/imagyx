@@ -232,9 +232,12 @@ button {
 .folder-row {
   display: flex !important;
   align-items: center;
+  justify-content: flex-start !important;
+  width: 100% !important;
   gap: var(--space-2) !important;
-  min-height: 38px !important;
+  min-height: 36px !important;
   padding: 0 var(--space-3) !important;
+  padding-right: 36px !important;
   color: var(--text) !important;
   text-align: left;
 }

@@ -244,29 +244,30 @@ onBeforeUnmount(() => {
 .folder-nav {
   overflow-x: hidden;
   scrollbar-gutter: stable;
-}
-.folder-entry,
-.folder-row {
-  min-width: 0;
-  max-width: 100%;
+  display: grid;
+  gap: 2px;
 }
 .folder-entry {
-  padding-right: 34px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
 }
 .folder-entry .folder-row {
-  width: calc(100% + 34px);
-  padding-right: 46px !important;
+  width: 100%;
 }
 .folder-actions {
-  right: 2px;
-  display: flex !important;
-  width: 32px;
-  padding-left: 0;
-  background: transparent;
+  position: absolute;
+  right: 6px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
   transition: opacity var(--transition-fast);
+  background: linear-gradient(90deg, transparent, var(--sidebar) 30%);
+  padding-left: 12px;
 }
 .folder-entry:hover .folder-actions,
 .folder-entry:focus-within .folder-actions {
