@@ -3,6 +3,8 @@ import { FileImage, SearchX } from '@lucide/vue'
 import type { ImageAsset } from '../types'
 import { imagyxApi } from '../api/tauri'
 import { formatBytes } from '../utils'
+import Badge from './ui/Badge/Badge.vue'
+import Skeleton from './ui/Skeleton/Skeleton.vue'
 
 defineProps<{
   images: ImageAsset[]
@@ -14,16 +16,16 @@ defineProps<{
 <template>
   <section class="image-area">
     <div v-if="loading && images.length === 0" class="loading-grid" aria-label="Chargement">
-      <div v-for="item in 18" :key="item" class="skeleton-card" />
+      <Skeleton v-for="item in 18" :key="item" class="skeleton-card" radius="lg" />
     </div>
 
     <div v-else-if="images.length > 0" class="image-grid">
       <article v-for="image in images" :key="image.id" class="image-card" :title="image.path">
         <div class="image-frame">
           <img :src="imagyxApi.thumbnailUrl(image.thumbnailPath)" :alt="image.name" loading="lazy" />
-          <span v-if="image.semanticScore" class="score-badge">
+          <Badge v-if="image.semanticScore" class="score-badge" variant="primary">
             {{ Math.round(image.semanticScore * 100) }}%
-          </span>
+          </Badge>
         </div>
         <div class="image-meta">
           <strong>{{ image.name }}</strong>
