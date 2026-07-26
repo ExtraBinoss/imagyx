@@ -14,6 +14,8 @@ use crate::{
     state::AppState,
 };
 
+const METADATA_BATCH_SIZE: usize = 64;
+
 pub fn index_folder(
     state: &AppState,
     app: &AppHandle,
@@ -38,19 +40,27 @@ pub fn index_folder(
         .collect();
 
     if !changed.is_empty() {
-        emit_progress(
-            app,
-            folder,
-            0,
-            changed.len(),
-            "metadata",
-            "Lecture des métadonnées…",
-        );
-        let prepared: Vec<ImageAsset> = changed
-            .par_iter()
-            .filter_map(|path| prepare_asset(folder, path).ok())
-            .collect();
-        state.database.save_assets(&prepared, &[])?;
+        let total = changed.len();
+        emit_progress(app, folder, 0, total, "metadata", "Lecture des métadonnées…");
+        let mut processed = 0;
+        for batch in changed.chunks(METADATA_BATCH_SIZE) {
+            let prepared: Vec<ImageAsset> = batch
+                .par_iter()
+                .filter_map(|path| prepare_asset(folder, path).ok())
+                .collect();
+            if !prepared.is_empty() {
+                state.database.save_assets(&prepared, &[])?;
+            }
+            processed = (processed + batch.len()).min(total);
+            emit_progress(
+                app,
+                folder,
+                processed,
+                total,
+                "metadata",
+                &format!("Métadonnées · {processed} sur {total}"),
+            );
+        }
     }
 
     state.database.delete_missing(&folder.id, &current_paths)?;
