@@ -16,3 +16,18 @@
 :root[data-window='spotlight'] button {
   user-select: text;
 }
+
+:root[data-window='spotlight'] .spotlight-results-shell {
+  height: 462px !important;
+}
+
+:root[data-window='spotlight'] .spotlight-result--selected:not(:hover):not(:focus-within) .spotlight-actions {
+  opacity: 0 !important;
+  transform: translate(10px, -50%) scale(0.97) !important;
+  pointer-events: none !important;
+}
+
+:root[data-window='spotlight'] .spotlight-result--selected:not(:hover):not(:focus-within) .spotlight-score {
+  opacity: 1 !important;
+  transform: none !important;
+}
