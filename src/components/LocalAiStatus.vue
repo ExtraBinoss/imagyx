@@ -12,38 +12,79 @@ import DisclosureButton from './ui/DisclosureButton/DisclosureButton.vue'
 const props = defineProps<{
   progress: IndexProgress | null
   modelProgress: ModelDownloadProgress | null
+  runtimeStats: RuntimeStats | null
 }>()
 
-const stats = ref<RuntimeStats | null>(null)
+const liveStats = ref<RuntimeStats | null>(props.runtimeStats)
 const popoverOpen = ref(false)
 let timer: number | undefined
 
-const indexing = computed(() => props.progress?.stage === 'embedding')
+watch(
+  () => props.runtimeStats,
+  (value) => {
+    if (value) liveStats.value = value
+  },
+  { immediate: true },
+)
+
+const indexing = computed(() =>
+  props.progress?.stage === 'embedding' || props.progress?.stage === 'saving',
+)
 const downloading = computed(() => props.modelProgress?.stage === 'downloading')
-const active = computed(() => indexing.value || downloading.value || props.modelProgress?.stage === 'loading')
+const preparingModel = computed(() =>
+  props.modelProgress?.stage === 'checking' || props.modelProgress?.stage === 'loading',
+)
+const active = computed(() => indexing.value || downloading.value || preparingModel.value)
 const current = computed(() => indexing.value ? props.progress?.current ?? 0 : props.modelProgress?.currentBytes ?? 0)
 const total = computed(() => indexing.value ? props.progress?.total ?? 0 : props.modelProgress?.totalBytes ?? 0)
 const percent = computed(() => total.value > 0 ? Math.min(100, (current.value / total.value) * 100) : 0)
+const indeterminate = computed(() =>
+  preparingModel.value || (indexing.value && current.value === 0),
+)
+
 const title = computed(() => {
   if (downloading.value) return 'Téléchargement de l’IA'
-  if (indexing.value) return 'Analyse IA'
-  if (props.modelProgress?.stage === 'loading') return 'Chargement du modèle'
+  if (indexing.value) return props.progress?.stage === 'saving' ? 'Sauvegarde de l’analyse' : 'Analyse IA'
+  if (preparingModel.value) return 'Chargement du modèle'
   if (props.modelProgress?.stage === 'error') return 'IA indisponible'
   return 'IA locale prête'
 })
+
 const detail = computed(() => {
-  if (indexing.value && props.progress) return `${props.progress.current} / ${props.progress.total}`
+  if (indexing.value && props.progress) {
+    if (props.progress.current === 0) {
+      return props.progress.batchCurrent
+        ? `Lot ${props.progress.batchCurrent} · préparation`
+        : 'Préparation du premier lot'
+    }
+    const speed = liveStats.value?.imagesPerSecond ?? 0
+    return `${props.progress.current} / ${props.progress.total}${speed > 0 ? ` · ${speed.toFixed(1)} img/s` : ''}`
+  }
   if (downloading.value && props.modelProgress) {
     return `${formatBytes(props.modelProgress.currentBytes)} / ${formatBytes(props.modelProgress.totalBytes)}`
   }
-  return stats.value?.gpuActive ? `GPU · ${stats.value.backend}` : stats.value?.backend ?? 'MobileCLIP2-S0'
+  return liveStats.value?.accelerationActive
+    ? liveStats.value.accelerationLabel
+    : liveStats.value?.backendEffective ?? 'MobileCLIP2-S0'
+})
+
+const phaseLabel = computed(() => {
+  switch (liveStats.value?.stage) {
+    case 'checking': return 'Vérification du cache'
+    case 'loading': return 'Optimisation du modèle'
+    case 'decoding': return 'Décodage et resize 256 px'
+    case 'indexing': return 'Inférence MobileCLIP'
+    case 'saving': return 'Écriture SQLite'
+    case 'error': return 'Erreur'
+    default: return 'Prêt'
+  }
 })
 
 async function refreshStats(): Promise<void> {
   try {
-    stats.value = await imagyxApi.runtimeStats()
+    liveStats.value = await imagyxApi.runtimeStats()
   } catch {
-    // The compact status remains usable even if diagnostics are unavailable.
+    // La carte compacte reste utilisable même si les diagnostics sont indisponibles.
   }
 }
 
@@ -55,12 +96,17 @@ onMounted(() => {
   void refreshStats()
   timer = window.setInterval(() => {
     if (popoverOpen.value || active.value) void refreshStats()
-  }, 1800)
+  }, 1500)
 })
 
 onBeforeUnmount(() => {
   if (timer) window.clearInterval(timer)
 })
+
+function formatMilliseconds(value: number): string {
+  if (value < 1_000) return `${Math.round(value)} ms`
+  return `${(value / 1_000).toFixed(1)} s`
+}
 </script>
 
 <template>
@@ -76,55 +122,67 @@ onBeforeUnmount(() => {
     <ProgressBar
       class="local-ai-status__progress"
       :value="percent"
-      :indeterminate="active && total === 0"
+      :indeterminate="indeterminate"
       size="sm"
       label="Progression de l’IA locale"
     />
 
-    <Popover align="start" width="300px">
+    <Popover align="start" width="320px">
       <template #trigger="{ open }">
         <DisclosureButton
           :open="open"
           label="Voir les performances"
-          @toggle="popoverOpen = !popoverOpen"
+          @toggle="popoverOpen = !open"
         />
       </template>
       <template #content>
         <div class="ai-stats">
           <div class="ai-stats__title">
             <div>
-              <strong>{{ stats?.modelName ?? 'MobileCLIP2-S0' }}</strong>
-              <span>Moteur local</span>
+              <strong>{{ liveStats?.modelName ?? 'MobileCLIP2-S0' }}</strong>
+              <span>{{ phaseLabel }}</span>
             </div>
-            <Badge :variant="stats?.gpuActive ? 'success' : 'neutral'">
-              {{ stats?.gpuActive ? 'GPU actif' : stats?.acceleration ?? 'CPU' }}
+            <Badge :variant="liveStats?.accelerationActive ? 'success' : 'neutral'">
+              {{ liveStats?.accelerationActive ? liveStats.accelerationLabel : 'CPU' }}
             </Badge>
           </div>
 
           <dl>
-            <div><dt>Backend</dt><dd>{{ stats?.backend ?? 'Chargement…' }}</dd></div>
-            <div><dt>Lot</dt><dd>{{ stats?.batchSize ?? 0 }} images</dd></div>
-            <div><dt>Progression</dt><dd>{{ stats?.current ?? 0 }} / {{ stats?.total ?? 0 }}</dd></div>
-            <div><dt>Débit</dt><dd>{{ stats?.imagesPerSecond?.toFixed(1) ?? '—' }} img/s</dd></div>
-            <div><dt>Temps moyen</dt><dd>{{ stats?.averageMsPerImage?.toFixed(0) ?? '—' }} ms/image</dd></div>
+            <div><dt>Backend actif</dt><dd>{{ liveStats?.backendEffective ?? 'Chargement…' }}</dd></div>
+            <div><dt>Backend demandé</dt><dd>{{ liveStats?.backendRequested ?? 'Automatique' }}</dd></div>
+            <div><dt>Lot</dt><dd>{{ liveStats?.batchCurrent ?? 0 }} / {{ liveStats?.batchTotal ?? 0 }} · {{ liveStats?.batchSize ?? 0 }} images</dd></div>
+            <div><dt>Progression</dt><dd>{{ liveStats?.current ?? 0 }} / {{ liveStats?.total ?? 0 }}</dd></div>
+            <div><dt>Débit</dt><dd>{{ liveStats?.imagesPerSecond?.toFixed(1) ?? '0.0' }} img/s</dd></div>
+            <div><dt>Temps moyen</dt><dd>{{ liveStats?.averageMsPerImage ? `${liveStats.averageMsPerImage.toFixed(0)} ms/image` : '—' }}</dd></div>
           </dl>
+
+          <div class="ai-stats__timings">
+            <span>Décodage <strong>{{ formatMilliseconds(liveStats?.decodeMs ?? 0) }}</strong></span>
+            <span>Inférence <strong>{{ formatMilliseconds(liveStats?.inferenceMs ?? 0) }}</strong></span>
+            <span>SQLite <strong>{{ formatMilliseconds(liveStats?.saveMs ?? 0) }}</strong></span>
+          </div>
 
           <div class="ai-stats__resources">
             <div>
               <Cpu :size="15" />
-              <span>Imagyx {{ stats?.processCpuPercent.toFixed(0) ?? 0 }} % CPU</span>
+              <span>Imagyx {{ liveStats?.processCpuPercent.toFixed(0) ?? 0 }} % CPU</span>
             </div>
             <div>
               <Gauge :size="15" />
-              <span>Système {{ stats?.systemCpuPercent.toFixed(0) ?? 0 }} % CPU</span>
+              <span>Système {{ liveStats?.systemCpuPercent.toFixed(0) ?? 0 }} % CPU</span>
             </div>
             <div>
               <MemoryStick :size="15" />
-              <span>{{ formatBytes(stats?.processMemoryBytes ?? 0) }} RAM</span>
+              <span>{{ formatBytes(liveStats?.processMemoryBytes ?? 0) }} RAM · modèle {{ formatBytes(liveStats?.modelCacheBytes ?? 0) }}</span>
             </div>
           </div>
 
-          <p v-if="stats?.lastError" class="ai-stats__error">{{ stats.lastError }}</p>
+          <p class="ai-stats__cache">
+            {{ liveStats?.thumbnailCacheItems ?? 0 }} miniatures en cache sur 256 maximum
+          </p>
+          <p v-if="liveStats?.fallbackReason" class="ai-stats__warning">
+            Accélération indisponible : {{ liveStats.fallbackReason }}
+          </p>
         </div>
       </template>
     </Popover>
@@ -236,6 +294,28 @@ onBeforeUnmount(() => {
   text-align: right;
 }
 
+.ai-stats__timings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.ai-stats__timings span {
+  display: grid;
+  gap: 3px;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.ai-stats__timings strong {
+  color: var(--text);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
 .ai-stats__resources {
   display: grid;
   gap: var(--space-2);
@@ -251,10 +331,18 @@ onBeforeUnmount(() => {
   font-size: var(--text-xs);
 }
 
-.ai-stats__error {
+.ai-stats__cache,
+.ai-stats__warning {
   margin: 0;
-  color: var(--danger-text);
   font-size: var(--text-xs);
   line-height: 1.45;
+}
+
+.ai-stats__cache {
+  color: var(--text-muted);
+}
+
+.ai-stats__warning {
+  color: var(--warning-text, var(--text-muted));
 }
 </style>
