@@ -92,6 +92,28 @@ impl Default for ModelDownloadProgress {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeStats {
+    pub model_name: String,
+    pub backend: String,
+    pub acceleration: String,
+    pub gpu_active: bool,
+    pub stage: String,
+    pub current: usize,
+    pub total: usize,
+    pub batch_size: usize,
+    pub elapsed_ms: u64,
+    pub images_per_second: Option<f32>,
+    pub average_ms_per_image: Option<f32>,
+    pub process_cpu_percent: f32,
+    pub process_memory_bytes: u64,
+    pub system_cpu_percent: f32,
+    pub system_memory_used_bytes: u64,
+    pub system_memory_total_bytes: u64,
+    pub last_error: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct ImageFingerprint {
     pub modified_at: i64,
