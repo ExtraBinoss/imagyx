@@ -1,10 +1,10 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { Search, Sparkles, X } from '@lucide/vue'
 import Badge from './ui/Badge/Badge.vue'
 import Button from './ui/Button/Button.vue'
 import Input from './ui/Input/Input.vue'
 import Select from './ui/Select/Select.vue'
-import Tooltip from './ui/Tooltip/Tooltip.vue'
 import { useThemeStore, type ThemeMode } from '../stores/theme'
 
 const props = defineProps<{
@@ -17,6 +17,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
 }>()
 
+const searchInput = ref<{ focus: () => void; select: () => void } | null>(null)
 const theme = useThemeStore()
 const themeOptions = [
   { label: 'Système', value: 'system', description: 'Suit macOS ou Windows' },
@@ -27,12 +28,23 @@ const themeOptions = [
 function setTheme(value: string) {
   theme.setMode(value as ThemeMode)
 }
+
+function focusSearch() {
+  searchInput.value?.focus()
+}
+
+function selectSearch() {
+  searchInput.value?.select()
+}
+
+defineExpose({ focusSearch, selectSearch })
 </script>
 
 <template>
   <header class="search-header">
     <div class="search-field">
       <Input
+        ref="searchInput"
         :model-value="props.modelValue"
         type="search"
         placeholder="Nom de fichier ou description naturelle…"
@@ -55,12 +67,10 @@ function setTheme(value: string) {
     </div>
 
     <div class="header-actions">
-      <Tooltip :text="props.modelBackend" side="bottom">
-        <Badge :variant="props.modelReady ? 'success' : 'warning'">
-          <Sparkles :size="14" />
-          {{ props.modelReady ? props.modelBackend : 'IA en préparation' }}
-        </Badge>
-      </Tooltip>
+      <Badge :variant="props.modelReady ? 'success' : 'warning'" :aria-label="props.modelBackend">
+        <Sparkles :size="14" />
+        {{ props.modelReady ? props.modelBackend : 'IA en préparation' }}
+      </Badge>
       <Select
         :model-value="theme.mode"
         :options="themeOptions"
