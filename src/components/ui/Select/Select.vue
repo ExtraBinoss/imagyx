@@ -4,7 +4,7 @@ import { Check, ChevronDown } from '@lucide/vue'
 import Button from '../Button/Button.vue'
 import Popover from '../Popover/Popover.vue'
 
-export interface SelectOption {
+interface SelectOption {
   label: string
   value: string
   description?: string
@@ -19,7 +19,6 @@ const props = withDefaults(
     ariaLabel?: string
   }>(),
   {
-    modelValue: undefined,
     placeholder: 'Sélectionner',
     ariaLabel: 'Sélectionner une option',
   },
