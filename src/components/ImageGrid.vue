@@ -262,12 +262,11 @@ watch(() => props.images.length, () => {
   border-radius: var(--radius-full);
   font-size: 10px;
   font-weight: 600;
-  backdrop-filter: blur(8px);
 }
 
 .semantic-chip--filename {
-  background: rgb(255 255 255 / 0.16);
-  border: 1px solid rgb(255 255 255 / 0.25);
+  background: rgba(18, 20, 26, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   color: #f1f5f9;
 }
 
