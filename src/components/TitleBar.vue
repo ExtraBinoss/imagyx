@@ -30,7 +30,18 @@ async function close(event: MouseEvent) {
 
 <template>
   <div class="titlebar" :class="`titlebar--${platform.controlsPosition}`" data-tauri-drag-region>
-    <div class="titlebar-traffic-lights" @click.stop @pointerdown.stop>
+    <div v-if="platform.controlsPosition === 'right'" class="titlebar-traffic-lights" @click.stop @pointerdown.stop>
+      <button class="mac-btn mac-minimize" title="Minimize" @click="minimize" @pointerdown.stop>
+        <Minus :size="9" class="mac-icon" />
+      </button>
+      <button class="mac-btn mac-maximize" title="Maximize" @click="toggleMaximize" @pointerdown.stop>
+        <Square :size="8" class="mac-icon" />
+      </button>
+      <button class="mac-btn mac-close" title="Close" @click="close" @pointerdown.stop>
+        <X :size="9" class="mac-icon" />
+      </button>
+    </div>
+    <div v-else class="titlebar-traffic-lights" @click.stop @pointerdown.stop>
       <button class="mac-btn mac-close" title="Close" @click="close" @pointerdown.stop>
         <X :size="9" class="mac-icon" />
       </button>
