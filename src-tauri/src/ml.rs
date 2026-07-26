@@ -39,6 +39,7 @@ fn model_spec(key: &str) -> Result<ModelSpec, String> {
 }
 
 pub fn prepare_local_model(app: &AppHandle, state: &Arc<AppState>, model_key: &str) -> Result<PathBuf, String> {
+    let _guard = state.lock_model();
     let spec = model_spec(model_key)?;
     let model_root = state.paths.models.join(spec.directory);
     fs::create_dir_all(&model_root).map_err(|error| error.to_string())?;
