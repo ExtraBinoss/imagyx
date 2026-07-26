@@ -14,7 +14,7 @@ use crate::{
     state::AppState,
 };
 
-const EMBEDDING_CHUNK_SIZE: usize = 32;
+const EMBEDDING_CHUNK_SIZE: usize = 8;
 
 pub fn index_folder(
     state: &AppState,
@@ -30,9 +30,6 @@ pub fn index_folder(
         .map(|path| path.to_string_lossy().into_owned())
         .collect();
 
-    // Read the existing fingerprints once. The previous implementation opened a
-    // new SQLite connection for every file, which was disproportionately slow
-    // even for small folders.
     let existing: HashMap<String, (i64, u64)> = state
         .database
         .images(Some(&folder.id))?
@@ -45,116 +42,190 @@ pub fn index_folder(
         .filter(|path| is_changed(path, &existing))
         .collect();
 
-    emit_progress(
-        app,
-        folder,
-        0,
-        changed.len(),
-        "metadata",
-        "Lecture des métadonnées…",
-    );
-
-    // Only read image headers here. The WebView displays original files lazily,
-    // so indexing no longer decodes every image and writes a duplicate JPEG.
-    let prepared: Vec<ImageAsset> = changed
-        .par_iter()
-        .filter_map(|path| prepare_asset(folder, path).ok())
-        .collect();
-
-    emit_progress(
-        app,
-        folder,
-        prepared.len(),
-        prepared.len(),
-        "saving",
-        "Mise à jour de la bibliothèque…",
-    );
-
-    // Save metadata first and invalidate stale vectors for changed files. This
-    // makes the grid available immediately while semantic indexing continues.
-    state.database.save_assets(&prepared, &[])?;
-    state.database.delete_missing(&folder.id, &current_paths)?;
-    state.refresh_vectors()?;
-    let _ = app.emit("library-updated", ());
-
-    if !prepared.is_empty() {
+    if !changed.is_empty() {
         emit_progress(
             app,
             folder,
             0,
-            prepared.len(),
-            "embedding",
-            "Compréhension visuelle locale…",
+            changed.len(),
+            "metadata",
+            "Lecture des métadonnées…",
         );
 
-        let mut processed = 0;
-        let mut embedding_failed = false;
+        let prepared: Vec<ImageAsset> = changed
+            .par_iter()
+            .filter_map(|path| prepare_asset(folder, path).ok())
+            .collect();
 
-        for chunk in prepared.chunks(EMBEDDING_CHUNK_SIZE) {
-            let paths: Vec<PathBuf> = chunk
-                .iter()
-                .map(|asset| PathBuf::from(&asset.path))
-                .collect();
+        emit_progress(
+            app,
+            folder,
+            prepared.len(),
+            prepared.len(),
+            "saving",
+            "Mise à jour de la bibliothèque…",
+        );
 
-            match state.ml.lock().embed_images(&paths) {
-                Ok(vectors) => {
-                    let embeddings: Vec<(String, Vec<f32>)> = chunk
-                        .iter()
-                        .zip(vectors)
-                        .map(|(asset, vector)| (asset.id.clone(), vector))
-                        .collect();
-                    state.database.save_assets(chunk, &embeddings)?;
-                    processed += chunk.len();
-                    emit_progress(
-                        app,
-                        folder,
-                        processed,
-                        prepared.len(),
-                        "embedding",
-                        "Compréhension visuelle locale…",
-                    );
-                }
-                Err(error) => {
-                    embedding_failed = true;
-                    let _ = app.emit(
-                        "model-status",
-                        ModelStatus {
-                            ready: false,
-                            backend: format!(
-                                "{} · recherche par nom",
-                                crate::ml::MlRuntime::backend_label()
-                            ),
-                        },
-                    );
-                    eprintln!("Imagyx ML indexing failed: {error}");
-                    break;
-                }
+        state.database.save_assets(&prepared, &[])?;
+    }
+
+    state.database.delete_missing(&folder.id, &current_paths)?;
+    state.refresh_vectors()?;
+    let _ = app.emit("library-updated", ());
+
+    let pending = pending_assets(state, folder)?;
+    if pending.is_empty() {
+        emit_progress(app, folder, 0, 0, "complete", "Bibliothèque à jour");
+        return Ok(());
+    }
+
+    if state.model_progress.read().stage != "ready" {
+        emit_progress(
+            app,
+            folder,
+            0,
+            pending.len(),
+            "queued",
+            &format!(
+                "{} image{} affichée{} · analyse IA dès que le modèle est prêt",
+                pending.len(),
+                if pending.len() > 1 { "s" } else { "" },
+                if pending.len() > 1 { "s" } else { "" }
+            ),
+        );
+        return Ok(());
+    }
+
+    embed_pending_locked(state, app, folder, &pending)
+}
+
+pub fn embed_pending(
+    state: &AppState,
+    app: &AppHandle,
+    folder: &FollowedFolder,
+) -> Result<(), AppError> {
+    let _guard = state.lock_indexer();
+    let pending = pending_assets(state, folder)?;
+    if pending.is_empty() {
+        return Ok(());
+    }
+    if state.model_progress.read().stage != "ready" {
+        return Ok(());
+    }
+    embed_pending_locked(state, app, folder, &pending)
+}
+
+fn embed_pending_locked(
+    state: &AppState,
+    app: &AppHandle,
+    folder: &FollowedFolder,
+    pending: &[ImageAsset],
+) -> Result<(), AppError> {
+    let total_batches = pending.len().div_ceil(EMBEDDING_CHUNK_SIZE);
+    let mut processed = 0;
+
+    for (batch_index, chunk) in pending.chunks(EMBEDDING_CHUNK_SIZE).enumerate() {
+        emit_batch_progress(
+            app,
+            folder,
+            processed,
+            pending.len(),
+            batch_index + 1,
+            total_batches,
+            &format!(
+                "Analyse IA · lot {} sur {} · {} image{}",
+                batch_index + 1,
+                total_batches,
+                chunk.len(),
+                if chunk.len() > 1 { "s" } else { "" }
+            ),
+        );
+
+        let paths: Vec<PathBuf> = chunk
+            .iter()
+            .map(|asset| PathBuf::from(&asset.path))
+            .collect();
+
+        match state.ml.lock().embed_images(&paths) {
+            Ok(vectors) => {
+                let embeddings: Vec<(String, Vec<f32>)> = chunk
+                    .iter()
+                    .zip(vectors)
+                    .map(|(asset, vector)| (asset.id.clone(), vector))
+                    .collect();
+                state.database.save_assets(chunk, &embeddings)?;
+            }
+            Err(batch_error) => {
+                eprintln!("Imagyx batch embedding failed, retrying individually: {batch_error}");
+                embed_individually(state, chunk)?;
             }
         }
 
-        if !embedding_failed {
-            let _ = app.emit(
-                "model-status",
-                ModelStatus {
-                    ready: true,
-                    backend: crate::ml::MlRuntime::backend_label().to_owned(),
-                },
-            );
-        }
-
-        state.refresh_vectors()?;
+        processed += chunk.len();
+        emit_batch_progress(
+            app,
+            folder,
+            processed,
+            pending.len(),
+            batch_index + 1,
+            total_batches,
+            &format!("Analyse IA · {processed} sur {}", pending.len()),
+        );
     }
 
+    state.refresh_vectors()?;
+    let _ = app.emit(
+        "model-status",
+        ModelStatus {
+            ready: true,
+            backend: crate::ml::MlRuntime::backend_label().to_owned(),
+        },
+    );
     emit_progress(
         app,
         folder,
-        prepared.len(),
-        prepared.len(),
+        pending.len(),
+        pending.len(),
         "complete",
-        "Indexation terminée",
+        "Analyse IA terminée",
     );
     let _ = app.emit("library-updated", ());
     Ok(())
+}
+
+fn embed_individually(state: &AppState, assets: &[ImageAsset]) -> Result<(), AppError> {
+    for asset in assets {
+        let path = PathBuf::from(&asset.path);
+        match state.ml.lock().embed_images(&[path]) {
+            Ok(mut vectors) => {
+                if let Some(vector) = vectors.pop() {
+                    state
+                        .database
+                        .save_assets(std::slice::from_ref(asset), &[(asset.id.clone(), vector)])?;
+                }
+            }
+            Err(error) => {
+                eprintln!("Imagyx skipped {} during semantic indexing: {error}", asset.path);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn pending_assets(state: &AppState, folder: &FollowedFolder) -> Result<Vec<ImageAsset>, AppError> {
+    let vector_ids: HashSet<String> = state
+        .vectors
+        .read()
+        .iter()
+        .filter(|entry| entry.folder_id == folder.id)
+        .map(|entry| entry.image_id.clone())
+        .collect();
+    Ok(state
+        .database
+        .images(Some(&folder.id))?
+        .into_iter()
+        .filter(|asset| !vector_ids.contains(&asset.id))
+        .collect())
 }
 
 fn discover_images(root: &Path) -> Vec<PathBuf> {
@@ -200,16 +271,14 @@ fn prepare_asset(folder: &FollowedFolder, path: &Path) -> Result<ImageAsset, App
     Ok(ImageAsset {
         id,
         folder_id: folder.id.clone(),
-        path: path_string.clone(),
+        path: path_string,
         name: file_name,
         extension,
         width,
         height,
         size_bytes: metadata.len(),
         modified_at,
-        // Kept for database compatibility. The UI now renders the original path
-        // directly and relies on lazy WebView decoding instead of a disk cache.
-        thumbnail_path: path_string,
+        thumbnail_path: String::new(),
         semantic_score: None,
     })
 }
@@ -295,7 +364,7 @@ fn semantic_scores(
     query: &str,
     folder_id: Option<&str>,
 ) -> Result<HashMap<String, f32>, AppError> {
-    if state.vectors.read().is_empty() {
+    if state.model_progress.read().stage != "ready" || state.vectors.read().is_empty() {
         return Ok(HashMap::new());
     }
     let query_vector = state.ml.lock().embed_text(query)?;
@@ -359,6 +428,41 @@ fn emit_progress(
     stage: &str,
     message: &str,
 ) {
+    emit_progress_inner(app, folder, current, total, None, None, stage, message);
+}
+
+fn emit_batch_progress(
+    app: &AppHandle,
+    folder: &FollowedFolder,
+    current: usize,
+    total: usize,
+    batch_current: usize,
+    batch_total: usize,
+    message: &str,
+) {
+    emit_progress_inner(
+        app,
+        folder,
+        current,
+        total,
+        Some(batch_current),
+        Some(batch_total),
+        "embedding",
+        message,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_progress_inner(
+    app: &AppHandle,
+    folder: &FollowedFolder,
+    current: usize,
+    total: usize,
+    batch_current: Option<usize>,
+    batch_total: Option<usize>,
+    stage: &str,
+    message: &str,
+) {
     let _ = app.emit(
         "index-progress",
         IndexProgress {
@@ -366,6 +470,8 @@ fn emit_progress(
             folder_name: folder.name.clone(),
             current,
             total,
+            batch_current,
+            batch_total,
             stage: stage.to_owned(),
             message: message.to_owned(),
         },
