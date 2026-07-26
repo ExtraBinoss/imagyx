@@ -4,6 +4,7 @@ import type {
   FollowedFolder,
   ImageAsset,
   ImageEmbedding,
+  ModelDownloadProgress,
   RuntimeStats,
   SearchRequest,
 } from '../types'
@@ -11,6 +12,9 @@ import type {
 export const imagyxApi = {
   appInfo: () => invoke<AppInfo>('get_app_info'),
   runtimeStats: () => invoke<RuntimeStats>('get_runtime_stats'),
+  updateRuntimeStats: (stats: RuntimeStats) => invoke<void>('update_runtime_stats', { stats }),
+  updateModelProgress: (progress: ModelDownloadProgress) =>
+    invoke<void>('update_model_progress', { progress }),
   folders: () => invoke<FollowedFolder[]>('list_folders'),
   addFolder: (path: string) => invoke<FollowedFolder>('add_folder', { path }),
   removeFolder: (folderId: string) => invoke<void>('remove_folder', { folderId }),
