@@ -28,10 +28,18 @@ pub struct ImageAsset {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ImageEmbedding {
+    pub image_id: String,
+    pub vector: Vec<f32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SearchRequest {
     pub query: String,
     pub folder_id: Option<String>,
     pub limit: Option<usize>,
+    pub query_vector: Option<Vec<f32>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -91,7 +99,7 @@ impl Default for ModelDownloadProgress {
             total_bytes: 0,
             current_file: 0,
             total_files: 0,
-            message: "En attente".to_owned(),
+            message: "En attente du runtime WebGPU".to_owned(),
         }
     }
 }
@@ -130,10 +138,10 @@ pub struct RuntimeStats {
 impl Default for RuntimeStats {
     fn default() -> Self {
         Self {
-            model_name: "MobileCLIP2-S0".to_owned(),
+            model_name: "MobileCLIP-S0".to_owned(),
             stage: "idle".to_owned(),
-            backend_requested: "Détection automatique".to_owned(),
-            backend_effective: "En attente".to_owned(),
+            backend_requested: "WebGPU".to_owned(),
+            backend_effective: "En attente du frontend".to_owned(),
             acceleration_active: false,
             acceleration_label: "Non initialisée".to_owned(),
             batch_size: 0,
@@ -158,12 +166,6 @@ impl Default for RuntimeStats {
             updated_at: 0,
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct ImageFingerprint {
-    pub modified_at: i64,
-    pub size_bytes: u64,
 }
 
 #[derive(Debug, Clone)]
