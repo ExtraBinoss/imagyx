@@ -4,6 +4,7 @@ mod indexer;
 mod ml;
 mod models;
 mod paths;
+mod preferences;
 mod state;
 mod system_stats;
 mod thumbnails;
@@ -12,9 +13,10 @@ mod watcher;
 use std::{path::PathBuf, sync::Arc};
 
 use paths::AppPaths;
+use preferences::ShortcutPreferences;
 use state::AppState;
 use tauri::{Emitter, Manager};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use thiserror::Error;
 use watcher::FolderWatcher;
 
@@ -38,15 +40,12 @@ pub enum AppError {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let spotlight_shortcut = Shortcut::new(Some(Modifiers::CONTROL), Code::Numpad9);
-    let handler_shortcut = spotlight_shortcut.clone();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |app, shortcut, event| {
-                    if shortcut != &handler_shortcut || event.state() != ShortcutState::Pressed { return; }
+                .with_handler(move |app, _shortcut, event| {
+                    if event.state() != ShortcutState::Pressed { return; }
                     let Some(window) = app.get_webview_window("spotlight") else { return; };
                     let visible = window.is_visible().unwrap_or(false);
                     if visible {
@@ -65,17 +64,19 @@ pub fn run() {
                 .build(),
         )
         .setup(move |app| {
-            if let Err(error) = app.global_shortcut().register(spotlight_shortcut) {
-                eprintln!("Impossible d’enregistrer Ctrl+Numpad9: {error}");
+            let paths = AppPaths::discover()?;
+            let shortcut_preferences = ShortcutPreferences::load(paths.root.join("settings.json"));
+            if let Err(error) = shortcut_preferences.register(app.handle()) {
+                eprintln!("Impossible d’enregistrer le raccourci Spotlight: {error}");
             }
 
-            let paths = AppPaths::discover()?;
             let state = Arc::new(AppState::new(paths)?);
             let folders = state.database.folders()?;
             app.asset_protocol_scope().allow_directory(&state.paths.thumbnails, true)?;
             app.asset_protocol_scope().allow_directory(&state.paths.models, true)?;
             for folder in &folders { app.asset_protocol_scope().allow_directory(&folder.path, true)?; }
             let folder_watcher = FolderWatcher::start(app.handle().clone(), Arc::clone(&state), folders)?;
+            app.manage(shortcut_preferences);
             app.manage(folder_watcher);
             app.manage(state);
 
@@ -106,6 +107,8 @@ pub fn run() {
             commands::get_runtime_stats,
             commands::update_runtime_stats,
             commands::update_model_progress,
+            commands::get_spotlight_shortcut,
+            commands::set_spotlight_shortcut,
             commands::prepare_local_model,
             commands::reset_embeddings,
             commands::list_folders,
