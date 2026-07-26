@@ -165,6 +165,34 @@ onBeforeUnmount(() => {
   max-width: 100%;
 }
 
+.folder-entry {
+  padding-right: 34px;
+}
+
+.folder-entry .folder-row {
+  width: calc(100% + 34px);
+  padding-right: 46px !important;
+}
+
+.folder-actions {
+  right: 2px;
+  display: flex !important;
+  width: 32px;
+  padding-left: 0;
+  background: transparent;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+}
+
+.folder-entry:hover .folder-actions,
+.folder-entry:focus-within .folder-actions {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
 .sidebar-model-picker {
   display: grid;
   gap: var(--space-2);
