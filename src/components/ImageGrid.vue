@@ -36,7 +36,7 @@ const windowOffset = computed(() => startRow.value * rowStride.value)
 
 function explanation(image: ImageAsset): string {
   const matches = image.semanticMatches ?? []
-  if (!matches.length) return 'Analyse au survol… Le résultat sera conservé pour cette image.'
+  if (!matches.length) return 'Survole cette icône pour analyser cette image. Le résultat sera conservé en mémoire.'
   const concepts = matches
     .map((match) => `${match.label} (${Math.round(match.score * 100)} %)`)
     .join(', ')
@@ -76,18 +76,20 @@ watch(() => props.images.length, () => {
           <div class="image-frame">
             <ThumbnailImage :image="entry.image" />
             <Badge v-if="entry.image.semanticScore" class="score-badge" variant="primary">{{ Math.round(entry.image.semanticScore * 100) }}%</Badge>
-            <Tooltip :text="explanation(entry.image)" side="left">
-              <Button
-                class="explanation-button"
-                variant="secondary"
-                size="icon"
-                aria-label="Analyser le contenu de cette image"
-                @mouseenter="emit('explain', entry.image.id)"
-                @focus="emit('explain', entry.image.id)"
-              >
-                <Info :size="14" />
-              </Button>
-            </Tooltip>
+            <div class="explanation-action">
+              <Tooltip :text="explanation(entry.image)" side="left">
+                <Button
+                  class="explanation-button"
+                  variant="secondary"
+                  size="icon"
+                  aria-label="Analyser le contenu de cette image"
+                  @mouseenter="emit('explain', entry.image.id)"
+                  @focus="emit('explain', entry.image.id)"
+                >
+                  <Info :size="16" :stroke-width="2" />
+                </Button>
+              </Tooltip>
+            </div>
           </div>
           <div class="image-meta">
             <strong>{{ entry.image.name }}</strong>
@@ -108,3 +110,48 @@ watch(() => props.images.length, () => {
     </div>
   </section>
 </template>
+
+<style scoped>
+.explanation-action {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 3;
+  display: flex;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-2px);
+  pointer-events: none;
+  transition:
+    opacity var(--transition-fast),
+    transform var(--transition-fast),
+    visibility var(--transition-fast);
+}
+
+.image-card:hover .explanation-action,
+.image-card:focus-within .explanation-action {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.explanation-button {
+  width: 30px !important;
+  height: 30px !important;
+  border: 1px solid rgb(255 255 255 / 0.45) !important;
+  background: rgb(20 20 24 / 0.78) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.22);
+  backdrop-filter: blur(8px);
+}
+
+@media (hover: none) {
+  .explanation-action {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+</style>
