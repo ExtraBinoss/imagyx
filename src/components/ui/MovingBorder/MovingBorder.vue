@@ -27,7 +27,9 @@ const styleVariables = computed(() => ({
     :style="styleVariables"
   >
     <div class="moving-border__aura" aria-hidden="true" />
-    <div class="moving-border__beam" aria-hidden="true" />
+    <div class="moving-border__clip" aria-hidden="true">
+      <div class="moving-border__beam" />
+    </div>
     <div class="moving-border__surface">
       <slot />
     </div>
@@ -43,6 +45,15 @@ const styleVariables = computed(() => ({
   border-radius: var(--moving-border-radius);
 }
 
+.moving-border__clip {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  border-radius: var(--moving-border-radius);
+  pointer-events: none;
+}
+
 .moving-border__surface {
   position: relative;
   z-index: 2;
@@ -52,47 +63,50 @@ const styleVariables = computed(() => ({
 
 .moving-border__beam {
   position: absolute;
-  z-index: 0;
-  inset: -130%;
+  inset: -155%;
   border-radius: 50%;
   background:
     conic-gradient(
       from 0deg,
-      transparent 0deg 245deg,
-      color-mix(in srgb, var(--primary) 16%, transparent) 270deg,
-      color-mix(in srgb, var(--primary) 92%, white 8%) 300deg,
-      color-mix(in srgb, #7c3aed 76%, var(--primary)) 326deg,
-      transparent 355deg 360deg
+      transparent 0deg 242deg,
+      color-mix(in srgb, var(--primary) 10%, transparent) 264deg,
+      color-mix(in srgb, var(--primary) 72%, #93c5fd) 292deg,
+      #dbeafe 312deg,
+      color-mix(in srgb, var(--primary) 90%, #60a5fa) 331deg,
+      transparent 356deg 360deg
     );
-  opacity: 0.72;
+  opacity: 0.82;
   animation: moving-border-spin var(--moving-border-duration) linear infinite;
+  transform-origin: center;
   will-change: transform;
 }
 
 .moving-border__aura {
   position: absolute;
   z-index: -1;
-  inset: -15px;
-  border-radius: calc(var(--moving-border-radius) + 15px);
+  inset: -13px;
+  border-radius: calc(var(--moving-border-radius) + 13px);
   background:
-    radial-gradient(circle at 20% 50%, color-mix(in srgb, var(--primary) 20%, transparent), transparent 46%),
-    radial-gradient(circle at 80% 50%, rgb(124 58 237 / 0.13), transparent 48%);
-  filter: blur(13px);
-  opacity: 0.45;
-  transform: scale(0.98);
-  transition: opacity 180ms ease, transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+    radial-gradient(circle at 24% 52%, color-mix(in srgb, var(--primary) 22%, transparent), transparent 47%),
+    radial-gradient(circle at 78% 46%, rgb(147 197 253 / 0.2), transparent 49%);
+  filter: blur(14px);
+  opacity: 0.42;
+  transform: scale(0.985);
+  transition:
+    opacity 180ms ease,
+    transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: none;
 }
 
 .moving-border--active .moving-border__aura,
 .moving-border:focus-within .moving-border__aura {
-  opacity: 0.9;
-  transform: scale(1.015);
+  opacity: 0.82;
+  transform: scale(1.01);
 }
 
 .moving-border:not(.moving-border--active) .moving-border__beam {
   animation-play-state: paused;
-  opacity: 0.28;
+  opacity: 0.3;
 }
 
 @keyframes moving-border-spin {
