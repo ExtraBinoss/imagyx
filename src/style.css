@@ -328,7 +328,7 @@ body,
   display: none;
   align-items: center;
   padding-left: var(--space-4);
-  background: var(--sidebar);
+  background: transparent;
 }
 
 .folder-entry:hover .folder-actions,

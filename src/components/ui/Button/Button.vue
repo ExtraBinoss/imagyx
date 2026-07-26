@@ -145,14 +145,18 @@ withDefaults(
   background: var(--surface-hover);
 }
 
-.ui-button--ghost {
+.ui-button--ghost,
+.ui-button--ghost:not(.ui-button--flat) {
   border-color: transparent;
   background: transparent;
   color: var(--text-secondary);
+  box-shadow: none;
 }
-.ui-button--ghost:hover:not(:disabled) {
+.ui-button--ghost:hover:not(:disabled),
+.ui-button--ghost:not(.ui-button--flat):hover:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text);
+  box-shadow: none;
 }
 
 .ui-button--danger {
