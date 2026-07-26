@@ -1,164 +1,133 @@
-use std::{
-    fs,
-    io::{Read, Write},
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{fs, io::{Read, Write}, path::{Path, PathBuf}, sync::Arc};
 
 use tauri::{AppHandle, Emitter};
 
-use crate::{
-    models::ModelDownloadProgress,
-    state::AppState,
-};
+use crate::{models::ModelDownloadProgress, state::AppState};
 
-pub const MODEL_ID: &str = "mobileclip-s0-transformersjs";
-pub const MODEL_NAME: &str = "MobileCLIP-S0";
-pub const MODEL_REPOSITORY: &str = "Xenova/mobileclip_s0";
+pub const MODEL_ID: &str = "active-transformersjs-model";
 
-const MODEL_FILES: &[&str] = &[
-    "config.json",
-    "preprocessor_config.json",
-    "tokenizer.json",
-    "tokenizer_config.json",
-    "onnx/vision_model.onnx",
-    "onnx/text_model.onnx",
-];
-
-pub fn local_model_root(models_dir: &Path) -> PathBuf {
-    models_dir.join("Xenova").join("mobileclip_s0")
+struct ModelSpec {
+    key: &'static str,
+    name: &'static str,
+    repository: &'static str,
+    directory: &'static str,
+    files: &'static [&'static str],
 }
 
-pub fn prepare_local_model(
-    app: &AppHandle,
-    state: &Arc<AppState>,
-) -> Result<PathBuf, String> {
-    let model_root = local_model_root(&state.paths.models);
-    fs::create_dir_all(&model_root).map_err(|error| error.to_string())?;
+const S0_FILES: &[&str] = &[
+    "config.json", "preprocessor_config.json", "tokenizer.json", "tokenizer_config.json",
+    "onnx/vision_model.onnx", "onnx/text_model.onnx",
+];
 
+const S2_FILES: &[&str] = &[
+    "config.json", "preprocessor_config.json", "tokenizer.json", "tokenizer_config.json",
+    "onnx/s2/vision_model.onnx", "onnx/s2/text_model.onnx",
+];
+
+fn model_spec(key: &str) -> Result<ModelSpec, String> {
+    match key {
+        "mobileclip-s0" => Ok(ModelSpec {
+            key: "mobileclip-s0", name: "MobileCLIP-S0", repository: "Xenova/mobileclip_s0",
+            directory: "Xenova/mobileclip_s0", files: S0_FILES,
+        }),
+        "mobileclip2-s2" => Ok(ModelSpec {
+            key: "mobileclip2-s2", name: "MobileCLIP2-S2", repository: "plhery/mobileclip2-onnx",
+            directory: "plhery/mobileclip2-onnx", files: S2_FILES,
+        }),
+        _ => Err(format!("Modèle inconnu: {key}")),
+    }
+}
+
+pub fn prepare_local_model(app: &AppHandle, state: &Arc<AppState>, model_key: &str) -> Result<PathBuf, String> {
+    let spec = model_spec(model_key)?;
+    let model_root = state.paths.models.join(spec.directory);
+    fs::create_dir_all(&model_root).map_err(|error| error.to_string())?;
     let client = reqwest::blocking::Client::builder()
         .user_agent(format!("imagyx/{}", env!("CARGO_PKG_VERSION")))
-        .build()
-        .map_err(|error| error.to_string())?;
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .build().map_err(|error| error.to_string())?;
 
-    let missing = MODEL_FILES
-        .iter()
-        .copied()
+    let missing = spec.files.iter().copied()
         .filter(|relative| !model_root.join(relative).is_file())
         .collect::<Vec<_>>();
 
     if missing.is_empty() {
-        publish(
-            app,
-            state,
-            ModelDownloadProgress {
-                stage: "ready".to_owned(),
-                file_name: None,
-                current_bytes: 0,
-                total_bytes: 0,
-                current_file: MODEL_FILES.len(),
-                total_files: MODEL_FILES.len(),
-                message: format!("{MODEL_NAME} est disponible hors connexion."),
-            },
-        );
+        publish(app, state, ModelDownloadProgress {
+            stage: "ready".into(), file_name: None, current_bytes: directory_size(&model_root),
+            total_bytes: directory_size(&model_root), current_file: spec.files.len(), total_files: spec.files.len(),
+            message: format!("{} est disponible hors connexion.", spec.name),
+        });
         return Ok(model_root);
     }
 
-    let mut known_total = 0_u64;
-    let mut file_sizes = Vec::with_capacity(missing.len());
+    let mut sizes = Vec::with_capacity(missing.len());
+    let mut total = 0_u64;
     for relative in &missing {
-        let size = client
-            .head(model_url(relative))
-            .send()
-            .ok()
-            .and_then(|response| response.content_length())
+        let url = model_url(&spec, relative);
+        let size = client.head(&url).send().ok()
+            .and_then(|response| response.headers().get(reqwest::header::CONTENT_LENGTH).and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok()))
             .unwrap_or(0);
-        known_total = known_total.saturating_add(size);
-        file_sizes.push(size);
+        total = total.saturating_add(size);
+        sizes.push(size);
     }
+
+    publish(app, state, ModelDownloadProgress {
+        stage: "downloading".into(), file_name: None, current_bytes: 0, total_bytes: total,
+        current_file: 0, total_files: missing.len(), message: format!("Téléchargement de {}…", spec.name),
+    });
 
     let mut completed = 0_u64;
-    for (index, (relative, expected_size)) in missing.iter().zip(file_sizes).enumerate() {
+    for (index, (relative, expected)) in missing.iter().zip(sizes).enumerate() {
         let destination = model_root.join(relative);
-        if let Some(parent) = destination.parent() {
-            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-        }
-        let temporary = destination.with_extension(format!(
-            "{}.download",
-            destination
-                .extension()
-                .and_then(|value| value.to_str())
-                .unwrap_or("file")
-        ));
-
-        let mut response = client
-            .get(model_url(relative))
-            .send()
+        if let Some(parent) = destination.parent() { fs::create_dir_all(parent).map_err(|e| e.to_string())?; }
+        let temporary = destination.with_extension(format!("{}.download", destination.extension().and_then(|v| v.to_str()).unwrap_or("file")));
+        let mut response = client.get(model_url(&spec, relative)).send()
             .and_then(reqwest::blocking::Response::error_for_status)
             .map_err(|error| format!("Téléchargement de {relative}: {error}"))?;
-        let response_size = response.content_length().unwrap_or(expected_size);
-        let mut output = fs::File::create(&temporary).map_err(|error| error.to_string())?;
+        let response_size = response.content_length().unwrap_or(expected);
+        if total == 0 { total = response_size; }
+        let mut output = fs::File::create(&temporary).map_err(|e| e.to_string())?;
         let mut buffer = [0_u8; 256 * 1024];
-        let mut current_file_bytes = 0_u64;
-
+        let mut current = 0_u64;
         loop {
-            let read = response.read(&mut buffer).map_err(|error| error.to_string())?;
-            if read == 0 {
-                break;
-            }
-            output
-                .write_all(&buffer[..read])
-                .map_err(|error| error.to_string())?;
-            current_file_bytes = current_file_bytes.saturating_add(read as u64);
-            publish(
-                app,
-                state,
-                ModelDownloadProgress {
-                    stage: "downloading".to_owned(),
-                    file_name: Some((*relative).to_owned()),
-                    current_bytes: completed.saturating_add(current_file_bytes),
-                    total_bytes: known_total,
-                    current_file: index + 1,
-                    total_files: missing.len(),
-                    message: format!("Téléchargement · {relative}"),
-                },
-            );
+            let read = response.read(&mut buffer).map_err(|e| e.to_string())?;
+            if read == 0 { break; }
+            output.write_all(&buffer[..read]).map_err(|e| e.to_string())?;
+            current = current.saturating_add(read as u64);
+            publish(app, state, ModelDownloadProgress {
+                stage: "downloading".into(), file_name: Some((*relative).into()),
+                current_bytes: completed.saturating_add(current), total_bytes: total.max(completed + response_size),
+                current_file: index + 1, total_files: missing.len(),
+                message: format!("{} · {}", spec.name, relative),
+            });
         }
-        output.flush().map_err(|error| error.to_string())?;
-
-        if response_size > 0 && current_file_bytes != response_size {
+        output.flush().map_err(|e| e.to_string())?;
+        if response_size > 0 && current != response_size {
             let _ = fs::remove_file(&temporary);
-            return Err(format!(
-                "Fichier incomplet pour {relative}: {current_file_bytes}/{response_size} octets"
-            ));
+            return Err(format!("Fichier incomplet pour {relative}: {current}/{response_size} octets"));
         }
-        if destination.exists() {
-            fs::remove_file(&destination).map_err(|error| error.to_string())?;
-        }
-        fs::rename(&temporary, &destination).map_err(|error| error.to_string())?;
-        completed = completed.saturating_add(current_file_bytes);
+        if destination.exists() { fs::remove_file(&destination).map_err(|e| e.to_string())?; }
+        fs::rename(&temporary, &destination).map_err(|e| e.to_string())?;
+        completed = completed.saturating_add(current);
     }
 
-    publish(
-        app,
-        state,
-        ModelDownloadProgress {
-            stage: "ready".to_owned(),
-            file_name: None,
-            current_bytes: completed,
-            total_bytes: known_total.max(completed),
-            current_file: missing.len(),
-            total_files: missing.len(),
-            message: format!("{MODEL_NAME} est disponible hors connexion."),
-        },
-    );
+    publish(app, state, ModelDownloadProgress {
+        stage: "ready".into(), file_name: None, current_bytes: completed, total_bytes: total.max(completed),
+        current_file: missing.len(), total_files: missing.len(),
+        message: format!("{} est disponible hors connexion.", spec.name),
+    });
+    let _ = spec.key;
     Ok(model_root)
 }
 
-fn model_url(relative: &str) -> String {
-    format!(
-        "https://huggingface.co/{MODEL_REPOSITORY}/resolve/main/{relative}?download=true"
-    )
+fn model_url(spec: &ModelSpec, relative: &str) -> String {
+    format!("https://huggingface.co/{}/resolve/main/{relative}?download=true", spec.repository)
+}
+
+fn directory_size(root: &Path) -> u64 {
+    fs::read_dir(root).map_or(0, |entries| entries.filter_map(Result::ok).map(|entry| {
+        entry.metadata().map_or(0, |meta| if meta.is_dir() { directory_size(&entry.path()) } else { meta.len() })
+    }).sum())
 }
 
 fn publish(app: &AppHandle, state: &Arc<AppState>, progress: ModelDownloadProgress) {
