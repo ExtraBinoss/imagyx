@@ -125,7 +125,9 @@ defineExpose({ focusSearch, selectSearch })
 }
 
 .search-count-badge {
-  padding: 3px 9px;
+  min-width: 86px;
+  text-align: center;
+  padding: 3px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--surface-hover) 88%, transparent);
@@ -133,6 +135,7 @@ defineExpose({ focusSearch, selectSearch })
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
+  transition: width 150ms ease, opacity 120ms ease;
 }
 
 .spin {
@@ -142,10 +145,10 @@ defineExpose({ focusSearch, selectSearch })
 
 .icon-swap-enter-active,
 .icon-swap-leave-active {
-  transition: opacity 160ms ease, transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 140ms ease, transform 140ms ease;
 }
-.icon-swap-enter-from { opacity: 0; transform: scale(0.7) rotate(-45deg); }
-.icon-swap-leave-to { opacity: 0; transform: scale(0.7) rotate(45deg); }
+.icon-swap-enter-from { opacity: 0; transform: scale(0.85); }
+.icon-swap-leave-to { opacity: 0; transform: scale(0.85); }
 
 @keyframes spin {
   to { transform: rotate(1turn); }
