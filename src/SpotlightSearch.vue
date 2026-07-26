@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { LogicalSize } from '@tauri-apps/api/dpi'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Check, Copy, ExternalLink, FolderOpen, LoaderCircle, Search } from '@lucide/vue'
@@ -13,8 +12,6 @@ import ThumbnailImage from './components/ThumbnailImage.vue'
 import Button from './components/ui/Button/Button.vue'
 import MovingBorder from './components/ui/MovingBorder/MovingBorder.vue'
 
-const COMPACT_HEIGHT = 112
-const EXPANDED_HEIGHT = 580
 const TAG_CACHE_KEY = 'imagyx.spotlight-top-tags.v1'
 const FALLBACK_TAGS = [
   'femme', 'portrait', 'paysage', 'chien', 'chat',
@@ -31,6 +28,7 @@ const error = ref<string | null>(null)
 const copiedImageId = ref<string | null>(null)
 const visible = ref(false)
 const inputFocused = ref(false)
+const resultsOpen = ref(false)
 const searchInput = ref<HTMLInputElement | null>(null)
 const resultsViewport = ref<HTMLElement | null>(null)
 const canScrollDown = ref(false)
@@ -42,7 +40,9 @@ let searchSequence = 0
 let copyTimer: number | undefined
 let warmupTimer: number | undefined
 let typewriterTimer: number | undefined
+let collapseTimer: number | undefined
 let expanded = false
+let expansionPromise: Promise<void> | null = null
 let tagIndex = 0
 let characterIndex = 0
 let deleting = false
@@ -69,17 +69,58 @@ watch(query, (value) => {
     searchSequence += 1
     results.value = []
     searching.value = false
-    void setExpanded(false)
-    void nextTick(updateScrollShadow)
+    closeResults()
     return
   }
-  void setExpanded(true)
-  searchLater()
+  void openResults()
 })
 
 watch(() => results.value.length, () => {
   void nextTick(updateScrollShadow)
 })
+
+async function openResults() {
+  if (collapseTimer) {
+    window.clearTimeout(collapseTimer)
+    collapseTimer = undefined
+  }
+  try {
+    await ensureExpanded()
+  } catch (reason) {
+    error.value = String(reason)
+  }
+  if (!query.value.trim()) return
+  resultsOpen.value = true
+  searchLater()
+}
+
+function closeResults() {
+  resultsOpen.value = false
+  canScrollDown.value = false
+  if (collapseTimer) window.clearTimeout(collapseTimer)
+  collapseTimer = window.setTimeout(() => {
+    if (query.value.trim()) return
+    void setCompact()
+  }, 210)
+}
+
+async function ensureExpanded() {
+  if (expanded) return
+  if (!expansionPromise) {
+    expansionPromise = imagyxApi.setSpotlightExpanded(true)
+      .then(() => { expanded = true })
+      .finally(() => { expansionPromise = null })
+  }
+  await expansionPromise
+}
+
+async function setCompact() {
+  if (!expanded) return
+  try {
+    await imagyxApi.setSpotlightExpanded(false)
+    expanded = false
+  } catch { /* le prochain lancement réinitialise aussi la taille côté Rust */ }
+}
 
 async function runSearch() {
   const sequence = ++searchSequence
@@ -192,14 +233,6 @@ function handleKeydown(event: KeyboardEvent) {
   }
 }
 
-async function setExpanded(nextExpanded: boolean) {
-  if (expanded === nextExpanded) return
-  expanded = nextExpanded
-  try {
-    await currentWindow.setSize(new LogicalSize(780, nextExpanded ? EXPANDED_HEIGHT : COMPACT_HEIGHT))
-  } catch { /* le redimensionnement est une amélioration visuelle */ }
-}
-
 function updateScrollShadow() {
   const element = resultsViewport.value
   if (!element) {
@@ -216,7 +249,10 @@ function prepareOpen() {
   results.value = []
   selectedIndex.value = 0
   error.value = null
-  void setExpanded(false)
+  resultsOpen.value = false
+  expanded = false
+  expansionPromise = null
+  canScrollDown.value = false
 }
 
 function animateOpen() {
@@ -234,7 +270,10 @@ function prepareHide() {
   inputFocused.value = false
   query.value = ''
   results.value = []
-  void setExpanded(false)
+  resultsOpen.value = false
+  expanded = false
+  expansionPromise = null
+  canScrollDown.value = false
 }
 
 function readCachedTags(): string[] {
@@ -318,103 +357,106 @@ onBeforeUnmount(() => {
   if (copyTimer) window.clearTimeout(copyTimer)
   if (warmupTimer) window.clearTimeout(warmupTimer)
   if (typewriterTimer) window.clearTimeout(typewriterTimer)
+  if (collapseTimer) window.clearTimeout(collapseTimer)
 })
 </script>
 
 <template>
   <main class="spotlight-root">
     <section class="spotlight-stage" :class="{ 'spotlight-stage--visible': visible }" aria-label="Recherche rapide Imagyx">
-      <MovingBorder
-        class="spotlight-moving-border"
-        border-radius="21px"
-        :duration="inputFocused || searching ? 2200 : 3900"
-        :active="visible"
-      >
-        <div class="spotlight-search">
-          <Search :size="22" :stroke-width="1.9" />
-          <input
-            ref="searchInput"
-            v-model="query"
-            type="search"
-            autocomplete="off"
-            spellcheck="false"
-            :placeholder="placeholder"
-            aria-label="Recherche rapide"
-            @focus="inputFocused = true"
-            @blur="inputFocused = false"
-          />
-          <span v-if="hasQuery && !searching" class="spotlight-result-count">{{ resultLabel }}</span>
-          <LoaderCircle v-if="searching" class="spin" :size="18" />
-          <kbd v-else-if="!hasQuery">Ctrl · Num 9</kbd>
-        </div>
-      </MovingBorder>
-
-      <Transition name="results-morph">
-        <section v-if="hasQuery" class="spotlight-popover" aria-live="polite">
-          <div class="spotlight-results-shell">
-            <div
-              ref="resultsViewport"
-              class="spotlight-results"
-              role="listbox"
-              :aria-label="resultLabel"
-              @scroll.passive="updateScrollShadow"
-            >
-              <div
-                v-for="(image, index) in results"
-                :key="image.id"
-                class="spotlight-result"
-                :class="{ 'spotlight-result--selected': index === selectedIndex }"
-                :data-result-index="index"
-                :aria-selected="index === selectedIndex"
-                role="option"
-                tabindex="-1"
-                :style="{ animationDelay: `${Math.min(index, 10) * 18}ms` }"
-                @mouseenter="selectedIndex = index"
-                @focus="selectedIndex = index"
-                @click="selectedIndex = index"
-                @dblclick="openImage(image)"
-              >
-                <span class="spotlight-thumb"><ThumbnailImage :image="image" /></span>
-                <span class="spotlight-copy">
-                  <strong>{{ image.name }}</strong>
-                  <small>{{ image.width }} × {{ image.height }} · {{ formatBytes(image.sizeBytes) }}</small>
-                </span>
-                <span v-if="image.semanticScore != null" class="spotlight-score">{{ Math.round(image.semanticScore * 100) }}%</span>
-                <span class="spotlight-actions">
-                  <Button class="spotlight-action-button" variant="secondary" size="sm" aria-label="Copier l’image" @click.stop="copyImage(image)">
-                    <template #leading>
-                      <Check v-if="copiedImageId === image.id" :size="14" />
-                      <Copy v-else :size="14" />
-                    </template>
-                    {{ copiedImageId === image.id ? 'Copiée' : 'Copier' }}
-                  </Button>
-                  <Button class="spotlight-action-button" variant="secondary" size="sm" :aria-label="platform.openFolderLabel" @click.stop="revealImage(image)">
-                    <template #leading><FolderOpen :size="14" /></template>
-                    {{ platform.fileManagerName }}
-                  </Button>
-                  <Button class="spotlight-action-button" variant="primary" size="sm" aria-label="Ouvrir dans Imagyx" @click.stop="openImage(image)">
-                    <template #leading><ExternalLink :size="14" /></template>
-                    Imagyx
-                  </Button>
-                </span>
-              </div>
-
-              <div v-if="searching && results.length === 0" class="spotlight-loading-list" aria-label="Recherche en cours">
-                <span v-for="item in 5" :key="item" :style="{ animationDelay: `${item * 45}ms` }" />
-              </div>
-
-              <div v-else-if="!searching && !results.length && !error" class="spotlight-empty">
-                <Search :size="24" />
-                <strong>Aucun résultat convaincant</strong>
-                <span>Essaie une description plus courte ou un mot plus visuel.</span>
-              </div>
-
-              <div v-if="error" class="spotlight-error">{{ error }}</div>
-            </div>
-            <div v-if="canScrollDown" class="spotlight-scroll-shadow" aria-hidden="true" />
+      <div class="spotlight-shell" :class="{ 'spotlight-shell--expanded': resultsOpen }">
+        <MovingBorder
+          class="spotlight-moving-border"
+          border-radius="22px"
+          :duration="inputFocused || searching ? 2100 : 3600"
+          :active="visible"
+        >
+          <div class="spotlight-search">
+            <Search :size="22" :stroke-width="1.9" />
+            <input
+              ref="searchInput"
+              v-model="query"
+              type="search"
+              autocomplete="off"
+              spellcheck="false"
+              :placeholder="placeholder"
+              aria-label="Recherche rapide"
+              @focus="inputFocused = true"
+              @blur="inputFocused = false"
+            />
+            <span v-if="hasQuery && !searching" class="spotlight-result-count">{{ resultLabel }}</span>
+            <LoaderCircle v-if="searching" class="spin" :size="18" />
+            <kbd v-else-if="!hasQuery">Ctrl · Num 9</kbd>
           </div>
-        </section>
-      </Transition>
+        </MovingBorder>
+
+        <Transition name="results-morph">
+          <section v-if="resultsOpen" class="spotlight-results-panel" aria-live="polite">
+            <div class="spotlight-results-shell">
+              <div
+                ref="resultsViewport"
+                class="spotlight-results"
+                role="listbox"
+                :aria-label="resultLabel"
+                @scroll.passive="updateScrollShadow"
+              >
+                <div
+                  v-for="(image, index) in results"
+                  :key="image.id"
+                  class="spotlight-result"
+                  :class="{ 'spotlight-result--selected': index === selectedIndex }"
+                  :data-result-index="index"
+                  :aria-selected="index === selectedIndex"
+                  role="option"
+                  tabindex="-1"
+                  :style="{ animationDelay: `${Math.min(index, 10) * 18}ms` }"
+                  @mouseenter="selectedIndex = index"
+                  @focus="selectedIndex = index"
+                  @click="selectedIndex = index"
+                  @dblclick="openImage(image)"
+                >
+                  <span class="spotlight-thumb"><ThumbnailImage :image="image" /></span>
+                  <span class="spotlight-copy">
+                    <strong>{{ image.name }}</strong>
+                    <small>{{ image.width }} × {{ image.height }} · {{ formatBytes(image.sizeBytes) }}</small>
+                  </span>
+                  <span v-if="image.semanticScore != null" class="spotlight-score">{{ Math.round(image.semanticScore * 100) }}%</span>
+                  <span class="spotlight-actions">
+                    <Button class="spotlight-action-button" variant="secondary" size="sm" aria-label="Copier l’image" @click.stop="copyImage(image)">
+                      <template #leading>
+                        <Check v-if="copiedImageId === image.id" :size="14" />
+                        <Copy v-else :size="14" />
+                      </template>
+                      {{ copiedImageId === image.id ? 'Copiée' : 'Copier' }}
+                    </Button>
+                    <Button class="spotlight-action-button" variant="secondary" size="sm" :aria-label="platform.openFolderLabel" @click.stop="revealImage(image)">
+                      <template #leading><FolderOpen :size="14" /></template>
+                      {{ platform.fileManagerName }}
+                    </Button>
+                    <Button class="spotlight-action-button" variant="primary" size="sm" aria-label="Ouvrir dans Imagyx" @click.stop="openImage(image)">
+                      <template #leading><ExternalLink :size="14" /></template>
+                      Imagyx
+                    </Button>
+                  </span>
+                </div>
+
+                <div v-if="searching && results.length === 0" class="spotlight-loading-list" aria-label="Recherche en cours">
+                  <span v-for="item in 5" :key="item" :style="{ animationDelay: `${item * 45}ms` }" />
+                </div>
+
+                <div v-else-if="!searching && !results.length && !error" class="spotlight-empty">
+                  <Search :size="24" />
+                  <strong>Aucun résultat convaincant</strong>
+                  <span>Essaie une description plus courte ou un mot plus visuel.</span>
+                </div>
+
+                <div v-if="error" class="spotlight-error">{{ error }}</div>
+              </div>
+              <div v-if="canScrollDown" class="spotlight-scroll-shadow" aria-hidden="true" />
+            </div>
+          </section>
+        </Transition>
+      </div>
     </section>
   </main>
 </template>
@@ -445,8 +487,43 @@ onBeforeUnmount(() => {
   animation: spotlight-pop 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.spotlight-moving-border {
+.spotlight-shell {
+  position: relative;
   width: 100%;
+  border-radius: 22px;
+  transition: filter 220ms ease;
+}
+
+.spotlight-shell--expanded {
+  filter: drop-shadow(0 30px 58px rgb(2 6 23 / 0.24));
+}
+
+.spotlight-moving-border {
+  position: relative;
+  z-index: 3;
+  width: 100%;
+  transition: border-radius 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.spotlight-shell--expanded .spotlight-moving-border,
+.spotlight-shell--expanded .spotlight-moving-border :deep(.moving-border__clip) {
+  border-radius: 22px 22px 0 0;
+}
+
+.spotlight-shell--expanded .spotlight-moving-border :deep(.moving-border__surface) {
+  border-radius: 21px 21px 0 0;
+}
+
+.spotlight-shell--expanded .spotlight-moving-border::after {
+  content: '';
+  position: absolute;
+  z-index: 4;
+  right: 1px;
+  bottom: -1px;
+  left: 1px;
+  height: 3px;
+  background: color-mix(in srgb, var(--surface-elevated) 96%, transparent);
+  pointer-events: none;
 }
 
 .spotlight-search {
@@ -455,23 +532,37 @@ onBeforeUnmount(() => {
   gap: 13px;
   min-height: 70px;
   padding: 0 18px;
-  border-radius: 20px;
-  background: color-mix(in srgb, var(--surface-elevated) 93%, transparent);
+  border-radius: 21px;
+  background: color-mix(in srgb, var(--surface-elevated) 94%, transparent);
   color: var(--text-muted);
   box-shadow:
-    inset 0 1px rgb(255 255 255 / 0.09),
+    inset 0 1px rgb(255 255 255 / 0.1),
     inset 0 -1px rgb(0 0 0 / 0.06),
     0 18px 46px rgb(2 6 23 / 0.22);
   backdrop-filter: blur(28px) saturate(1.2);
-  transition: background-color 180ms ease, box-shadow 220ms ease;
+  transition:
+    border-radius 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 180ms ease,
+    box-shadow 220ms ease;
+}
+
+.spotlight-shell--expanded .spotlight-search {
+  border-radius: 21px 21px 0 0;
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.1);
 }
 
 .spotlight-search:focus-within {
-  background: color-mix(in srgb, var(--surface-elevated) 97%, transparent);
+  background: color-mix(in srgb, var(--surface-elevated) 98%, transparent);
   box-shadow:
-    inset 0 1px rgb(255 255 255 / 0.12),
-    0 20px 55px rgb(2 6 23 / 0.26),
-    0 0 0 5px color-mix(in srgb, var(--primary) 10%, transparent);
+    inset 0 1px rgb(255 255 255 / 0.13),
+    0 20px 55px rgb(2 6 23 / 0.2),
+    0 0 0 5px color-mix(in srgb, var(--primary) 9%, transparent);
+}
+
+.spotlight-shell--expanded .spotlight-search:focus-within {
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.13),
+    0 0 0 4px color-mix(in srgb, var(--primary) 8%, transparent);
 }
 
 .spotlight-search input {
@@ -487,6 +578,8 @@ onBeforeUnmount(() => {
   letter-spacing: -0.38px;
   caret-color: var(--primary);
 }
+
+.spotlight-search input::-webkit-search-cancel-button { display: none; }
 
 .spotlight-search input::placeholder {
   color: var(--text-subtle);
@@ -521,16 +614,34 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.spotlight-popover {
+.spotlight-results-panel {
   position: relative;
-  margin-top: 9px;
+  z-index: 2;
+  margin-top: -1px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
-  border-radius: 18px 18px 22px 22px;
-  background: color-mix(in srgb, var(--surface-elevated) 95%, transparent);
-  box-shadow: 0 28px 76px rgb(2 6 23 / 0.3), 0 7px 24px rgb(2 6 23 / 0.14);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 76%, transparent);
+  border-top: 0;
+  border-radius: 0 0 22px 22px;
+  background: color-mix(in srgb, var(--surface-elevated) 96%, transparent);
+  box-shadow:
+    inset 1px 0 rgb(255 255 255 / 0.035),
+    inset -1px 0 rgb(255 255 255 / 0.025),
+    inset 0 -1px rgb(255 255 255 / 0.04);
   backdrop-filter: blur(28px) saturate(1.18);
   transform-origin: 50% 0;
+}
+
+.spotlight-results-panel::before {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: 18px;
+  left: 18px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary) 18%, var(--border)) 30%, color-mix(in srgb, var(--primary) 18%, var(--border)) 70%, transparent);
+  opacity: 0.65;
+  pointer-events: none;
 }
 
 .spotlight-results-shell {
@@ -542,7 +653,7 @@ onBeforeUnmount(() => {
 .spotlight-results {
   height: 100%;
   overflow-y: auto;
-  padding: 8px 9px 20px;
+  padding: 9px 9px 20px;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--border-strong) 80%, transparent) transparent;
 }
@@ -622,8 +733,8 @@ onBeforeUnmount(() => {
 
 .spotlight-actions {
   position: absolute;
-  right: 10px;
   top: 50%;
+  right: 10px;
   z-index: 2;
   display: flex;
   align-items: center;
@@ -653,9 +764,7 @@ onBeforeUnmount(() => {
   transition: transform 150ms ease, background-color 150ms ease, border-color 150ms ease, color 150ms ease;
 }
 
-.spotlight-actions :deep(.ui-button:hover) {
-  transform: translateY(-1px);
-}
+.spotlight-actions :deep(.ui-button:hover) { transform: translateY(-1px); }
 
 .spotlight-loading-list {
   display: grid;
@@ -704,24 +813,24 @@ onBeforeUnmount(() => {
 .results-morph-leave-active {
   transition:
     opacity 190ms ease,
-    transform 260ms cubic-bezier(0.16, 1, 0.3, 1),
-    clip-path 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    clip-path 280ms cubic-bezier(0.16, 1, 0.3, 1),
     filter 180ms ease;
 }
 
 .results-morph-enter-from,
 .results-morph-leave-to {
   opacity: 0;
-  transform: translateY(-10px) scaleY(0.92) scaleX(0.985);
-  clip-path: inset(0 4% 96% 4% round 18px);
-  filter: blur(6px);
+  transform: translateY(-8px) scaleY(0.9) scaleX(0.992);
+  clip-path: inset(0 0 98% 0 round 0 0 22px 22px);
+  filter: blur(5px);
 }
 
 .results-morph-enter-to,
 .results-morph-leave-from {
   opacity: 1;
   transform: none;
-  clip-path: inset(0 round 18px);
+  clip-path: inset(0 round 0 0 22px 22px);
   filter: none;
 }
 
