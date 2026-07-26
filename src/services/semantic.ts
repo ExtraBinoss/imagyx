@@ -71,7 +71,10 @@ class SemanticRuntime {
       batchCurrent += 1
       this.patchStats({ stage: 'decoding', batchCurrent, batchSize: batch.length })
       const decodeStarted = performance.now()
-      const images = await Promise.all(batch.map((asset) => RawImage.read(imagyxApi.fileUrl(asset.path))))
+      const preparedPaths = await imagyxApi.prepareAiImages(batch)
+      const images = await Promise.all(
+        preparedPaths.map((path) => RawImage.read(imagyxApi.fileUrl(path))),
+      )
       const imageInputs = await this.processor(images.length === 1 ? images[0] : images)
       decodeMs += performance.now() - decodeStarted
 
@@ -91,9 +94,13 @@ class SemanticRuntime {
 
       const elapsedMs = performance.now() - started
       const imagesPerSecond = processed / Math.max(elapsedMs / 1000, 0.001)
-      const averageBatchMs = (decodeMs + inferenceMs + saveMs) / processed
-      if (averageBatchMs < 90 && batchSize < MAX_BATCH_SIZE) batchSize = Math.min(MAX_BATCH_SIZE, batchSize * 2)
-      if (averageBatchMs > 450 && batchSize > 2) batchSize = Math.max(2, Math.floor(batchSize / 2))
+      const averageImageMs = (decodeMs + inferenceMs + saveMs) / processed
+      if (averageImageMs < 90 && batchSize < MAX_BATCH_SIZE) {
+        batchSize = Math.min(MAX_BATCH_SIZE, batchSize * 2)
+      }
+      if (averageImageMs > 450 && batchSize > 2) {
+        batchSize = Math.max(2, Math.floor(batchSize / 2))
+      }
 
       this.patchStats({
         stage: 'indexing', current: processed, total: pending.length, batchCurrent,
@@ -159,7 +166,7 @@ class SemanticRuntime {
 
     this.publishProgress({
       stage: 'ready', message: `${MODEL_NAME} prêt hors connexion avec ${this.device === 'webgpu' ? 'WebGPU' : 'WASM'}.`,
-      currentBytes: 0, totalBytes: 0, currentFile: 7, totalFiles: 7,
+      currentBytes: 0, totalBytes: 0, currentFile: 6, totalFiles: 6,
     })
   }
 
