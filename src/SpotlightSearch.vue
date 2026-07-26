@@ -164,7 +164,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="spotlight-results" role="listbox" :aria-label="resultLabel">
-        <button
+        <div
           v-for="(image, index) in results"
           :key="image.id"
           class="spotlight-result"
@@ -172,7 +172,7 @@ onBeforeUnmount(() => {
           :data-result-index="index"
           :aria-selected="index === selectedIndex"
           role="option"
-          type="button"
+          tabindex="-1"
           :style="{ animationDelay: `${Math.min(index, 10) * 22}ms` }"
           @mouseenter="selectedIndex = index"
           @focus="selectedIndex = index"
@@ -200,7 +200,7 @@ onBeforeUnmount(() => {
               <span>Imagyx</span>
             </button>
           </span>
-        </button>
+        </div>
 
         <div v-if="!query.trim()" class="spotlight-empty">
           <span class="spotlight-empty__icon"><ImageIcon :size="28" /></span>
