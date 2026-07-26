@@ -19,6 +19,14 @@ export const SEMANTIC_MODELS = [
 const MODEL_STORAGE_KEY = 'imagyx.semantic-model'
 const INITIAL_BATCH_SIZE = 4
 const MAX_BATCH_SIZE = 16
+const DEFAULT_IMAGE_LABELS = [
+  'personne', 'femme', 'homme', 'enfant', 'groupe de personnes', 'visage',
+  'animal', 'chien', 'chat', 'oiseau', 'voiture', 'vélo', 'bâtiment', 'maison',
+  'ville', 'rue', 'intérieur', 'extérieur', 'nature', 'forêt', 'montagne', 'plage',
+  'mer', 'ciel', 'nuit', 'coucher de soleil', 'nourriture', 'fleur', 'texte',
+  'capture d’écran', 'dessin', 'illustration', 'portrait', 'paysage', 'objet rouge',
+  'objet bleu', 'objet vert', 'objet jaune', 'image sombre', 'image lumineuse',
+]
 
 type Device = 'webgpu' | 'wasm'
 type RuntimeCallbacks = {
@@ -60,6 +68,7 @@ class SemanticRuntime {
   private device: Device = 'webgpu'
   private loading: Promise<void> | null = null
   private textLoading: Promise<void> | null = null
+  private genericConcepts: QueryConcept[] | null = null
   private callbacks: RuntimeCallbacks | null = null
   private selectedModel: SemanticModelKey = readStoredModel()
   private stats: RuntimeStats = defaultStats(this.selectedModel)
@@ -79,6 +88,7 @@ class SemanticRuntime {
     this.textModel = null
     this.processor = null
     this.tokenizer = null
+    this.genericConcepts = null
     this.loading = null
     this.textLoading = null
     this.stats = defaultStats(modelKey)
@@ -154,6 +164,20 @@ class SemanticRuntime {
     const queryVector = vectors[0]
     if (!queryVector) throw new Error('Embedding de recherche vide')
     return { queryVector, concepts: labels.flatMap((label, index) => vectors[index + 1] ? [{ label, vector: vectors[index + 1] }] : []) }
+  }
+
+  async genericImageConcepts(): Promise<QueryConcept[]> {
+    if (this.genericConcepts) return this.genericConcepts
+    await this.ensureTextReady()
+    const prompts = DEFAULT_IMAGE_LABELS.map((label) => `une photo de ${label}`)
+    const inputs = this.tokenizer(prompts, { padding: 'max_length', truncation: true, max_length: 77 })
+    const output = await this.textModel(inputs)
+    const vectors = tensorRows(output.text_embeds)
+    this.genericConcepts = DEFAULT_IMAGE_LABELS.flatMap((label, index) => {
+      const vector = vectors[index]
+      return vector ? [{ label, vector }] : []
+    })
+    return this.genericConcepts
   }
 
   private async ensureTextReady() {
