@@ -236,8 +236,17 @@ class SemanticRuntime {
   }
 
   private modelOptions(device: Device = this.device) { return { device, dtype: 'fp32', local_files_only: true } as const }
-  private publishProgress(progress: ModelDownloadProgress) { this.callbacks?.progress(progress); void imagyxApi.updateModelProgress(progress) }
-  private patchStats(patch: Partial<RuntimeStats>) { this.stats = { ...this.stats, ...patch, updatedAt: Date.now() }; this.callbacks?.stats(this.stats); void imagyxApi.updateRuntimeStats(this.stats) }
+  private publishProgress(progress: ModelDownloadProgress) {
+    if (!this.callbacks) return
+    this.callbacks.progress(progress)
+    void imagyxApi.updateModelProgress(progress)
+  }
+  private patchStats(patch: Partial<RuntimeStats>) {
+    this.stats = { ...this.stats, ...patch, updatedAt: Date.now() }
+    if (!this.callbacks) return
+    this.callbacks.stats(this.stats)
+    void imagyxApi.updateRuntimeStats(this.stats)
+  }
 }
 
 function queryConceptLabels(query: string): string[] {
