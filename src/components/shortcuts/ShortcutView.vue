@@ -52,7 +52,7 @@ function capture(event: KeyboardEvent) {
     event.ctrlKey ? 'Control' : '',
     event.altKey ? 'Alt' : '',
     event.shiftKey ? 'Shift' : '',
-    event.metaKey ? 'Meta' : '',
+    event.metaKey ? 'Super' : '',
   ].filter(Boolean)
 
   if (modifiers.length === 0) {
@@ -84,7 +84,7 @@ function normalizeKey(event: KeyboardEvent): string | null {
 function displayTokens(shortcut: string): string[] {
   return shortcut.split('+').filter(Boolean).map((token) => {
     if (token === 'Control') return 'Ctrl'
-    if (token === 'Meta') return 'Cmd'
+    if (token === 'Meta' || token === 'Super') return 'Cmd'
     if (token === 'Alt') return 'Alt'
     if (token === 'Shift') return 'Shift'
     if (/^Key[A-Z]$/.test(token)) return token.slice(3)
@@ -192,5 +192,5 @@ function displayTokens(shortcut: string): string[] {
 }
 .shortcut-plus { padding: 0 5px; color: var(--text-subtle); font-size: 10px; }
 .shortcut-message { grid-column: 1 / -1; color: var(--text-muted); font-size: 10px; text-align: right; }
-:root[data-theme='dark'] .shortcut-field { background: color-mix(in srgb, var(--background) 86%, black); }
+:global(:root[data-theme='dark']) .shortcut-field { background: color-mix(in srgb, var(--background) 86%, black); }
 </style>
