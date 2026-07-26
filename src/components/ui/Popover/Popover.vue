@@ -119,11 +119,13 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .ui-popover {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
 }
 
 .ui-popover__trigger {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
 }
 
 .ui-popover__content {

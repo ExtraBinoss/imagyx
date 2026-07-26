@@ -75,12 +75,12 @@ function matches(keywords: string[]) {
 
 <style scoped>
 .spotlight-settings {
-  height: 100%;
   width: 100%;
   max-width: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px;
+  padding: 4px;
+  box-sizing: border-box;
   scrollbar-width: thin;
 }
 .settings-section {

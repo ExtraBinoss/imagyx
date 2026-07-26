@@ -113,6 +113,8 @@ onBeforeUnmount(() => {
         v-model="localQuery"
         :model-ready="store.appInfo?.aiReady ?? false"
         :model-backend="store.appInfo?.aiBackend ?? 'Automatique'"
+        :searching="store.semanticSearching"
+        :result-count="localQuery ? store.images.length : undefined"
       />
 
       <div class="content-heading">

@@ -86,6 +86,7 @@ defineExpose({ focus, select })
   font: inherit;
   font-size: var(--text-sm);
 }
+.ui-input input::-webkit-search-cancel-button { display: none; }
 .ui-input input::placeholder { color: var(--text-subtle); }
 .ui-input__slot { display: inline-flex; flex: 0 0 auto; }
 </style>

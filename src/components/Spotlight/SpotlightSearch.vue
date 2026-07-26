@@ -74,7 +74,7 @@ const resultLabel = computed(() => searching.value && results.value.length === 0
   : `${results.value.length} résultat${results.value.length === 1 ? '' : 's'}`)
 const placeholder = computed(() => view.value === 'settings'
   ? 'Rechercher dans les réglages…'
-  : typedTag.value ? `${capitalize(typedTag.value)}…` : '\u00a0')
+  : typedTag.value ? `${capitalize(typedTag.value)}…` : 'Nom de fichier ou description naturelle…')
 const showAddAction = computed(() => {
   const query = searchQuery.value.trim().toLocaleLowerCase('fr')
   if (!query) return false

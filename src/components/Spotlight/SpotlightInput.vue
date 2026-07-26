@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ArrowLeft, LoaderCircle, Search, Settings2 } from '@lucide/vue'
+import { ArrowLeft, LoaderCircle, Search, Settings2, X } from '@lucide/vue'
 import Button from '../ui/Button/Button.vue'
 import type { SpotlightView } from './types'
 
@@ -58,6 +58,16 @@ defineExpose({ focus, select })
       {{ resultLabel }}
     </span>
     <LoaderCircle v-if="view === 'search' && searching" class="spin" :size="18" />
+    <Button
+      v-if="modelValue"
+      class="spotlight-input__clear"
+      variant="ghost"
+      size="icon"
+      aria-label="Effacer la recherche"
+      @click="emit('update:modelValue', '')"
+    >
+      <X :size="16" />
+    </Button>
     <Button
       v-if="view === 'search'"
       class="spotlight-input__settings"
