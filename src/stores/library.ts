@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import type { AppInfo, FollowedFolder, ImageAsset, IndexProgress, ModelDownloadProgress, ModelStatus, RuntimeStats, SemanticMatch } from '../types'
+import type { AppInfo, FollowedFolder, ImageAsset, IndexProgress, ModelDownloadProgress, ModelStatus, QueryConcept, RuntimeStats, SemanticMatch } from '../types'
 import { imagyxApi } from '../api/tauri'
 import { semanticRuntime, type SemanticModelKey } from '../services/semantic'
 import { formatBytes } from '../utils'
@@ -14,6 +14,7 @@ interface LibraryState {
   selectedFolderId: string | null
   selectedModel: SemanticModelKey
   query: string
+  activeConcepts: QueryConcept[]
   loading: boolean
   semanticSearching: boolean
   searchSequence: number
@@ -30,9 +31,9 @@ interface LibraryState {
 export const useLibraryStore = defineStore('library', {
   state: (): LibraryState => ({
     folders: [], images: [], selectedFolderId: null, selectedModel: semanticRuntime.modelKey,
-    query: '', loading: false, semanticSearching: false, searchSequence: 0, initialized: false,
-    refreshScheduled: false, appInfo: null, progress: null, modelProgress: null,
-    runtimeStats: null, error: null, listeners: [],
+    query: '', activeConcepts: [], loading: false, semanticSearching: false, searchSequence: 0,
+    initialized: false, refreshScheduled: false, appInfo: null, progress: null,
+    modelProgress: null, runtimeStats: null, error: null, listeners: [],
   }),
   getters: {
     selectedFolder: (state) => state.folders.find((folder) => folder.id === state.selectedFolderId),
@@ -122,17 +123,8 @@ export const useLibraryStore = defineStore('library', {
         if (sequence !== this.searchSequence) return
         const images = await imagyxApi.search({ query, queryVector: embedded?.queryVector, folderId: this.selectedFolderId ?? undefined, limit: 20_000 })
         if (sequence !== this.searchSequence) return
-        if (embedded?.concepts.length && images.length) {
-          const explanations = await imagyxApi.explainResults(images.slice(0, 500).map((image) => image.id), embedded.concepts)
-          if (sequence !== this.searchSequence) return
-          const byImage = new Map(explanations.map((item) => [item.imageId, item.matches]))
-          const words = new Set(embedded.concepts.map((concept) => concept.label))
-          this.images = images.map((image) => {
-            const haystack = `${image.name} ${image.path}`.toLocaleLowerCase('fr')
-            const filename: SemanticMatch[] = [...words].filter((word) => haystack.includes(word)).map((label) => ({ label, score: 1, source: 'filename' as const }))
-            return { ...image, semanticMatches: [...filename, ...(byImage.get(image.id) ?? [])].slice(0, 3) }
-          })
-        } else this.images = images
+        this.activeConcepts = embedded?.concepts ?? []
+        this.images = images
       } catch (error) { if (sequence === this.searchSequence) this.reportError(error) }
       finally { if (sequence === this.searchSequence) { this.loading = false; this.semanticSearching = false } }
     },
@@ -141,14 +133,21 @@ export const useLibraryStore = defineStore('library', {
       if (!image || image.semanticMatches?.length || explainingImages.has(imageId)) return
       explainingImages.add(imageId)
       try {
-        const concepts = await semanticRuntime.genericImageConcepts()
+        const concepts = this.activeConcepts.length
+          ? this.activeConcepts
+          : await semanticRuntime.genericImageConcepts()
         const explanation = (await imagyxApi.explainResults([imageId], concepts))[0]
         if (!explanation) return
+        const haystack = `${image.name} ${image.path}`.toLocaleLowerCase('fr')
+        const filename: SemanticMatch[] = this.activeConcepts
+          .filter((concept) => haystack.includes(concept.label.toLocaleLowerCase('fr')))
+          .map((concept) => ({ label: concept.label, score: 1, source: 'filename' as const }))
+        const semantic = explanation.matches.filter((match) => match.score >= 0.5)
         const index = this.images.findIndex((item) => item.id === imageId)
         if (index >= 0) {
           this.images[index] = {
             ...this.images[index],
-            semanticMatches: explanation.matches.filter((match) => match.score >= 0.5).slice(0, 3),
+            semanticMatches: [...filename, ...semantic].slice(0, 3),
           }
         }
       } catch (error) {
@@ -160,6 +159,7 @@ export const useLibraryStore = defineStore('library', {
     async selectModel(modelKey: SemanticModelKey) {
       if (modelKey === this.selectedModel) return
       this.selectedModel = modelKey
+      this.activeConcepts = []
       this.semanticSearching = true
       try {
         await semanticRuntime.selectModel(modelKey)
