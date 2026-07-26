@@ -142,7 +142,7 @@ export const useLibraryStore = defineStore('library', {
           .map((concept) => ({ label: concept.label, score: 1, source: 'filename' as const }))
         const semantic = explanation.matches.filter((match) => match.score >= 0.5)
         const index = this.images.findIndex((item) => item.id === imageId)
-        if (index >= 0) this.images[index] = { ...this.images[index], semanticMatches: [...filename, ...semantic].slice(0, 5) }
+        if (index >= 0) this.images[index] = { ...this.images[index], semanticMatches: [...filename, ...semantic].slice(0, 8) }
       } catch (error) {
         this.reportError(error)
       } finally {
