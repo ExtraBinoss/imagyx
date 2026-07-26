@@ -30,6 +30,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 blake3 = "1"
 num_cpus = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+hf-hub = { version = "=0.5.0", default-features = false, features = ["ureq", "rustls-tls"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 fastembed = { version = "=5.17.3" }
