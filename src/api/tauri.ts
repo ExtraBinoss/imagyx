@@ -1,8 +1,9 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
-import type { AppInfo, FollowedFolder, ImageAsset, SearchRequest } from '../types'
+import type { AppInfo, FollowedFolder, ImageAsset, RuntimeStats, SearchRequest } from '../types'
 
 export const imagyxApi = {
   appInfo: () => invoke<AppInfo>('get_app_info'),
+  runtimeStats: () => invoke<RuntimeStats>('get_runtime_stats'),
   folders: () => invoke<FollowedFolder[]>('list_folders'),
   addFolder: (path: string) => invoke<FollowedFolder>('add_folder', { path }),
   removeFolder: (folderId: string) => invoke<void>('remove_folder', { folderId }),
