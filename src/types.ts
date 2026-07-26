@@ -20,6 +20,11 @@ export interface ImageAsset {
   semanticScore?: number
 }
 
+export interface ImageEmbedding {
+  imageId: string
+  vector: number[]
+}
+
 export type ModelDownloadStage = 'idle' | 'checking' | 'downloading' | 'loading' | 'ready' | 'error'
 
 export interface ModelDownloadProgress {
@@ -95,4 +100,5 @@ export interface SearchRequest {
   query: string
   folderId?: string
   limit?: number
+  queryVector?: number[]
 }
