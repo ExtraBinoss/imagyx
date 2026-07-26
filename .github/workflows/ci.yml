@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
+      - run: npm install --no-audit --no-fund --silent
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
@@ -35,26 +35,26 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
             libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-      - name: Formatting
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - name: Tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: cargo test --manifest-path src-tauri/Cargo.toml --quiet
       - name: Clippy
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --quiet
       - name: Compile application
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+        run: cargo check --manifest-path src-tauri/Cargo.toml --quiet
