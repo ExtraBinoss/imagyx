@@ -1,12 +1,6 @@
 use parking_lot::{Mutex, MutexGuard, RwLock};
 
-use crate::{
-    db::Database,
-    ml::MlRuntime,
-    models::VectorEntry,
-    paths::AppPaths,
-    AppError,
-};
+use crate::{AppError, db::Database, ml::MlRuntime, models::VectorEntry, paths::AppPaths};
 
 #[derive(Debug)]
 pub struct AppState {

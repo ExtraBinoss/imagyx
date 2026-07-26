@@ -4,11 +4,11 @@ use std::{
 };
 
 use chrono::Utc;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
-    models::{FollowedFolder, ImageAsset, ImageFingerprint, VectorEntry},
     AppError,
+    models::{FollowedFolder, ImageAsset, ImageFingerprint, VectorEntry},
 };
 
 #[derive(Debug, Clone)]
@@ -162,8 +162,11 @@ impl Database {
                     indexed_at = excluded.indexed_at",
             )?;
             for asset in assets {
-                let search_text =
-                    format!("{} {}", asset.name.to_lowercase(), asset.path.to_lowercase());
+                let search_text = format!(
+                    "{} {}",
+                    asset.name.to_lowercase(),
+                    asset.path.to_lowercase()
+                );
                 statement.execute(params![
                     asset.id,
                     asset.folder_id,
@@ -218,15 +221,10 @@ impl Database {
         Ok(())
     }
 
-    pub fn delete_missing(
-        &self,
-        folder_id: &str,
-        current: &HashSet<String>,
-    ) -> Result<(), AppError> {
+    pub fn delete_missing(&self, folder_id: &str, current: &HashSet<String>) -> Result<(), AppError> {
         let mut connection = self.connect()?;
         let existing = {
-            let mut statement =
-                connection.prepare("SELECT path FROM images WHERE folder_id = ?1")?;
+            let mut statement = connection.prepare("SELECT path FROM images WHERE folder_id = ?1")?;
             let rows = statement.query_map(params![folder_id], |row| row.get::<_, String>(0))?;
             rows.collect::<Result<Vec<_>, _>>()?
         };
@@ -305,7 +303,10 @@ fn map_image(row: &rusqlite::Row<'_>) -> rusqlite::Result<ImageAsset> {
 }
 
 pub fn encode_vector(vector: &[f32]) -> Vec<u8> {
-    vector.iter().flat_map(|value| value.to_le_bytes()).collect()
+    vector
+        .iter()
+        .flat_map(|value| value.to_le_bytes())
+        .collect()
 }
 
 pub fn decode_vector(blob: &[u8]) -> Vec<f32> {
@@ -318,7 +319,7 @@ pub fn decode_vector(blob: &[u8]) -> Vec<f32> {
 mod tests {
     use tempfile::tempdir;
 
-    use super::{decode_vector, encode_vector, Database};
+    use super::{Database, decode_vector, encode_vector};
     use crate::models::{FollowedFolder, ImageAsset};
 
     #[test]
@@ -358,6 +359,9 @@ mod tests {
             )
             .expect("save image");
         assert_eq!(database.folders().expect("folders")[0].image_count, 1);
-        assert_eq!(database.vectors().expect("vectors")[0].vector, vec![0.1, 0.2]);
+        assert_eq!(
+            database.vectors().expect("vectors")[0].vector,
+            vec![0.1, 0.2]
+        );
     }
 }

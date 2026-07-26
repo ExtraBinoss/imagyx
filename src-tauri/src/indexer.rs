@@ -5,18 +5,22 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-use image::{codecs::jpeg::JpegEncoder, GenericImageView, ImageReader};
+use image::{GenericImageView, ImageReader, codecs::jpeg::JpegEncoder};
 use rayon::prelude::*;
 use tauri::{AppHandle, Emitter};
 use walkdir::WalkDir;
 
 use crate::{
+    AppError,
     models::{FollowedFolder, ImageAsset, IndexProgress, ModelStatus},
     state::AppState,
-    AppError,
 };
 
-pub fn index_folder(state: &AppState, app: &AppHandle, folder: &FollowedFolder) -> Result<(), AppError> {
+pub fn index_folder(
+    state: &AppState,
+    app: &AppHandle,
+    folder: &FollowedFolder,
+) -> Result<(), AppError> {
     let _guard = state.lock_indexer();
 
     emit_progress(app, folder, 0, 0, "discovering", "Analyse du dossier…");
@@ -55,7 +59,10 @@ pub fn index_folder(state: &AppState, app: &AppHandle, folder: &FollowedFolder) 
             "embedding",
             "Compréhension visuelle locale…",
         );
-        let paths: Vec<PathBuf> = prepared.iter().map(|asset| PathBuf::from(&asset.path)).collect();
+        let paths: Vec<PathBuf> = prepared
+            .iter()
+            .map(|asset| PathBuf::from(&asset.path))
+            .collect();
         let embedding_result = state.ml.lock().embed_images(&paths);
         match embedding_result {
             Ok(vectors) => {
@@ -77,7 +84,10 @@ pub fn index_folder(state: &AppState, app: &AppHandle, folder: &FollowedFolder) 
                     "model-status",
                     ModelStatus {
                         ready: false,
-                        backend: format!("{} · recherche par nom", crate::ml::MlRuntime::backend_label()),
+                        backend: format!(
+                            "{} · recherche par nom",
+                            crate::ml::MlRuntime::backend_label()
+                        ),
                     },
                 );
                 eprintln!("Imagyx ML initialization failed: {error}");
@@ -127,12 +137,18 @@ fn is_changed(state: &AppState, path: &Path) -> bool {
     let modified_at = modified_millis(&metadata);
     let size_bytes = metadata.len();
     match state.database.fingerprint(&path.to_string_lossy()) {
-        Ok(Some(existing)) => existing.modified_at != modified_at || existing.size_bytes != size_bytes,
+        Ok(Some(existing)) => {
+            existing.modified_at != modified_at || existing.size_bytes != size_bytes
+        }
         Ok(None) | Err(_) => true,
     }
 }
 
-fn prepare_asset(state: &AppState, folder: &FollowedFolder, path: &Path) -> Result<ImageAsset, AppError> {
+fn prepare_asset(
+    state: &AppState,
+    folder: &FollowedFolder,
+    path: &Path,
+) -> Result<ImageAsset, AppError> {
     let metadata = path.metadata()?;
     let modified_at = modified_millis(&metadata);
     let file_name = path
@@ -200,7 +216,12 @@ pub fn is_supported_image(path: &Path) -> bool {
         })
 }
 
-pub fn search(state: &AppState, query: &str, folder_id: Option<&str>, limit: usize) -> Result<Vec<ImageAsset>, AppError> {
+pub fn search(
+    state: &AppState,
+    query: &str,
+    folder_id: Option<&str>,
+    limit: usize,
+) -> Result<Vec<ImageAsset>, AppError> {
     let mut assets = state.database.images(folder_id)?;
     if query.trim().is_empty() {
         assets.truncate(limit);
@@ -212,8 +233,15 @@ pub fn search(state: &AppState, query: &str, folder_id: Option<&str>, limit: usi
     let semantic_scores = semantic_scores(state, query, folder_id).unwrap_or_default();
 
     assets.retain_mut(|asset| {
-        let haystack = format!("{} {}", asset.name.to_lowercase(), asset.path.to_lowercase());
-        let lexical_hits = tokens.iter().filter(|token| haystack.contains(**token)).count();
+        let haystack = format!(
+            "{} {}",
+            asset.name.to_lowercase(),
+            asset.path.to_lowercase()
+        );
+        let lexical_hits = tokens
+            .iter()
+            .filter(|token| haystack.contains(**token))
+            .count();
         let lexical = if tokens.is_empty() {
             0.0
         } else {
@@ -229,8 +257,12 @@ pub fn search(state: &AppState, query: &str, folder_id: Option<&str>, limit: usi
     });
 
     assets.sort_by(|left, right| {
-        let left_score = left.semantic_score.unwrap_or_else(|| lexical_score(left, &tokens));
-        let right_score = right.semantic_score.unwrap_or_else(|| lexical_score(right, &tokens));
+        let left_score = left
+            .semantic_score
+            .unwrap_or_else(|| lexical_score(left, &tokens));
+        let right_score = right
+            .semantic_score
+            .unwrap_or_else(|| lexical_score(right, &tokens));
         right_score
             .total_cmp(&left_score)
             .then_with(|| right.modified_at.cmp(&left.modified_at))
@@ -254,7 +286,10 @@ fn semantic_scores(
         .filter(|entry| folder_id.is_none_or(|folder_id| entry.folder_id == folder_id))
         .map(|entry| {
             let cosine = cosine_similarity(&query_vector, &entry.vector);
-            (entry.image_id.clone(), ((cosine + 1.0) / 2.0).clamp(0.0, 1.0))
+            (
+                entry.image_id.clone(),
+                ((cosine + 1.0) / 2.0).clamp(0.0, 1.0),
+            )
         })
         .collect())
 }
@@ -263,24 +298,32 @@ fn lexical_score(asset: &ImageAsset, tokens: &[&str]) -> f32 {
     if tokens.is_empty() {
         return 0.0;
     }
-    let haystack = format!("{} {}", asset.name.to_lowercase(), asset.path.to_lowercase());
-    tokens.iter().filter(|token| haystack.contains(**token)).count() as f32 / tokens.len() as f32
+    let haystack = format!(
+        "{} {}",
+        asset.name.to_lowercase(),
+        asset.path.to_lowercase()
+    );
+    tokens
+        .iter()
+        .filter(|token| haystack.contains(**token))
+        .count() as f32
+        / tokens.len() as f32
 }
 
 pub fn cosine_similarity(left: &[f32], right: &[f32]) -> f32 {
     if left.len() != right.len() || left.is_empty() {
         return 0.0;
     }
-    let (dot, left_norm, right_norm) = left
-        .iter()
-        .zip(right)
-        .fold((0.0, 0.0, 0.0), |(dot, left_norm, right_norm), (left, right)| {
+    let (dot, left_norm, right_norm) = left.iter().zip(right).fold(
+        (0.0, 0.0, 0.0),
+        |(dot, left_norm, right_norm), (left, right)| {
             (
                 dot + left * right,
                 left_norm + left * left,
                 right_norm + right * right,
             )
-        });
+        },
+    );
     let denominator = left_norm.sqrt() * right_norm.sqrt();
     if denominator <= f32::EPSILON {
         0.0
