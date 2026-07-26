@@ -37,6 +37,7 @@ pub fn run() {
             let paths = AppPaths::discover()?;
             let state = Arc::new(AppState::new(paths)?);
             app.manage(Arc::clone(&state));
+            start_model_preparation(app.handle().clone(), Arc::clone(&state));
             start_background_refresh(app.handle().clone(), state);
             Ok(())
         })
@@ -50,6 +51,14 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Imagyx");
+}
+
+fn start_model_preparation(app: tauri::AppHandle, state: Arc<AppState>) {
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Err(error) = state.ml.lock().prepare(&app, &state.model_progress) {
+            eprintln!("Imagyx model preparation failed: {error}");
+        }
+    });
 }
 
 fn start_background_refresh(app: tauri::AppHandle, state: Arc<AppState>) {
