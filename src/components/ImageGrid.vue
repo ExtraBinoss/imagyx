@@ -11,13 +11,14 @@ const props = defineProps<{ images: ImageAsset[]; loading: boolean; hasFolders: 
 const emit = defineEmits<{ explain: [imageId: string]; preview: [image: ImageAsset] }>()
 const GAP = 16
 const MIN_CARD_WIDTH = 180
-const META_HEIGHT = 56
+const META_HEIGHT = 66
 const OVERSCAN_ROWS = 3
 const viewport = ref<HTMLElement | null>(null)
 const viewportWidth = ref(0)
 const viewportHeight = ref(0)
 const scrollTop = ref(0)
 const activeImageId = ref<string | null>(null)
+const selectedImageId = ref<string | null>(null)
 let resizeObserver: ResizeObserver | null = null
 let scrollFrame = 0
 
@@ -38,11 +39,19 @@ function activate(image: ImageAsset) {
   emit('explain', image.id)
 }
 
+function selectImage(image: ImageAsset) {
+  activeImageId.value = image.id
+  selectedImageId.value = image.id
+  emit('explain', image.id)
+}
+
 function handleGlobalKeydown(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null
   if (target?.matches('input, textarea, [contenteditable="true"]')) return
-  if (event.code !== 'Space' || !activeImageId.value) return
-  const image = props.images.find((item) => item.id === activeImageId.value)
+  if (event.code !== 'Space') return
+  const imageId = selectedImageId.value ?? activeImageId.value
+  if (!imageId) return
+  const image = props.images.find((item) => item.id === imageId)
   if (!image) return
   event.preventDefault()
   emit('preview', image)
@@ -81,6 +90,7 @@ watch(() => props.viewKey, async () => {
   if (viewport.value) viewport.value.scrollTop = 0
   scrollTop.value = 0
   activeImageId.value = null
+  selectedImageId.value = null
 })
 
 watch(() => props.images.length, () => {
@@ -89,6 +99,7 @@ watch(() => props.images.length, () => {
     viewport.value.scrollTop = maximum
     scrollTop.value = maximum
   }
+  if (selectedImageId.value && !props.images.some((image) => image.id === selectedImageId.value)) selectedImageId.value = null
 })
 </script>
 
@@ -104,11 +115,13 @@ watch(() => props.images.length, () => {
           v-for="entry in visibleEntries"
           :key="entry.image.id"
           class="image-card"
-          :title="`${entry.image.path} · Espace pour prévisualiser`"
+          :class="{ 'image-card--selected': selectedImageId === entry.image.id }"
           role="listitem"
           tabindex="0"
+          :aria-selected="selectedImageId === entry.image.id"
           :aria-posinset="entry.index + 1"
           :aria-setsize="images.length"
+          @click="selectImage(entry.image)"
           @mouseenter="activate(entry.image)"
           @focusin="activate(entry.image)"
         >
@@ -151,8 +164,27 @@ watch(() => props.images.length, () => {
 </template>
 
 <style scoped>
-.image-card { outline: none; }
-.image-card:focus-visible .image-frame { box-shadow: 0 0 0 2px var(--focus-ring); }
+.image-card {
+  min-width: 0;
+  padding: 3px;
+  border: 2px solid transparent;
+  border-radius: calc(var(--radius-lg) + 6px);
+  outline: none;
+  background: transparent;
+  cursor: default;
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast);
+}
+.image-card:hover { background: color-mix(in srgb, var(--surface-hover) 58%, transparent); }
+.image-card--selected {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 18%, transparent), 0 10px 28px rgb(15 23 42 / 0.08);
+}
+.image-card:focus-visible { border-color: var(--primary); box-shadow: 0 0 0 3px var(--focus-ring-soft); }
 
 .semantic-overlay {
   position: absolute;
@@ -171,25 +203,10 @@ watch(() => props.images.length, () => {
   pointer-events: none;
   transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
-
 .image-card:hover .semantic-overlay,
-.image-card:focus-within .semantic-overlay {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.semantic-overlay__loading {
-  padding: 0 var(--space-3);
-  color: rgb(255 255 255 / 0.75);
-  font-size: 10px;
-}
-
-.semantic-marquee {
-  width: 100%;
-  overflow: hidden;
-  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
-}
-
+.image-card:focus-within .semantic-overlay { opacity: 1; transform: translateY(0); }
+.semantic-overlay__loading { padding: 0 var(--space-3); color: rgb(255 255 255 / 0.75); font-size: 10px; }
+.semantic-marquee { width: 100%; overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); }
 .semantic-marquee__track {
   display: flex;
   width: max-content;
@@ -197,7 +214,6 @@ watch(() => props.images.length, () => {
   padding-inline: var(--space-3);
   animation: semantic-marquee 8s linear infinite;
 }
-
 .semantic-chip {
   flex: 0 0 auto;
   padding: 4px 8px;
@@ -209,13 +225,6 @@ watch(() => props.images.length, () => {
   font-weight: 600;
   backdrop-filter: blur(8px);
 }
-
-@keyframes semantic-marquee {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .semantic-marquee__track { animation: none; }
-}
+@keyframes semantic-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) { .semantic-marquee__track { animation: none; } }
 </style>
