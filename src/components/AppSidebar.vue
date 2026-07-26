@@ -204,7 +204,7 @@ onBeforeUnmount(() => {
         @resume="emit('resumeIndexing')"
       />
 
-      <Popover side="top" align="start" width="340px">
+      <Popover side="top" align="start" width="320px" class="full-width-popover">
         <template #trigger>
           <Button variant="ghost" size="sm" block class="settings-trigger-btn">
             <template #leading><Settings :size="15" /></template>

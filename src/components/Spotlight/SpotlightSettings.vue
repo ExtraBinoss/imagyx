@@ -76,17 +76,22 @@ function matches(keywords: string[]) {
 <style scoped>
 .spotlight-settings {
   height: 100%;
+  width: 100%;
+  max-width: 100%;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px;
   scrollbar-width: thin;
 }
 .settings-section {
   display: grid;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
   gap: 13px;
-  padding: 15px;
   border: 1px solid var(--border);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  border-radius: 14px;
+  background: var(--surface);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12), 0 12px 28px -24px rgb(15 23 42 / 0.42);
   animation: settings-rise 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }

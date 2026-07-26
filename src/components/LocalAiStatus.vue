@@ -181,8 +181,13 @@ function formatMilliseconds(value: number) {
 
 <style scoped>
 .sidebar-status-container {
-  margin-top: auto;
-  padding-top: var(--space-3);
+  width: 100%;
+}
+
+.sidebar-status-container :deep(.ui-popover),
+.sidebar-status-container :deep(.ui-popover__trigger) {
+  width: 100%;
+  display: flex;
 }
 
 .sidebar-index-card {

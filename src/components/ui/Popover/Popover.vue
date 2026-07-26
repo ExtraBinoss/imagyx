@@ -32,7 +32,9 @@ async function toggle() {
   positioned.value = false
   if (open.value) {
     await nextTick()
-    updatePosition()
+    requestAnimationFrame(() => {
+      updatePosition()
+    })
   }
 }
 
@@ -128,7 +130,8 @@ onBeforeUnmount(() => {
   position: fixed;
   z-index: var(--z-popover);
   min-width: 180px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
