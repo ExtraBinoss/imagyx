@@ -12,6 +12,13 @@ const props = defineProps<{
 
 const active = computed(() => Boolean(props.progress && props.progress.stage !== 'complete'))
 const queued = computed(() => props.progress?.stage === 'queued')
+const indeterminate = computed(() =>
+  Boolean(
+    props.progress &&
+      (props.progress.total === 0 ||
+        (props.progress.stage === 'embedding' && props.progress.current === 0)),
+  ),
+)
 const percentage = computed(() => {
   if (!props.progress || props.progress.total === 0) return 0
   return Math.min(100, (props.progress.current / props.progress.total) * 100)
@@ -38,7 +45,7 @@ const countLabel = computed(() => {
           <ProgressBar
             class="status-progress"
             :value="percentage"
-            :indeterminate="progress.total === 0"
+            :indeterminate="indeterminate"
             size="sm"
             label="Progression de l’indexation"
           />
