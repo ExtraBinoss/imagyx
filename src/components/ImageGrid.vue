@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ChevronLeft, ChevronRight, FileImage, SearchX } from '@lucide/vue'
+import { FileImage, SearchX } from '@lucide/vue'
 import type { ImageAsset } from '../types'
 import { formatBytes } from '../utils'
 import Badge from './ui/Badge/Badge.vue'
@@ -18,7 +18,6 @@ const viewportWidth = ref(0)
 const viewportHeight = ref(0)
 const scrollTop = ref(0)
 const activeImageId = ref<string | null>(null)
-const tagRows = new Map<string, HTMLElement>()
 let resizeObserver: ResizeObserver | null = null
 let scrollFrame = 0
 
@@ -33,15 +32,6 @@ const endIndex = computed(() => Math.min(props.images.length, endRow.value * col
 const visibleEntries = computed(() => props.images.slice(startIndex.value, endIndex.value).map((image, offset) => ({ image, index: startIndex.value + offset })))
 const spacerHeight = computed(() => Math.max(0, totalRows.value * rowStride.value - GAP))
 const windowOffset = computed(() => startRow.value * rowStride.value)
-
-function setTagRow(imageId: string, element: Element | null) {
-  if (element instanceof HTMLElement) tagRows.set(imageId, element)
-  else tagRows.delete(imageId)
-}
-
-function scrollTags(imageId: string, direction: -1 | 1) {
-  tagRows.get(imageId)?.scrollBy({ left: direction * 140, behavior: 'smooth' })
-}
 
 function activate(image: ImageAsset) {
   activeImageId.value = image.id
@@ -129,19 +119,17 @@ watch(() => props.images.length, () => {
             </Badge>
 
             <div class="semantic-overlay">
-              <template v-if="entry.image.semanticMatches?.length">
-                <button class="tag-arrow tag-arrow--left" type="button" aria-label="Tags précédents" @click.stop="scrollTags(entry.image.id, -1)">
-                  <ChevronLeft :size="15" />
-                </button>
-                <div :ref="(element) => setTagRow(entry.image.id, element as Element | null)" class="semantic-tags">
-                  <span v-for="match in entry.image.semanticMatches" :key="`${entry.image.id}:${match.source}:${match.label}`" class="semantic-chip">
+              <div v-if="entry.image.semanticMatches?.length" class="semantic-marquee">
+                <div class="semantic-marquee__track">
+                  <span
+                    v-for="(match, matchIndex) in [...entry.image.semanticMatches, ...entry.image.semanticMatches]"
+                    :key="`${entry.image.id}:${matchIndex}:${match.source}:${match.label}`"
+                    class="semantic-chip"
+                  >
                     {{ match.label }} · {{ Math.round(match.score * 100) }}%
                   </span>
                 </div>
-                <button class="tag-arrow tag-arrow--right" type="button" aria-label="Tags suivants" @click.stop="scrollTags(entry.image.id, 1)">
-                  <ChevronRight :size="15" />
-                </button>
-              </template>
+              </div>
               <span v-else class="semantic-overlay__loading">Analyse des tags…</span>
             </div>
           </div>
@@ -172,12 +160,11 @@ watch(() => props.images.length, () => {
   bottom: 0;
   left: 0;
   z-index: 3;
-  min-height: 42px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 40px;
+  display: flex;
   align-items: center;
   overflow: hidden;
-  padding: 7px 6px;
+  padding: 7px 0;
   background: linear-gradient(180deg, transparent, rgb(8 10 14 / 0.9));
   opacity: 0;
   transform: translateY(8px);
@@ -189,25 +176,27 @@ watch(() => props.images.length, () => {
 .image-card:focus-within .semantic-overlay {
   opacity: 1;
   transform: translateY(0);
-  pointer-events: auto;
 }
 
 .semantic-overlay__loading {
-  grid-column: 1 / -1;
-  padding: 0 var(--space-2);
+  padding: 0 var(--space-3);
   color: rgb(255 255 255 / 0.75);
   font-size: 10px;
 }
 
-.semantic-tags {
-  display: flex;
-  gap: var(--space-2);
-  min-width: 0;
-  overflow-x: auto;
-  scroll-behavior: smooth;
-  scrollbar-width: none;
+.semantic-marquee {
+  width: 100%;
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
 }
-.semantic-tags::-webkit-scrollbar { display: none; }
+
+.semantic-marquee__track {
+  display: flex;
+  width: max-content;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  animation: semantic-marquee 8s linear infinite;
+}
 
 .semantic-chip {
   flex: 0 0 auto;
@@ -221,19 +210,12 @@ watch(() => props.images.length, () => {
   backdrop-filter: blur(8px);
 }
 
-.tag-arrow {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 1px solid rgb(255 255 255 / 0.22);
-  border-radius: var(--radius-full);
-  background: rgb(12 14 18 / 0.76);
-  color: #fff;
-  cursor: pointer;
+@keyframes semantic-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
 }
-.tag-arrow:hover { background: rgb(32 36 44 / 0.9); }
-.tag-arrow--left { margin-right: 5px; }
-.tag-arrow--right { margin-left: 5px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .semantic-marquee__track { animation: none; }
+}
 </style>
