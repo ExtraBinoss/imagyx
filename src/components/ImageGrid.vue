@@ -140,7 +140,7 @@ watch(() => props.images.length, () => {
           :aria-selected="selectedImageId === entry.image.id"
           :aria-posinset="entry.index + 1"
           :aria-setsize="images.length"
-          :style="{ animationDelay: `${(entry.index % columns) * 35 + Math.min(Math.floor(entry.index / columns), 4) * 20}ms` }"
+          :style="{ animationDelay: `${(entry.index % columns) * 25}ms` }"
           @click="selectImage(entry.image)"
           @mouseenter="activate(entry.image)"
           @focusin="activate(entry.image)"
@@ -203,7 +203,7 @@ watch(() => props.images.length, () => {
   outline: none;
   background: transparent;
   cursor: default;
-  animation: grid-card-pop 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: grid-card-fade 220ms ease-out both;
   transition:
     border-color var(--transition-fast),
     background-color var(--transition-fast),
@@ -283,14 +283,14 @@ watch(() => props.images.length, () => {
   box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 40%, transparent);
 }
 @keyframes semantic-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-@keyframes grid-card-pop {
+@keyframes grid-card-fade {
   0% {
     opacity: 0;
-    transform: translateX(-12px) scale(0.95);
+    transform: translateX(-6px);
   }
   100% {
     opacity: 1;
-    transform: translateX(0) scale(1);
+    transform: translateX(0);
   }
 }
 @media (prefers-reduced-motion: reduce) {
