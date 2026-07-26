@@ -1,7 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use chrono::Utc;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
 
 use crate::{
@@ -31,13 +31,22 @@ pub fn list_folders(state: State<'_, Arc<AppState>>) -> Result<Vec<FollowedFolde
 }
 
 #[tauri::command]
-pub fn add_folder(path: String, state: State<'_, Arc<AppState>>) -> Result<FollowedFolder, String> {
+pub fn add_folder(
+    path: String,
+    state: State<'_, Arc<AppState>>,
+    app: AppHandle,
+) -> Result<FollowedFolder, String> {
     let canonical = PathBuf::from(&path)
         .canonicalize()
         .map_err(|error| format!("Impossible d’ouvrir le dossier: {error}"))?;
     if !canonical.is_dir() {
         return Err("Le chemin sélectionné n’est pas un dossier".into());
     }
+
+    app.asset_protocol_scope()
+        .allow_directory(&canonical, true)
+        .map_err(|error| format!("Impossible d’autoriser l’affichage du dossier: {error}"))?;
+
     let canonical_string = canonical.to_string_lossy().into_owned();
     if let Some(existing) = state
         .database
