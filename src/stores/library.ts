@@ -6,6 +6,8 @@ import type {
   ImageAsset,
   IndexProgress,
   ModelDownloadProgress,
+  ModelStatus,
+  RuntimeStats,
 } from '../types'
 import { imagyxApi } from '../api/tauri'
 import { formatBytes } from '../utils'
@@ -22,6 +24,7 @@ interface LibraryState {
   appInfo: AppInfo | null
   progress: IndexProgress | null
   modelProgress: ModelDownloadProgress | null
+  runtimeStats: RuntimeStats | null
   error: string | null
   listeners: UnlistenFn[]
 }
@@ -38,6 +41,7 @@ export const useLibraryStore = defineStore('library', {
     appInfo: null,
     progress: null,
     modelProgress: null,
+    runtimeStats: null,
     error: null,
     listeners: [],
   }),
@@ -59,6 +63,7 @@ export const useLibraryStore = defineStore('library', {
         await this.bindEvents()
         const [appInfo, folders] = await Promise.all([imagyxApi.appInfo(), imagyxApi.folders()])
         this.appInfo = appInfo
+        this.runtimeStats = appInfo.runtimeStats
         this.folders = folders
         this.handleModelProgress(appInfo.modelProgress)
         await this.refreshImages()
@@ -77,21 +82,32 @@ export const useLibraryStore = defineStore('library', {
         if (event.payload.stage === 'complete') this.scheduleRefresh()
       })
       const updatedUnlisten = await listen('library-updated', () => this.scheduleRefresh())
-      const modelUnlisten = await listen<{ ready: boolean; backend: string }>('model-status', (event) => {
+      const modelUnlisten = await listen<ModelStatus>('model-status', (event) => {
         if (this.appInfo) {
           this.appInfo.aiReady = event.payload.ready
           this.appInfo.aiBackend = event.payload.backend
+        }
+        if (this.runtimeStats) {
+          this.runtimeStats.backendEffective = event.payload.backend
+          this.runtimeStats.accelerationActive = event.payload.accelerationActive
+          this.runtimeStats.accelerationLabel = event.payload.accelerationLabel
+          this.runtimeStats.fallbackReason = event.payload.fallbackReason
         }
       })
       const modelProgressUnlisten = await listen<ModelDownloadProgress>(
         'model-download-progress',
         (event) => this.handleModelProgress(event.payload),
       )
+      const runtimeUnlisten = await listen<RuntimeStats>('runtime-stats', (event) => {
+        this.runtimeStats = event.payload
+        if (this.appInfo) this.appInfo.runtimeStats = event.payload
+      })
       this.listeners.push(
         progressUnlisten,
         updatedUnlisten,
         modelUnlisten,
         modelProgressUnlisten,
+        runtimeUnlisten,
       )
     },
 
