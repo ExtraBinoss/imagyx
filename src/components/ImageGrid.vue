@@ -151,12 +151,17 @@ watch(() => props.images.length, () => {
             </Badge>
 
             <div class="semantic-overlay">
-              <div v-if="entry.image.semanticMatches?.length" class="semantic-marquee">
+              <div
+                v-if="entry.image.semanticMatches?.length"
+                class="semantic-marquee"
+                :class="{ 'semantic-marquee--animated': entry.image.semanticMatches.length > 2 }"
+              >
                 <div class="semantic-marquee__track">
                   <span
-                    v-for="(match, matchIndex) in [...entry.image.semanticMatches, ...entry.image.semanticMatches]"
+                    v-for="(match, matchIndex) in (entry.image.semanticMatches.length > 2 ? [...entry.image.semanticMatches, ...entry.image.semanticMatches] : entry.image.semanticMatches)"
                     :key="`${entry.image.id}:${matchIndex}:${match.source}:${match.label}`"
                     class="semantic-chip"
+                    :class="`semantic-chip--${match.source}`"
                   >
                     {{ match.label }} · {{ Math.round(match.score * 100) }}%
                   </span>
@@ -231,24 +236,46 @@ watch(() => props.images.length, () => {
 .image-card:hover .semantic-overlay,
 .image-card:focus-within .semantic-overlay { opacity: 1; transform: translateY(0); }
 .semantic-overlay__loading { padding: 0 var(--space-3); color: rgb(255 255 255 / 0.75); font-size: 10px; }
-.semantic-marquee { width: 100%; overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); }
+.semantic-marquee {
+  width: 100%;
+  overflow: hidden;
+}
+.semantic-marquee--animated {
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
 .semantic-marquee__track {
   display: flex;
+  align-items: center;
   width: max-content;
   gap: var(--space-2);
   padding-inline: var(--space-3);
-  animation: semantic-marquee 8s linear infinite;
+}
+.semantic-marquee--animated .semantic-marquee__track {
+  animation: semantic-marquee 10s linear infinite;
 }
 .semantic-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   flex: 0 0 auto;
-  padding: 4px 8px;
-  border: 1px solid rgb(255 255 255 / 0.2);
+  padding: 4px 9px;
   border-radius: var(--radius-full);
-  background: rgb(18 20 26 / 0.72);
-  color: #fff;
   font-size: 10px;
   font-weight: 600;
   backdrop-filter: blur(8px);
+}
+
+.semantic-chip--filename {
+  background: rgb(255 255 255 / 0.16);
+  border: 1px solid rgb(255 255 255 / 0.25);
+  color: #f1f5f9;
+}
+
+.semantic-chip--semantic {
+  background: color-mix(in srgb, var(--primary) 85%, #0284c7);
+  border: 1px solid var(--primary);
+  color: #ffffff;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 40%, transparent);
 }
 @keyframes semantic-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 @media (prefers-reduced-motion: reduce) { .semantic-marquee__track { animation: none; } }

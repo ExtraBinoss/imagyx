@@ -13,7 +13,13 @@ function deduplicateMatches(matches: SemanticMatch[], limit = 8): SemanticMatch[
   for (const match of matches) {
     const key = match.label.trim().toLocaleLowerCase('fr')
     const existing = byLabel.get(key)
-    if (!existing || match.score > existing.score) byLabel.set(key, match)
+    if (!existing) {
+      byLabel.set(key, match)
+    } else if (match.source === 'semantic' && existing.source !== 'semantic') {
+      byLabel.set(key, match)
+    } else if (match.score > existing.score && match.source === existing.source) {
+      byLabel.set(key, match)
+    }
   }
   return [...byLabel.values()].sort((a, b) => b.score - a.score).slice(0, limit)
 }
