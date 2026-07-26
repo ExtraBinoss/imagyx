@@ -9,6 +9,7 @@ import Button from './ui/Button/Button.vue'
 import Popover from './ui/Popover/Popover.vue'
 
 import { usePlatformStore } from '../stores/platform'
+import { useLibraryStore } from '../stores/library'
 
 const props = defineProps<{
   progress: IndexProgress | null
@@ -18,6 +19,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ pause: []; resume: [] }>()
 const platform = usePlatformStore()
+const library = useLibraryStore()
 const liveStats = ref<RuntimeStats | null>(props.runtimeStats)
 const popoverOpen = ref(false)
 const copied = ref(false)
@@ -88,28 +90,22 @@ onMounted(() => {
 })
 onBeforeUnmount(() => { if (timer) window.clearInterval(timer) })
 
-function formatMilliseconds(value: number) {
-  if (value < 1_000) return `${Math.round(value)} ms`
-  return `${(value / 1_000).toFixed(1)} s`
-}
+import { copyDebugInfoToClipboard } from '../utils/copy-information'
 
-function copyAiDetails() {
-  const infoText = `=== System Information ===
-App Version: v${platform.appVersion}
-OS Platform: ${platform.platform}
-
-=== Indexing Information ===
-AI Model: ${liveStats.value?.modelName ?? 'MobileCLIP-S0'}
-Phase: ${phaseLabel.value}
-Hardware Accelerated: ${liveStats.value?.accelerationActive ? 'OK' : 'KO'}
-Backend: ${liveStats.value?.backendEffective ?? 'Automatic'} (Requested: ${liveStats.value?.backendRequested ?? 'WebGPU'})
-Batch: ${liveStats.value?.batchCurrent ?? 0} / ${liveStats.value?.batchTotal ?? 0} (${liveStats.value?.batchSize ?? 0} img)
-Progress: ${current.value} / ${total.value}
-Throughput: ${liveStats.value?.imagesPerSecond?.toFixed(1) ?? '0.0'} img/s (${liveStats.value?.averageMsPerImage ? `${Math.round(liveStats.value.averageMsPerImage)} ms/img` : '—'})
-Timings: Decode: ${formatMilliseconds(liveStats.value?.decodeMs ?? 0)} | Inference: ${formatMilliseconds(liveStats.value?.inferenceMs ?? 0)} | SQLite: ${formatMilliseconds(liveStats.value?.saveMs ?? 0)}
-Resources: App CPU: ${liveStats.value?.processCpuPercent?.toFixed(0) ?? 0}% | System CPU: ${liveStats.value?.systemCpuPercent?.toFixed(0) ?? 0}% | RAM: ${formatBytes(liveStats.value?.processMemoryBytes ?? 0)}`
-
-  void navigator.clipboard.writeText(infoText)
+async function copyAiDetails() {
+  await copyDebugInfoToClipboard({
+    appVersion: platform.appVersion,
+    platform: platform.platform,
+    databasePath: library.appInfo?.databasePath,
+    runtimeStats: liveStats.value,
+    progress: props.progress,
+    lastIndexedAt: library.lastIndexedAt,
+    foldersCount: library.folders.length,
+    totalImagesCount: library.totalImages,
+    phaseLabel: phaseLabel.value,
+    currentProgress: current.value,
+    totalProgress: total.value,
+  })
   copied.value = true
   setTimeout(() => {
     copied.value = false

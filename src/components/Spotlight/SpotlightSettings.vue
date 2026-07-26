@@ -10,6 +10,8 @@ import Accordion from '../ui/Accordion/Accordion.vue'
 import Button from '../ui/Button/Button.vue'
 import ButtonGroup from '../ui/ButtonGroup/ButtonGroup.vue'
 
+import { copyDebugInfoToClipboard } from '../../utils/copy-information'
+
 const props = withDefaults(
   defineProps<{
     query?: string
@@ -44,36 +46,23 @@ const hasResults = computed(() => showShortcut.value || showTheme.value || showI
 const stats = computed(() => library.runtimeStats)
 const dbPath = computed(() => library.appInfo?.databasePath ?? 'Indisponible')
 
-function formatMs(value?: number) {
-  if (!value) return '0 ms'
-  if (value < 1_000) return `${Math.round(value)} ms`
-  return `${(value / 1_000).toFixed(1)} s`
-}
-
 function matches(keywords: string[]) {
   const query = normalizedQuery.value
   return !query || keywords.some((keyword) => keyword.includes(query) || query.includes(keyword))
 }
 
-function copyDebugInfo() {
-  const infoText = `=== System Information ===
-App Version: v${platform.appVersion}
-OS Platform: ${platform.platform}
-Database Location: ${dbPath.value}
-Shortcut: ${props.shortcut}
-Theme Mode: ${props.themeMode}
-
-=== Indexing Information ===
-AI Model: ${stats.value?.modelName ?? 'MobileCLIP-S0'}
-Backend: ${stats.value?.backendEffective ?? 'Automatic'} (Requested: ${stats.value?.backendRequested ?? 'WebGPU'})
-Indexing Stage: ${stats.value?.stage ?? 'Ready'}
-Progress: ${stats.value?.current ?? 0} / ${stats.value?.total ?? 0}
-Throughput: ${stats.value?.imagesPerSecond?.toFixed(1) ?? '0.0'} img/s (${stats.value?.averageMsPerImage ? `${Math.round(stats.value.averageMsPerImage)} ms/img` : '—'})
-Timings: Decode: ${formatMs(stats.value?.decodeMs)} | Inference: ${formatMs(stats.value?.inferenceMs)} | SQLite: ${formatMs(stats.value?.saveMs)}
-Resources: App CPU: ${stats.value?.processCpuPercent?.toFixed(0) ?? 0}% | System CPU: ${stats.value?.systemCpuPercent?.toFixed(0) ?? 0}% | RAM: ${formatBytes(stats.value?.processMemoryBytes ?? 0)}
-Library: ${library.folders.length} watched folder(s) (${library.totalImages} images)`
-
-  void navigator.clipboard.writeText(infoText)
+async function copyDebugInfo() {
+  await copyDebugInfoToClipboard({
+    appVersion: platform.appVersion,
+    platform: platform.platform,
+    databasePath: dbPath.value,
+    shortcut: props.shortcut,
+    themeMode: props.themeMode,
+    runtimeStats: stats.value,
+    lastIndexedAt: library.lastIndexedAt,
+    foldersCount: library.folders.length,
+    totalImagesCount: library.totalImages,
+  })
   copied.value = true
   setTimeout(() => {
     copied.value = false

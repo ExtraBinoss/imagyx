@@ -39,6 +39,6 @@ watch(
     draggable="false"
   />
   <div v-else class="thumbnail-placeholder" :class="{ 'thumbnail-placeholder--error': failed }">
-    <ImageIcon :size="22" :stroke-width="1.5" />
+    <ImageIcon v-if="failed" :size="22" :stroke-width="1.5" />
   </div>
 </template>

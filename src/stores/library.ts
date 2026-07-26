@@ -33,6 +33,7 @@ interface LibraryState {
   progress: IndexProgress | null
   modelProgress: ModelDownloadProgress | null
   runtimeStats: RuntimeStats | null
+  lastIndexedAt: string | null
   error: string | null
   listeners: UnlistenFn[]
 }
@@ -42,13 +43,20 @@ export const useLibraryStore = defineStore('library', {
     folders: [], images: [], selectedFolderId: null,
     query: '', activeConcepts: [], loading: false, semanticSearching: false, searchSequence: 0,
     initialized: false, refreshScheduled: false, appInfo: null, progress: null,
-    modelProgress: null, runtimeStats: null, error: null, listeners: [],
+    modelProgress: null, runtimeStats: null,
+    lastIndexedAt: localStorage.getItem('imagyx.last-indexed-at'),
+    error: null, listeners: [],
   }),
   getters: {
     selectedFolder: (state) => state.folders.find((folder) => folder.id === state.selectedFolderId),
     totalImages: (state) => state.folders.reduce((sum, folder) => sum + folder.imageCount, 0),
   },
   actions: {
+    markIndexed() {
+      const now = new Date().toISOString()
+      this.lastIndexedAt = now
+      try { localStorage.setItem('imagyx.last-indexed-at', now) } catch { /* ignore */ }
+    },
     async initialize() {
       if (this.initialized) return
       this.loading = true
@@ -58,6 +66,7 @@ export const useLibraryStore = defineStore('library', {
           progress: (progress) => this.handleModelProgress(progress),
           stats: (stats) => {
             this.runtimeStats = stats
+            if (stats.current > 0) this.markIndexed()
             if (this.appInfo) {
               this.appInfo.runtimeStats = stats
               this.appInfo.aiBackend = stats.backendEffective
@@ -78,12 +87,23 @@ export const useLibraryStore = defineStore('library', {
     },
     async bindEvents() {
       if (this.listeners.length) return
-      const progress = await listen<IndexProgress>('index-progress', (event) => { this.progress = event.payload; if (event.payload.stage === 'complete') this.scheduleRefresh() })
+      const progress = await listen<IndexProgress>('index-progress', (event) => {
+        this.progress = event.payload
+        if (event.payload.current > 0) this.markIndexed()
+        if (event.payload.stage === 'complete') {
+          this.markIndexed()
+          this.scheduleRefresh()
+        }
+      })
       const updated = await listen('library-updated', () => this.scheduleRefresh())
       const semantic = await listen<string>('semantic-index-requested', (event) => { void semanticRuntime.indexPending(event.payload).then(() => this.scheduleRefresh()).catch((error) => this.reportError(error)) })
       const model = await listen<ModelStatus>('model-status', (event) => { if (this.appInfo) { this.appInfo.aiReady = event.payload.ready; this.appInfo.aiBackend = event.payload.backend } })
       const download = await listen<ModelDownloadProgress>('model-download-progress', (event) => this.handleModelProgress(event.payload))
-      const runtime = await listen<RuntimeStats>('runtime-stats', (event) => { this.runtimeStats = event.payload; if (this.appInfo) this.appInfo.runtimeStats = event.payload })
+      const runtime = await listen<RuntimeStats>('runtime-stats', (event) => {
+        this.runtimeStats = event.payload
+        if (event.payload.current > 0) this.markIndexed()
+        if (this.appInfo) this.appInfo.runtimeStats = event.payload
+      })
       this.listeners.push(progress, updated, semantic, model, download, runtime)
     },
     scheduleRefresh() {
