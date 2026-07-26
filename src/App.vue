@@ -21,6 +21,7 @@ const subtitle = computed(() => {
   if (store.query) return `${store.images.length} résultat${store.images.length > 1 ? 's' : ''}`
   return `${store.images.length} image${store.images.length > 1 ? 's' : ''}`
 })
+const viewKey = computed(() => `${store.selectedFolderId ?? 'all'}:${store.query}`)
 
 const searchLater = debounce(() => {
   store.setQuery(localQuery.value.trim())
@@ -81,7 +82,12 @@ onBeforeUnmount(() => {
         </Button>
       </div>
 
-      <ImageGrid :images="store.images" :loading="store.loading" :has-folders="store.folders.length > 0" />
+      <ImageGrid
+        :images="store.images"
+        :loading="store.loading"
+        :has-folders="store.folders.length > 0"
+        :view-key="viewKey"
+      />
 
       <StatusBar :progress="store.progress" :database-path="store.appInfo?.databasePath ?? ''" />
     </section>
