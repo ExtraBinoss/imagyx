@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Folder, FolderOpen, Images, MoreHorizontal, Plus, RefreshCw, Trash2 } from '@lucide/vue'
 import type { FollowedFolder, IndexProgress, ModelDownloadProgress, RuntimeStats } from '../types'
+import { imagyxApi } from '../api/tauri'
+import { usePlatformStore } from '../stores/platform'
 import Button from './ui/Button/Button.vue'
 import Popover from './ui/Popover/Popover.vue'
 import LocalAiStatus from './LocalAiStatus.vue'
@@ -24,6 +26,7 @@ const emit = defineEmits<{
   resumeIndexing: []
 }>()
 
+const platform = usePlatformStore()
 const allSelected = computed(() => props.selectedFolderId === null)
 const contextMenu = ref<{ folderId: string; x: number; y: number } | null>(null)
 
@@ -32,8 +35,8 @@ function openContextMenu(event: MouseEvent, folderId: string) {
   event.stopPropagation()
   contextMenu.value = {
     folderId,
-    x: Math.min(event.clientX, window.innerWidth - 220),
-    y: Math.min(event.clientY, window.innerHeight - 120),
+    x: Math.min(event.clientX, window.innerWidth - 224),
+    y: Math.min(event.clientY, window.innerHeight - 156),
   }
 }
 
@@ -41,14 +44,24 @@ function closeContextMenu() {
   contextMenu.value = null
 }
 
-function runContextAction(action: 'reindex' | 'remove') {
+async function openFolder(folderId: string) {
+  const folder = props.folders.find((item) => item.id === folderId)
+  if (folder) await imagyxApi.openInFileManager(folder.path)
+}
+
+async function runContextAction(action: 'open' | 'reindex' | 'remove') {
   const folderId = contextMenu.value?.folderId
   if (!folderId) return
-  emit(action, folderId)
   closeContextMenu()
+  if (action === 'open') {
+    await openFolder(folderId)
+    return
+  }
+  emit(action, folderId)
 }
 
 onMounted(() => {
+  void platform.initialize()
   window.addEventListener('pointerdown', closeContextMenu)
   window.addEventListener('blur', closeContextMenu)
 })
@@ -85,20 +98,23 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-for="folder in folders" :key="folder.id" class="folder-entry" @contextmenu="openContextMenu($event, folder.id)">
-        <Button class="folder-row" :class="{ active: selectedFolderId === folder.id }" variant="ghost" block :title="folder.path" @click="emit('select', folder.id)">
+        <Button class="folder-row" :class="{ active: selectedFolderId === folder.id }" variant="ghost" block @click="emit('select', folder.id)">
           <Folder :size="17" />
           <span class="folder-name">{{ folder.name }}</span>
           <span class="folder-count">{{ folder.imageCount }}</span>
         </Button>
         <div class="folder-actions" @click.stop @pointerdown.stop>
-          <Popover align="end" width="210px">
+          <Popover align="end" width="224px">
             <template #trigger>
-              <Button variant="ghost" size="icon" aria-label="Actions du dossier" title="Actions du dossier">
+              <Button variant="ghost" size="icon" aria-label="Actions du dossier">
                 <MoreHorizontal :size="16" />
               </Button>
             </template>
             <template #content="{ close }">
               <div class="folder-menu">
+                <Button variant="ghost" size="sm" block @click="openFolder(folder.id); close()">
+                  <template #leading><FolderOpen :size="15" /></template>{{ platform.openFolderLabel }}
+                </Button>
                 <Button variant="ghost" size="sm" block @click="emit('reindex', folder.id); close()">
                   <template #leading><RefreshCw :size="15" /></template>Réindexer
                 </Button>
@@ -127,6 +143,9 @@ onBeforeUnmount(() => {
       @pointerdown.stop
       @click.stop
     >
+      <Button variant="ghost" size="sm" block @click="runContextAction('open')">
+        <template #leading><FolderOpen :size="15" /></template>{{ platform.openFolderLabel }}
+      </Button>
       <Button variant="ghost" size="sm" block @click="runContextAction('reindex')">
         <template #leading><RefreshCw :size="15" /></template>Réindexer
       </Button>
@@ -138,30 +157,12 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.sidebar {
-  overflow-x: hidden;
-}
-
-.folder-nav {
-  overflow-x: hidden;
-  scrollbar-gutter: stable;
-}
-
+.sidebar { overflow-x: hidden; }
+.folder-nav { overflow-x: hidden; scrollbar-gutter: stable; }
 .folder-entry,
-.folder-row {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.folder-entry {
-  padding-right: 34px;
-}
-
-.folder-entry .folder-row {
-  width: calc(100% + 34px);
-  padding-right: 46px !important;
-}
-
+.folder-row { min-width: 0; max-width: 100%; }
+.folder-entry { padding-right: 34px; }
+.folder-entry .folder-row { width: calc(100% + 34px); padding-right: 46px !important; }
 .folder-actions {
   right: 2px;
   display: flex !important;
@@ -173,20 +174,16 @@ onBeforeUnmount(() => {
   pointer-events: none;
   transition: opacity var(--transition-fast);
 }
-
 .folder-entry:hover .folder-actions,
-.folder-entry:focus-within .folder-actions {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-}
-
+.folder-entry:focus-within .folder-actions { opacity: 1; visibility: visible; pointer-events: auto; }
+.folder-menu { display: grid; gap: var(--space-1); }
+.folder-menu :deep(.ui-button) { justify-content: flex-start; }
 .folder-context-menu {
   position: fixed;
   z-index: var(--z-popover);
   display: grid;
   gap: var(--space-1);
-  width: 210px;
+  width: 224px;
   padding: var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
