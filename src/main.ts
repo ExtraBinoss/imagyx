@@ -5,6 +5,7 @@ import App from './App.vue'
 import SpotlightSearch from './SpotlightSearch.vue'
 import './style.css'
 import './virtual-grid.css'
+import './spotlight-window.css'
 
 const currentWindow = getCurrentWindow()
 const savedTheme = localStorage.getItem('imagyx-theme')
