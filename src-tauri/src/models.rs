@@ -61,6 +61,7 @@ pub struct SearchRequest {
     pub query: String,
     pub folder_id: Option<String>,
     pub limit: Option<usize>,
+    pub offset: Option<usize>,
     pub query_vector: Option<Vec<f32>>,
 }
 
