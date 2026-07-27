@@ -18,6 +18,16 @@ pub async fn get_thumbnail(
     let source = PathBuf::from(&path);
     let state = Arc::clone(state.inner());
     tauri::async_runtime::spawn_blocking(move || {
+        if let Some(cached) = state
+            .database
+            .thumbnail_path(&image_id, &path)
+            .map_err(|error| error.to_string())?
+        {
+            if PathBuf::from(&cached).is_file() {
+                return Ok(cached);
+            }
+        }
+
         let known = state
             .database
             .image_path_is_known(&image_id, &path)
@@ -25,11 +35,16 @@ pub async fn get_thumbnail(
         if !known {
             return Err("L’image ne fait pas partie de la bibliothèque".into());
         }
-        state
+        let thumbnail = state
             .thumbnails
             .get_or_create(&image_id, &source, modified_at)
-            .map(|path| path.to_string_lossy().into_owned())
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?;
+        let thumbnail = thumbnail.to_string_lossy().into_owned();
+        state
+            .database
+            .save_thumbnail_path(&image_id, &path, &thumbnail)
+            .map_err(|error| error.to_string())?;
+        Ok(thumbnail)
     })
     .await
     .map_err(|error| error.to_string())?
