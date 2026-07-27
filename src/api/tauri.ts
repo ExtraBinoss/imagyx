@@ -18,6 +18,7 @@ export const imagyxApi = {
   updateRuntimeStats: (stats: RuntimeStats) => invoke<void>('update_runtime_stats', { stats }),
   updateModelProgress: (progress: ModelDownloadProgress) =>
     invoke<void>('update_model_progress', { progress }),
+  setTrayPaused: (paused: boolean) => invoke<void>('set_tray_paused', { paused }),
   spotlightShortcut: () => invoke<string>('get_spotlight_shortcut'),
   setSpotlightShortcut: (shortcut: string) =>
     invoke<string>('set_spotlight_shortcut', { shortcut }),
