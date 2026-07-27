@@ -131,6 +131,12 @@ function handleKeydown(event: KeyboardEvent): boolean {
   }
 
   const key = event.key.toLocaleLowerCase()
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && (key === 'c' || event.code === 'KeyC')) {
+    if (status.value === 'ready') reset()
+    else if (status.value === 'choose') void startConversion()
+    return true
+  }
+
   if ((event.ctrlKey || event.metaKey) && status.value === 'ready' && convertedImage.value) {
     if (key === 'c' || event.code === 'KeyC') {
       emit('copy', convertedImage.value)
@@ -144,12 +150,6 @@ function handleKeydown(event: KeyboardEvent): boolean {
       emit('open', convertedImage.value)
       return true
     }
-  }
-
-  if ((event.ctrlKey || event.metaKey) && event.shiftKey && (key === 'c' || event.code === 'KeyC')) {
-    if (status.value === 'ready') reset()
-    else if (status.value === 'choose') void startConversion()
-    return true
   }
 
   if (status.value === 'choose') {
