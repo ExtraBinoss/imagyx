@@ -54,16 +54,6 @@ impl Database {
             .map_err(AppError::from)
     }
 
-    pub fn image_path_is_known(&self, image_id: &str, path: &str) -> Result<bool, AppError> {
-        self.connect()?
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM images WHERE id = ?1 AND path = ?2)",
-                params![image_id, path],
-                |row| row.get(0),
-            )
-            .map_err(AppError::from)
-    }
-
     pub fn thumbnail_path(
         &self,
         image_id: &str,
