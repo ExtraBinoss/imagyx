@@ -190,7 +190,7 @@ defineExpose({ scrollToIndex })
         >
           <div
             class="spotlight-result-list__items"
-            :style="{ transform: `translateY(${(visibleResults[0]?.index ?? 0) * RESULT_ROW_HEIGHT}px)` }"
+            :style="{ transform: `translate3d(0, ${(visibleResults[0]?.index ?? 0) * RESULT_ROW_HEIGHT}px, 0)` }"
           >
         <div
           v-for="{ image, index } in visibleResults"
@@ -377,12 +377,11 @@ defineExpose({ scrollToIndex })
   cursor: default;
   transition: background-color 150ms ease, border-color 150ms ease, transform 180ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 180ms ease;
 }
-.spotlight-result:hover,
 .spotlight-result--selected {
   border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
   background: color-mix(in srgb, var(--primary-soft) 70%, var(--surface));
   box-shadow: inset 0 1px rgb(255 255 255 / 0.05);
-  transform: translateX(2px) scale(0.998);
+  transform: translate3d(2px, 0, 0) scale(0.998);
   will-change: transform;
 }
 .spotlight-thumb {
@@ -395,7 +394,6 @@ defineExpose({ scrollToIndex })
   box-shadow: 0 6px 16px rgb(2 6 23 / 0.12);
   transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-.spotlight-result:hover .spotlight-thumb,
 .spotlight-result--selected .spotlight-thumb { transform: scale(1.035) rotate(-0.35deg); }
 .spotlight-thumbnail-image { width: 100%; height: 100%; object-fit: cover; }
 .spotlight-copy { min-width: 0; }
@@ -413,8 +411,7 @@ defineExpose({ scrollToIndex })
   font-variant-numeric: tabular-nums;
   transition: opacity 120ms ease, transform 160ms ease;
 }
-.spotlight-result:hover .spotlight-score,
-.spotlight-result--selected .spotlight-score { opacity: 0; transform: translateX(7px); pointer-events: none; }
+.spotlight-result--selected .spotlight-score { opacity: 0; transform: translate3d(7px, 0, 0); pointer-events: none; }
 .spotlight-actions {
   position: absolute;
   right: 8px;
@@ -425,13 +422,12 @@ defineExpose({ scrollToIndex })
   gap: 5px;
   padding-left: 28px;
   opacity: 0;
-  transform: translateY(-50%);
+  transform: translate3d(0, -50%, 0);
   pointer-events: none;
   background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary-soft) 85%, var(--surface)) 28%);
   border-radius: var(--radius-md);
   transition: opacity 80ms ease;
 }
-.spotlight-result:hover .spotlight-actions,
 .spotlight-result--selected .spotlight-actions,
 .spotlight-result:focus-within .spotlight-actions { opacity: 1; pointer-events: auto; will-change: opacity; }
 .spotlight-action-button { min-height: 31px; padding-inline: 9px; border-radius: 9px; font-size: 10px; }
@@ -462,7 +458,7 @@ defineExpose({ scrollToIndex })
 }
 .spin { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(1turn); } }
-@keyframes result-list-reveal { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+@keyframes result-list-reveal { from { opacity: 0; transform: translate3d(0, 5px, 0); } to { opacity: 1; transform: none; } }
 @keyframes action-success { 0% { transform: scale(0.94); } 55% { transform: scale(1.04); } 100% { transform: none; } }
 @keyframes skeleton-shimmer { to { background-position: -160% 0; } }
 @media (prefers-reduced-motion: reduce) {

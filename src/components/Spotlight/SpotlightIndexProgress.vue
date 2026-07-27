@@ -87,7 +87,7 @@ const failed = computed(() => props.job.stage === 'error')
 .index-job--error { border-color: var(--danger-border); background: var(--danger-surface); }
 .index-job--error .index-job__icon { color: var(--danger-text); border-color: var(--danger-border); }
 .spin { animation: spin 0.8s linear infinite; }
-@keyframes progress-slide { from { transform: translateX(-120%); } to { transform: translateX(310%); } }
-@keyframes job-enter { from { opacity: 0; transform: translateY(-7px) scale(0.985); } to { opacity: 1; transform: none; } }
+@keyframes progress-slide { from { transform: translate3d(-120%, 0, 0); } to { transform: translate3d(310%, 0, 0); } }
+@keyframes job-enter { from { opacity: 0; transform: translate3d(0, -7px, 0) scale(0.985); } to { opacity: 1; transform: none; } }
 @keyframes spin { to { transform: rotate(1turn); } }
 </style>
