@@ -1,5 +1,6 @@
 mod assets;
 mod codec;
+mod derivatives;
 mod embeddings;
 mod folders;
 mod migrations;
