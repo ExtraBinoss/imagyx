@@ -1,3 +1,4 @@
+import { markRaw } from "vue";
 import { defineStore } from "pinia";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
@@ -17,8 +18,13 @@ import { formatBytes, perfLog } from "../utils";
 import { useToastStore } from "./toasts";
 
 const explainingImages = new Set<string>();
-const BROWSE_PAGE_SIZE = 120;
+const BROWSE_PAGE_SIZE = 48;
 const SEARCH_RESULT_LIMIT = 60;
+let progressClearTimer: number | undefined;
+
+function imageList(images: ImageAsset[]): ImageAsset[] {
+  return markRaw(images);
+}
 
 function deduplicateMatches(
   matches: SemanticMatch[],
@@ -40,7 +46,7 @@ function deduplicateMatches(
     }
   }
   return [...byLabel.values()]
-    .sort((a, b) => b.score - a.score)
+    .sort((left, right) => right.score - left.score)
     .slice(0, limit);
 }
 
@@ -104,6 +110,7 @@ export const useLibraryStore = defineStore("library", {
         /* ignore */
       }
     },
+
     async initialize() {
       if (this.initialized) return;
       const started = performance.now();
@@ -112,17 +119,7 @@ export const useLibraryStore = defineStore("library", {
         localStorage.removeItem("imagyx.semantic-model");
         semanticRuntime.setCallbacks({
           progress: (progress) => this.handleModelProgress(progress),
-          stats: (stats) => {
-            this.runtimeStats = stats;
-            if (stats.current > 0) this.markIndexed();
-            if (this.appInfo) {
-              this.appInfo.runtimeStats = stats;
-              this.appInfo.aiBackend = stats.backendEffective;
-              this.appInfo.aiReady =
-                stats.backendEffective !== "En attente" &&
-                stats.stage !== "error";
-            }
-          },
+          stats: (stats) => this.handleRuntimeStats(stats),
         });
 
         const eventsStarted = performance.now();
@@ -133,6 +130,7 @@ export const useLibraryStore = defineStore("library", {
             performance.now() - eventsStarted,
           ),
         );
+        const firstPagePromise = this.refreshImages();
         const appInfoStarted = performance.now();
         const appInfoPromise = imagyxApi.appInfo().then((value) => {
           perfLog(
@@ -161,8 +159,7 @@ export const useLibraryStore = defineStore("library", {
         this.runtimeStats = appInfo.runtimeStats;
         this.folders = folders;
         this.handleModelProgress(appInfo.modelProgress);
-        await this.refreshImages();
-        await eventsPromise;
+        await Promise.all([firstPagePromise, eventsPromise]);
         this.initialized = true;
         this.scheduleSemanticWarmup();
         perfLog(
@@ -177,8 +174,15 @@ export const useLibraryStore = defineStore("library", {
         this.loading = false;
       }
     },
+
     scheduleSemanticWarmup() {
-      const run = () => {
+      const idleWindow = window as Window & {
+        requestIdleCallback?: (
+          callback: IdleRequestCallback,
+          options?: IdleRequestOptions,
+        ) => number;
+      };
+      const warmText = () => {
         const started = performance.now();
         void semanticRuntime
           .prewarmText()
@@ -188,35 +192,38 @@ export const useLibraryStore = defineStore("library", {
               "text runtime prewarm",
               performance.now() - started,
             );
+            const indexPending = () => {
+              void semanticRuntime
+                .indexPending()
+                .then(() => this.scheduleRefresh())
+                .catch((error) => this.reportError(error));
+            };
+            if (idleWindow.requestIdleCallback) {
+              idleWindow.requestIdleCallback(indexPending, { timeout: 2500 });
+            } else {
+              window.setTimeout(indexPending, 1200);
+            }
           })
-          .then(() => semanticRuntime.prepare())
-          .then(() => semanticRuntime.indexPending())
-          .then(() => this.scheduleRefresh())
           .catch((error) => this.reportError(error));
       };
-      const idleWindow = window as Window & {
-        requestIdleCallback?: (
-          callback: IdleRequestCallback,
-          options?: IdleRequestOptions,
-        ) => number;
-      };
-      if (idleWindow.requestIdleCallback) {
-        idleWindow.requestIdleCallback(run, { timeout: 800 });
-      } else {
-        window.setTimeout(run, 250);
-      }
+
+      window.requestAnimationFrame(() =>
+        window.requestAnimationFrame(() => {
+          if (idleWindow.requestIdleCallback) {
+            idleWindow.requestIdleCallback(warmText, { timeout: 650 });
+          } else {
+            window.setTimeout(warmText, 350);
+          }
+        }),
+      );
     },
+
     async bindEvents() {
       if (this.listeners.length) return;
       const listeners = await Promise.all([
-        listen<IndexProgress>("index-progress", (event) => {
-          this.progress = event.payload;
-          if (event.payload.current > 0) this.markIndexed();
-          if (event.payload.stage === "complete") {
-            this.markIndexed();
-            this.scheduleRefresh();
-          }
-        }),
+        listen<IndexProgress>("index-progress", (event) =>
+          this.handleIndexProgress(event.payload),
+        ),
         listen("library-updated", () => this.scheduleRefresh()),
         listen<string>("semantic-index-requested", (event) => {
           void semanticRuntime
@@ -233,14 +240,74 @@ export const useLibraryStore = defineStore("library", {
         listen<ModelDownloadProgress>("model-download-progress", (event) =>
           this.handleModelProgress(event.payload),
         ),
-        listen<RuntimeStats>("runtime-stats", (event) => {
-          this.runtimeStats = event.payload;
-          if (event.payload.current > 0) this.markIndexed();
-          if (this.appInfo) this.appInfo.runtimeStats = event.payload;
-        }),
+        listen<RuntimeStats>("runtime-stats", (event) =>
+          this.handleRuntimeStats(event.payload),
+        ),
       ]);
       this.listeners.push(...listeners);
     },
+
+    handleIndexProgress(progress: IndexProgress) {
+      this.progress = progress;
+      if (progress.current > 0) this.markIndexed();
+      const toasts = useToastStore();
+      if (progress.stage === "complete") {
+        this.markIndexed();
+        this.scheduleRefresh();
+        toasts.upsert({
+          id: `reindex-${progress.folderId}`,
+          title: `${progress.folderName} est à jour`,
+          description: progress.message,
+          kind: "success",
+          duration: 2600,
+        });
+        this.scheduleProgressClear(progress.folderId);
+      } else if (progress.stage === "error") {
+        toasts.upsert({
+          id: `reindex-${progress.folderId}`,
+          title: `Indexation de ${progress.folderName} impossible`,
+          description: progress.message,
+          kind: "error",
+          duration: 8000,
+        });
+      }
+    },
+
+    handleRuntimeStats(stats: RuntimeStats) {
+      this.runtimeStats = stats;
+      if (stats.current > 0) this.markIndexed();
+      if (this.appInfo) {
+        this.appInfo.runtimeStats = stats;
+        this.appInfo.aiBackend = stats.backendEffective;
+        this.appInfo.aiReady =
+          stats.stage !== "error" && stats.stage !== "loading-text";
+      }
+      if (stats.stage === "ready" && this.progress?.stage === "queued") {
+        const progress = this.progress;
+        this.progress = {
+          ...progress,
+          stage: "complete",
+          current: progress.total,
+          message: "Indexation terminée",
+        };
+        useToastStore().upsert({
+          id: `reindex-${progress.folderId}`,
+          title: `${progress.folderName} est à jour`,
+          description: "Métadonnées et analyse sémantique terminées.",
+          kind: "success",
+          duration: 2600,
+        });
+        this.scheduleProgressClear(progress.folderId);
+      }
+    },
+
+    scheduleProgressClear(folderId: string) {
+      if (progressClearTimer) window.clearTimeout(progressClearTimer);
+      progressClearTimer = window.setTimeout(() => {
+        if (this.progress?.folderId === folderId) this.progress = null;
+      }, 2400);
+    },
+
     scheduleRefresh() {
       if (this.refreshScheduled) return;
       this.refreshScheduled = true;
@@ -249,6 +316,7 @@ export const useLibraryStore = defineStore("library", {
         void Promise.all([this.refreshFolders(), this.refreshImages()]);
       }, 160);
     },
+
     handleModelProgress(progress: ModelDownloadProgress) {
       this.modelProgress = progress;
       if (this.appInfo) this.appInfo.modelProgress = progress;
@@ -300,6 +368,7 @@ export const useLibraryStore = defineStore("library", {
         persistent: true,
       });
     },
+
     reportError(error: unknown) {
       this.error = String(error);
       useToastStore().upsert({
@@ -310,6 +379,7 @@ export const useLibraryStore = defineStore("library", {
         duration: 7000,
       });
     },
+
     async refreshFolders() {
       const started = performance.now();
       this.folders = await imagyxApi.folders();
@@ -322,9 +392,11 @@ export const useLibraryStore = defineStore("library", {
       if (
         this.selectedFolderId &&
         !this.folders.some((folder) => folder.id === this.selectedFolderId)
-      )
+      ) {
         this.selectedFolderId = null;
+      }
     },
+
     async refreshImages() {
       const start = performance.now();
       const sequence = ++this.searchSequence;
@@ -345,7 +417,7 @@ export const useLibraryStore = defineStore("library", {
             offset: 0,
           });
           if (sequence !== this.searchSequence) return;
-          this.images = results;
+          this.images = imageList(results);
           this.hasMoreImages = results.length === BROWSE_PAGE_SIZE;
           perfLog(
             "LibraryStore",
@@ -360,8 +432,11 @@ export const useLibraryStore = defineStore("library", {
         const lexicalPromise = imagyxApi
           .search({ query, folderId, limit: SEARCH_RESULT_LIMIT })
           .then((results) => {
-            if (sequence === this.searchSequence) {
-              this.images = results;
+            if (
+              sequence === this.searchSequence &&
+              (results.length > 0 || this.images.length === 0)
+            ) {
+              this.images = imageList(results);
               this.loading = false;
               perfLog(
                 "LibraryStore",
@@ -401,7 +476,7 @@ export const useLibraryStore = defineStore("library", {
           limit: SEARCH_RESULT_LIMIT,
         });
         if (sequence !== this.searchSequence) return;
-        this.images = hybrid;
+        this.images = imageList(hybrid);
         perfLog(
           "LibraryStore",
           "refreshImages hybrid IPC",
@@ -423,13 +498,15 @@ export const useLibraryStore = defineStore("library", {
         }
       }
     },
+
     async loadMoreImages() {
       if (
         this.query.trim() ||
         !this.hasMoreImages ||
         this.loadingMore
-      )
+      ) {
         return;
+      }
       const sequence = this.searchSequence;
       const offset = this.images.length;
       const folderId = this.selectedFolderId ?? undefined;
@@ -445,7 +522,7 @@ export const useLibraryStore = defineStore("library", {
         if (sequence !== this.searchSequence) return;
         const existing = new Set(this.images.map((image) => image.id));
         const appended = page.filter((image) => !existing.has(image.id));
-        this.images = [...this.images, ...appended];
+        this.images = imageList([...this.images, ...appended]);
         this.hasMoreImages = page.length === BROWSE_PAGE_SIZE;
         perfLog(
           "LibraryStore",
@@ -464,14 +541,16 @@ export const useLibraryStore = defineStore("library", {
         if (sequence === this.searchSequence) this.loadingMore = false;
       }
     },
+
     async explainImage(imageId: string) {
       const image = this.images.find((item) => item.id === imageId);
       if (
         !image ||
         image.semanticMatches?.length ||
         explainingImages.has(imageId)
-      )
+      ) {
         return;
+      }
       explainingImages.add(imageId);
       try {
         const concepts = this.activeConcepts.length
@@ -494,21 +573,30 @@ export const useLibraryStore = defineStore("library", {
         const semantic = explanation.matches.filter(
           (match) => match.score >= 0.5,
         );
-        const index = this.images.findIndex((item) => item.id === imageId);
-        if (index >= 0)
-          this.images[index] = {
-            ...this.images[index],
-            semanticMatches: deduplicateMatches([...filename, ...semantic]),
-          };
+        this.images = imageList(
+          this.images.map((item) =>
+            item.id === imageId
+              ? {
+                  ...item,
+                  semanticMatches: deduplicateMatches([
+                    ...filename,
+                    ...semantic,
+                  ]),
+                }
+              : item,
+          ),
+        );
       } catch (error) {
         this.reportError(error);
       } finally {
         explainingImages.delete(imageId);
       }
     },
+
     pauseIndexing() {
       semanticRuntime.pauseIndexing();
     },
+
     async resumeIndexing() {
       try {
         await semanticRuntime.resumeIndexing();
@@ -517,11 +605,20 @@ export const useLibraryStore = defineStore("library", {
         this.reportError(error);
       }
     },
+
     async addFolder(path: string) {
       try {
         const folder = await imagyxApi.addFolder(path);
         await this.refreshFolders();
         this.selectedFolderId = folder.id;
+        this.progress = {
+          folderId: folder.id,
+          folderName: folder.name,
+          current: 0,
+          total: 0,
+          stage: "discovering",
+          message: "Analyse du dossier…",
+        };
         void imagyxApi
           .indexFolder(folder.id)
           .catch((error) => this.reportError(error));
@@ -529,6 +626,7 @@ export const useLibraryStore = defineStore("library", {
         this.reportError(error);
       }
     },
+
     async removeFolder(folderId: string) {
       try {
         await imagyxApi.removeFolder(folderId);
@@ -538,17 +636,48 @@ export const useLibraryStore = defineStore("library", {
         this.reportError(error);
       }
     },
-    reindexFolder(folderId: string) {
-      void imagyxApi
-        .indexFolder(folderId)
-        .then(() => semanticRuntime.indexPending(folderId))
-        .then(() => this.scheduleRefresh())
-        .catch((error) => this.reportError(error));
+
+    async reindexFolder(folderId: string) {
+      const folder = this.folders.find((item) => item.id === folderId);
+      if (!folder) return;
+      this.progress = {
+        folderId,
+        folderName: folder.name,
+        current: 0,
+        total: folder.imageCount,
+        stage: "discovering",
+        message: "Nouvelle analyse du dossier…",
+      };
+      useToastStore().upsert({
+        id: `reindex-${folderId}`,
+        title: `Réindexation de ${folder.name}`,
+        description: "Analyse des fichiers et des métadonnées en cours.",
+        kind: "info",
+        persistent: true,
+      });
+      try {
+        await imagyxApi.indexFolder(folderId);
+        await semanticRuntime.indexPending(folderId);
+        this.scheduleRefresh();
+      } catch (error) {
+        this.progress = {
+          ...this.progress,
+          folderId,
+          folderName: folder.name,
+          current: 0,
+          total: folder.imageCount,
+          stage: "error",
+          message: String(error),
+        };
+        this.reportError(error);
+      }
     },
+
     selectFolder(folderId: string | null) {
       this.selectedFolderId = folderId;
       void this.refreshImages();
     },
+
     setQuery(query: string) {
       this.query = query;
     },
