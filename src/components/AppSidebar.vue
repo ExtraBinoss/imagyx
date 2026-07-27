@@ -26,7 +26,7 @@ import { useThemeStore } from "@/stores/theme";
 import { useShortcutStore } from "@/stores/shortcut";
 import { usePlatformStore } from "@/stores/platform";
 import TitleBar from "@/components/TitleBar.vue";
-import imagyxLogo from "../../src-tauri/icons/imagyx-smaller.avif";
+import imagyxLogo from "../../src-tauri/icons/imagyx-bigger.png";
 
 const props = defineProps<{
   folders: FollowedFolder[];
@@ -207,12 +207,19 @@ onBeforeUnmount(() => {
         @resume="emit('resumeIndexing')"
       />
 
-      <Popover side="top" align="start" width="380px" class="full-width-popover">
+      <Popover
+        side="top"
+        align="start"
+        width="380px"
+        class="full-width-popover"
+      >
         <template #trigger>
           <Button variant="ghost" size="sm" block class="settings-trigger-btn">
             <template #leading><Settings :size="15" /></template>
             Settings
-            <template #trailing><ChevronsUpDown :size="14" class="settings-chevron" /></template>
+            <template #trailing
+              ><ChevronsUpDown :size="14" class="settings-chevron"
+            /></template>
           </Button>
         </template>
         <template #content>

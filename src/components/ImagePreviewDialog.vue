@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Copy, ExternalLink, Info, Maximize2, Minimize2, Sparkles, X } from '@lucide/vue'
+import { Check, Copy, FolderOpen, Info, Maximize2, Minimize2, Sparkles, X } from '@lucide/vue'
 import type { ImageAsset } from '../types'
 import { imagyxApi } from '../api/tauri'
+import { usePlatformStore } from '../stores/platform'
 import { formatBytes } from '../utils'
 import Button from './ui/Button/Button.vue'
 import Badge from './ui/Badge/Badge.vue'
@@ -10,6 +11,7 @@ import Badge from './ui/Badge/Badge.vue'
 const props = defineProps<{ image: ImageAsset | null }>()
 const emit = defineEmits<{ close: [] }>()
 
+const platform = usePlatformStore()
 const copied = ref(false)
 const showInfo = ref(false)
 const fitMode = ref<'contain' | 'cover'>('contain')
@@ -23,16 +25,23 @@ function handleKeydown(event: KeyboardEvent) {
   }
 }
 
-async function copyPath() {
+async function copyImage() {
   if (!props.image) return
-  await imagyxApi.copyImageToClipboard(props.image.path)
-  copied.value = true
-  setTimeout(() => { copied.value = false }, 2000)
+  try {
+    await imagyxApi.copyImage(props.image.path)
+    copied.value = true
+    setTimeout(() => { copied.value = false }, 1800)
+  } catch {
+    /* fallback copy path */
+    await imagyxApi.copyImageToClipboard(props.image.path)
+    copied.value = true
+    setTimeout(() => { copied.value = false }, 1800)
+  }
 }
 
-async function openInFolder() {
+async function revealInFolder() {
   if (!props.image) return
-  await imagyxApi.openInFileManager(props.image.path)
+  await imagyxApi.openInFileManager(props.image.path, true)
 }
 
 onMounted(() => window.addEventListener('keydown', handleKeydown, true))
@@ -45,7 +54,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
       <div v-if="image" class="preview-overlay" role="presentation" @click.self="emit('close')">
         <div class="preview-modal" role="dialog" aria-modal="true" :aria-label="`Aperçu de ${image.name}`">
           
-          <!-- Control Bar -->
+          <!-- Header Bar -->
           <header class="preview-bar">
             <div class="file-info">
               <span class="file-name">{{ image.name }}</span>
@@ -54,39 +63,35 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
 
             <div class="bar-actions">
               <Button
-                variant="ghost"
+                class="spotlight-action-button"
+                variant="secondary"
                 size="sm"
-                :title="fitMode === 'contain' ? 'Ajuster à l\'écran' : 'Taille réelle'"
-                @click="fitMode = fitMode === 'contain' ? 'cover' : 'contain'"
+                aria-label="Copier l’image"
+                @click="copyImage"
               >
-                <Maximize2 v-if="fitMode === 'contain'" :size="15" />
-                <Minimize2 v-else :size="15" />
+                <template #leading>
+                  <Check v-if="copied" :size="14" />
+                  <Copy v-else :size="14" />
+                </template>
+                {{ copied ? 'Copiée' : 'Copier' }}
+              </Button>
+
+              <Button
+                class="spotlight-action-button"
+                variant="secondary"
+                size="sm"
+                :aria-label="`Ouvrir dans ${platform.fileManagerName}`"
+                @click="revealInFolder"
+              >
+                <template #leading><FolderOpen :size="14" /></template>
+                {{ platform.fileManagerName }}
               </Button>
 
               <Button
                 variant="ghost"
-                size="sm"
-                title="Copier le presse-papier"
-                @click="copyPath"
-              >
-                <Copy :size="15" />
-                <span>{{ copied ? 'Copié !' : 'Copier' }}</span>
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                title="Ouvrir dans l'explorateur"
-                @click="openInFolder"
-              >
-                <ExternalLink :size="15" />
-                <span>Révéler</span>
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                :class="{ active: showInfo }"
+                size="icon"
+                :class="{ 'btn-info--active': showInfo }"
+                class="btn-info"
                 title="Détails & Tags IA"
                 @click="showInfo = !showInfo"
               >
@@ -96,14 +101,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
               <div class="divider" />
 
               <Button variant="ghost" size="icon" aria-label="Fermer" class="close-btn" @click="emit('close')">
-                <X :size="18" />
+                <X :size="16" />
               </Button>
             </div>
           </header>
 
-          <!-- Main Viewport -->
-          <div class="preview-content" :class="{ 'with-sidebar': showInfo }">
-            <div class="stage-wrapper">
+          <!-- Main Content -->
+          <div class="preview-content">
+            <div class="stage-wrapper" @click="fitMode = fitMode === 'contain' ? 'cover' : 'contain'">
               <img
                 :src="imagyxApi.fileUrl(image.path)"
                 :alt="image.name"
@@ -112,43 +117,53 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
               />
             </div>
 
-            <!-- Details Drawer -->
-            <aside v-if="showInfo" class="info-drawer">
-              <h3>Détails de l'image</h3>
-              
-              <div class="info-group">
-                <label>Nom</label>
-                <p>{{ image.name }}</p>
-              </div>
-
-              <div class="info-group">
-                <label>Dimensions</label>
-                <p>{{ image.width }} × {{ image.height }} pixels</p>
-              </div>
-
-              <div class="info-group">
-                <label>Taille</label>
-                <p>{{ formatBytes(image.sizeBytes) }}</p>
-              </div>
-
-              <div class="info-group">
-                <label>Chemin d'accès</label>
-                <p class="path-text">{{ image.path }}</p>
-              </div>
-
-              <div v-if="image.semanticMatches?.length" class="info-group">
-                <label class="label-ia"><Sparkles :size="13" /> Détections IA</label>
-                <div class="tags-cloud">
-                  <Badge
-                    v-for="(match, idx) in image.semanticMatches"
-                    :key="idx"
-                    variant="primary"
-                  >
-                    {{ match.label }} ({{ Math.round(match.score * 100) }}%)
+            <!-- Animated Details Drawer -->
+            <Transition name="drawer-slide">
+              <aside v-if="showInfo" class="info-drawer">
+                <div class="info-drawer__header">
+                  <h3>Informations</h3>
+                  <Badge variant="primary" class="ai-badge">
+                    <Sparkles :size="12" /> IA Local
                   </Badge>
                 </div>
-              </div>
-            </aside>
+                
+                <div class="info-drawer__body">
+                  <div class="info-item">
+                    <span class="info-item__label">Nom de fichier</span>
+                    <span class="info-item__value">{{ image.name }}</span>
+                  </div>
+
+                  <div class="info-item">
+                    <span class="info-item__label">Dimensions</span>
+                    <span class="info-item__value">{{ image.width }} × {{ image.height }} px</span>
+                  </div>
+
+                  <div class="info-item">
+                    <span class="info-item__label">Taille sur le disque</span>
+                    <span class="info-item__value">{{ formatBytes(image.sizeBytes) }}</span>
+                  </div>
+
+                  <div class="info-item">
+                    <span class="info-item__label">Emplacement</span>
+                    <span class="info-item__path">{{ image.path }}</span>
+                  </div>
+
+                  <div v-if="image.semanticMatches?.length" class="info-item">
+                    <span class="info-item__label">Concepts détectés</span>
+                    <div class="tags-cloud">
+                      <Badge
+                        v-for="(match, idx) in image.semanticMatches"
+                        :key="idx"
+                        variant="secondary"
+                        class="semantic-tag"
+                      >
+                        {{ match.label }} <small>{{ Math.round(match.score * 100) }}%</small>
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              </aside>
+            </Transition>
           </div>
 
         </div>
@@ -165,24 +180,24 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px;
-  background: rgba(10, 12, 16, 0.82);
-  backdrop-filter: blur(20px) saturate(1.2);
+  padding: 24px;
+  background: color-mix(in srgb, var(--overlay) 75%, transparent);
+  backdrop-filter: blur(28px) saturate(1.18);
 }
 
 .preview-modal {
   display: flex;
   flex-direction: column;
-  width: 100%;
-  max-width: 1200px;
-  height: 100%;
-  max-height: 840px;
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
+  width: 90vw;
+  max-width: 960px;
+  height: 82vh;
+  max-height: 680px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-popover);
   overflow: hidden;
-  animation: modalPop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: appleModalPop 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .preview-bar {
@@ -190,9 +205,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
   align-items: center;
   justify-content: space-between;
   height: 52px;
-  padding: 0 var(--space-4);
-  background: var(--surface-elevated);
+  padding: 0 16px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
   border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(16px);
 }
 
 .file-info {
@@ -215,6 +231,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
   font-size: var(--text-xs);
   color: var(--text-muted);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .bar-actions {
@@ -225,21 +242,28 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
 
 .divider {
   width: 1px;
-  height: 20px;
+  height: 18px;
   background: var(--border);
-  margin: 0 var(--space-1);
+  margin: 0 2px;
 }
 
-.close-btn {
-  border-radius: var(--radius-full);
+.btn-info {
+  transition: transform var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.btn-info--active {
+  color: var(--primary-text) !important;
+  background: var(--primary-soft) !important;
+  transform: rotate(18deg) scale(1.08);
 }
 
 .preview-content {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: #090a0d;
+  background: color-mix(in srgb, var(--background) 96%, black);
 }
 
 .stage-wrapper {
@@ -247,88 +271,138 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-6);
+  padding: 20px;
   min-width: 0;
   overflow: hidden;
+  cursor: zoom-in;
 }
 
 .stage-image {
   max-width: 100%;
   max-height: 100%;
   border-radius: var(--radius-md);
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
-  transition: transform 0.2s ease;
+  box-shadow: 0 14px 40px -8px rgba(0, 0, 0, 0.42);
+  transition: transform 220ms ease;
 }
 
 .info-drawer {
-  width: 300px;
-  padding: var(--space-5);
+  width: 280px;
+  height: 100%;
+  padding: 16px;
   background: var(--surface);
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: 14px;
   overflow-y: auto;
+  scrollbar-width: thin;
 }
 
-.info-drawer h3 {
-  margin: 0;
-  font-size: var(--text-md);
-  font-weight: 600;
-}
-
-.info-group label {
-  display: block;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  margin-bottom: var(--space-1);
-  font-weight: 500;
-}
-
-.label-ia {
+.info-drawer__header {
   display: flex;
   align-items: center;
-  gap: 4px;
-  color: var(--primary) !important;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
 }
 
-.info-group p {
+.info-drawer__header h3 {
   margin: 0;
   font-size: var(--text-sm);
+  font-weight: 650;
   color: var(--text);
-  word-break: break-word;
 }
 
-.path-text {
+.ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+}
+
+.info-drawer__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.info-item__label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.info-item__value {
+  font-size: var(--text-xs);
+  color: var(--text);
+  font-weight: 550;
+}
+
+.info-item__path {
   font-family: monospace;
-  font-size: var(--text-xs) !important;
-  color: var(--text-muted) !important;
+  font-size: 10px;
+  color: var(--text-muted);
   background: var(--surface-hover);
-  padding: 6px;
+  padding: 6px 8px;
   border-radius: var(--radius-sm);
+  word-break: break-all;
+  border: 1px solid var(--border);
 }
 
 .tags-cloud {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-1);
+  gap: 5px;
   margin-top: 4px;
 }
 
-@keyframes modalPop {
-  from {
+.semantic-tag {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+.semantic-tag small {
+  opacity: 0.7;
+  margin-left: 2px;
+}
+
+/* Animations */
+@keyframes appleModalPop {
+  0% {
     opacity: 0;
-    transform: scale(0.96) translateY(10px);
+    transform: scale(0.96) translateY(8px);
+    filter: blur(4px);
   }
-  to {
+  100% {
     opacity: 1;
     transform: scale(1) translateY(0);
+    filter: blur(0);
   }
+}
+
+.drawer-slide-enter-active,
+.drawer-slide-leave-active {
+  transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease, margin-right 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.drawer-slide-enter-from,
+.drawer-slide-leave-to {
+  transform: translateX(100%);
+  opacity: 0;
+  margin-right: -280px;
 }
 
 .preview-fade-enter-active,
 .preview-fade-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity 200ms ease;
 }
 
 .preview-fade-enter-from,
