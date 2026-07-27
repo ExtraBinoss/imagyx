@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { Clock3, LoaderCircle } from '@lucide/vue'
 import type { IndexProgress } from '../types'
 import ProgressBar from './ui/ProgressBar/ProgressBar.vue'
+import { useTranslate } from '../i18n'
 
 const props = defineProps<{
   progress: IndexProgress | null
@@ -18,6 +19,7 @@ const indeterminate = computed(() =>
         (props.progress.stage === 'embedding' && props.progress.current === 0)),
   ),
 )
+const { t } = useTranslate()
 const percentage = computed(() => {
   if (!props.progress || props.progress.total === 0) return 0
   return Math.min(100, (props.progress.current / props.progress.total) * 100)
@@ -45,7 +47,7 @@ const countLabel = computed(() => {
           :value="percentage"
           :indeterminate="indeterminate"
           size="sm"
-          label="Progression de l’indexation"
+          :label="t('indexing.aria_details')"
         />
         <span v-if="countLabel" class="status-count">{{ countLabel }}</span>
       </template>

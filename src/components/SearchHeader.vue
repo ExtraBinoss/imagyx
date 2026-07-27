@@ -7,6 +7,7 @@ import MovingBorder from './ui/MovingBorder/MovingBorder.vue'
 import TitleBar from './TitleBar.vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { usePlatformStore } from '../stores/platform'
+import { useTranslate } from '../i18n'
 
 const props = defineProps<{
   modelReady: boolean
@@ -22,6 +23,7 @@ const emit = defineEmits<{
 }>()
 
 const platform = usePlatformStore()
+const { t } = useTranslate()
 const searchInput = ref<{ focus: () => void; select: () => void } | null>(null)
 const isFocused = ref(false)
 
@@ -51,8 +53,8 @@ defineExpose({ focusSearch, selectSearch })
           ref="searchInput"
           :model-value="props.modelValue"
           type="search"
-          :placeholder="placeholder ?? 'Nom de fichier ou description naturelle…'"
-          aria-label="Rechercher des images"
+          :placeholder="placeholder ?? t('search.placeholder')"
+          :aria-label="t('search.aria')"
           class="floating-search-input"
           @focus="isFocused = true"
           @blur="isFocused = false"
@@ -72,13 +74,13 @@ defineExpose({ focusSearch, selectSearch })
                 v-if="props.modelValue.trim() && props.resultCount != null"
                 class="search-count-badge"
               >
-                {{ props.searching ? 'Recherche…' : `${props.resultCount} résultat${props.resultCount > 1 ? 's' : ''}` }}
+                {{ props.searching ? t('search.searching') : t('search.result_count', { count: props.resultCount }) }}
               </span>
               <Button
                 v-if="props.modelValue"
                 variant="ghost"
                 size="icon"
-                aria-label="Effacer la recherche"
+                :aria-label="t('search.clear')"
                 @click="emit('update:modelValue', '')"
               >
                 <X :size="15" />

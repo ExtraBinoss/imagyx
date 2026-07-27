@@ -23,6 +23,7 @@ import { semanticRuntime } from "./services/semantic";
 import { registerSemanticQueryProvider } from "./services/semantic-provider";
 import { capitalize, useTagTypewriter } from "./useTagTypewriter";
 import { debounce, perfLog } from "./utils";
+import { useTranslate } from "./i18n";
 
 import AppSidebar from "./components/AppSidebar.vue";
 import ImageGrid from "./components/ImageGrid.vue";
@@ -37,6 +38,7 @@ const OnboardingDialog = defineAsyncComponent(
   () => import("./components/Onboarding/OnboardingDialog.vue"),
 );
 
+const { t } = useTranslate();
 const store = useLibraryStore();
 const onboarding = useOnboardingStore();
 const platform = usePlatformStore();
@@ -57,7 +59,7 @@ let unlistenResumeIndexing: UnlistenFn | null = null;
 let unlistenAddFolder: UnlistenFn | null = null;
 
 const folderPrefix = computed(() =>
-  store.selectedFolder ? `${store.selectedFolder.name}: ` : "All images: ",
+  store.selectedFolder ? `${store.selectedFolder.name}: ` : t('all_images_prefix'),
 );
 const searchPlaceholder = computed(
   () => `${folderPrefix.value}${capitalize(typedTag.value)}…`,
@@ -77,7 +79,7 @@ async function addFolder() {
   const selected = await open({
     directory: true,
     multiple: false,
-    title: "Choose a folder to index",
+    title: t('add_folder_title'),
   });
   if (typeof selected === "string") await store.addFolder(selected);
 }
@@ -237,7 +239,7 @@ onBeforeUnmount(() => {
         <Button
           variant="ghost"
           size="icon"
-          aria-label="Dismiss error"
+          :aria-label="t('hide_error')"
           @click="store.error = null"
           ><X :size="15"
         /></Button>

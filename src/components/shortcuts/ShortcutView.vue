@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { Keyboard } from '@lucide/vue'
+import { useTranslate } from '../../i18n'
+
+const { t } = useTranslate()
 
 const props = withDefaults(defineProps<{
   modelValue: string
@@ -8,7 +11,7 @@ const props = withDefaults(defineProps<{
   description?: string
   disabled?: boolean
 }>(), {
-  label: 'Raccourci',
+  label: '',
   description: '',
   disabled: false,
 })
@@ -23,7 +26,7 @@ const tokens = computed(() => displayTokens(props.modelValue))
 function startRecording() {
   if (props.disabled) return
   recording.value = true
-  message.value = 'Appuie sur la nouvelle combinaison'
+  message.value = t('shortcut.press_combo')
   void nextTick(() => field.value?.focus())
 }
 
@@ -44,7 +47,7 @@ function capture(event: KeyboardEvent) {
 
   const key = normalizeKey(event)
   if (!key) {
-    message.value = 'Maintiens un modificateur puis appuie sur une touche'
+    message.value = t('shortcut.hold_modifier')
     return
   }
 
@@ -56,13 +59,13 @@ function capture(event: KeyboardEvent) {
   ].filter(Boolean)
 
   if (modifiers.length === 0) {
-    message.value = 'Ajoute Ctrl, Alt, Shift ou Commande'
+    message.value = t('shortcut.add_modifier')
     return
   }
 
   emit('change', [...modifiers, key].join('+'))
   recording.value = false
-  message.value = 'Application du raccourci…'
+  message.value = t('shortcut.applying')
   window.setTimeout(() => { if (!recording.value) message.value = '' }, 1400)
 }
 
@@ -113,7 +116,7 @@ function displayTokens(shortcut: string): string[] {
       :class="{ 'shortcut-field--recording': recording, 'shortcut-field--disabled': disabled }"
       role="button"
       :tabindex="disabled ? -1 : 0"
-      :aria-label="`${label}: ${tokens.join(' plus ')}`"
+      :aria-label="`${label || t('shortcut.press_combo')}: ${tokens.join(' + ')}`"
       @click="startRecording"
       @focus="recording = true"
       @blur="stopRecording"

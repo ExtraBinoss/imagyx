@@ -17,6 +17,7 @@ import SpotlightResults from './SpotlightResults.vue'
 import SpotlightSettings from './SpotlightSettings.vue'
 import type { SpotlightIndexJob, SpotlightView } from './types'
 import { useSpotlightResultActions } from './useSpotlightResultActions'
+import { useTranslate } from '../../i18n'
 
 const CACHE_TTL_MS = 2_000
 const SEARCH_DEBOUNCE_MS = 140
@@ -31,6 +32,7 @@ const shortcut = useShortcutStore()
 const theme = useThemeStore()
 const currentWindow = getCurrentWindow()
 const { typedTag } = useTagTypewriter()
+const { t } = useTranslate()
 const view = ref<SpotlightView>('search')
 const searchQuery = ref('')
 const settingsQuery = ref('')
@@ -85,18 +87,18 @@ const hasActiveJobs = computed(() => jobs.value.some((job) => !['complete', 'err
 const hasSearchQuery = computed(() => searchQuery.value.trim().length > 0)
 const selectedImage = computed(() => results.value[selectedIndex.value] ?? null)
 const resultLabel = computed(() => {
-  if (!libraryReady.value) return 'Loading…'
-  if (!hasFolders.value) return 'Setup required'
-  if (searching.value && results.value.length === 0) return 'Searching…'
-  return `${results.value.length} result${results.value.length === 1 ? '' : 's'}`
+  if (!libraryReady.value) return t('spotlight.placeholder.loading')
+  if (!hasFolders.value) return t('spotlight.setup_required')
+  if (searching.value && results.value.length === 0) return t('spotlight.searching')
+  return t('spotlight.result_count', { count: results.value.length })
 })
 const placeholder = computed(() => {
-  if (view.value === 'settings') return 'Search settings…'
-  if (!libraryReady.value) return 'Loading library…'
-  if (!hasFolders.value) return 'Add a folder to get started…'
+  if (view.value === 'settings') return t('spotlight.placeholder.settings')
+  if (!libraryReady.value) return t('spotlight.placeholder.loading')
+  if (!hasFolders.value) return t('spotlight.placeholder.no_folder')
   return typedTag.value
-    ? `All images: ${capitalize(typedTag.value)}…`
-    : 'All images: name or description…'
+    ? t('all_images_prefix') + `${capitalize(typedTag.value)}…`
+    : t('spotlight.placeholder.search')
 })
 const showAddAction = computed(() => {
   if (!libraryReady.value || !hasFolders.value) return true
@@ -266,7 +268,7 @@ function rememberResults(key: string, images: ImageAsset[]) {
 async function addFolder() {
   dialogOpen.value = true
   try {
-    const selected = await open({ directory: true, multiple: false, title: 'Choose a folder to index' })
+    const selected = await open({ directory: true, multiple: false, title: t('spotlight.choose_folder_title') })
     if (typeof selected !== 'string') return
     const folder = await imagyxApi.addFolder(selected)
     folders.value = [folder, ...folders.value.filter((item) => item.id !== folder.id)]
@@ -276,7 +278,7 @@ async function addFolder() {
       current: 0,
       total: 0,
       stage: 'discovering',
-      message: 'Scanning folder…',
+      message: t('spotlight.index_message.scanning'),
     })
     await openPanel(++morphSequence)
     void imagyxApi.indexFolder(folder.id, false).catch((reason) => {
@@ -291,12 +293,12 @@ async function addFolder() {
 }
 
 function indexProgressMessage(progress: IndexProgress, stage: SpotlightIndexJob['stage']): string {
-  if (stage === 'complete') return 'Indexing complete'
+  if (stage === 'complete') return t('spotlight.index_complete')
   if (stage === 'error') return progress.message
-  if (stage === 'queued') return `${progress.total} images ready · waiting for AI indexing`
-  if (stage === 'embedding') return `AI indexing · ${progress.current} of ${progress.total}`
-  if (stage === 'metadata') return `Reading metadata · ${progress.current} of ${progress.total}`
-  return 'Scanning folder…'
+  if (stage === 'queued') return t('spotlight.index_message.queued', { total: progress.total })
+  if (stage === 'embedding') return t('spotlight.index_message.embedding', { current: progress.current, total: progress.total })
+  if (stage === 'metadata') return t('spotlight.index_message.metadata', { current: progress.current, total: progress.total })
+  return t('spotlight.index_message.scanning')
 }
 
 function handleIndexProgress(progress: IndexProgress) {
@@ -324,11 +326,11 @@ function handleRuntimeStats(stats: RuntimeStats) {
   const job = [...jobs.value].reverse().find((item) => item.stage === 'queued' || item.stage === 'embedding')
   if (!job) return
   if (['indexing', 'decoding', 'inference', 'saving'].includes(stats.stage)) {
-    upsertJob({ ...job, stage: 'embedding', current: stats.current, total: stats.total, message: `AI indexing · ${stats.current} of ${stats.total}` })
+    upsertJob({ ...job, stage: 'embedding', current: stats.current, total: stats.total, message: t('spotlight.index_message.embedding', { current: stats.current, total: stats.total }) })
   } else if (stats.stage === 'paused') {
-    upsertJob({ ...job, stage: 'queued', current: stats.current, total: stats.total, message: `Indexing paused · ${stats.current} of ${stats.total}` })
+    upsertJob({ ...job, stage: 'queued', current: stats.current, total: stats.total, message: t('spotlight.index_message.paused', { current: stats.current, total: stats.total }) })
   } else if (stats.stage === 'ready' && job.stage === 'embedding') {
-    upsertJob({ ...job, stage: 'complete', current: job.total, message: 'Indexing complete' })
+    upsertJob({ ...job, stage: 'complete', current: job.total, message: t('spotlight.index_complete') })
     resultCache.clear()
     void syncFolders()
     scheduleJobCleanup(job.folderId)
@@ -469,7 +471,7 @@ onBeforeUnmount(() => {
     <section
       class="spotlight-stage"
       :class="{ 'spotlight-stage--visible': visible }"
-      aria-label="Imagyx quick search"
+      :aria-label="t('spotlight.aria')"
     >
       <MovingBorder
         class="spotlight-border"

@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Check, ChevronDown } from '@lucide/vue'
+import { useTranslate } from '../../../i18n'
 import Button from '../Button/Button.vue'
 import Popover from '../Popover/Popover.vue'
+
+const { t } = useTranslate()
 
 interface SelectOption {
   label: string
@@ -40,13 +43,13 @@ function selectOption(option: SelectOption, close: () => void) {
 <template>
   <Popover align="end" width="220px">
     <template #trigger>
-      <Button class="ui-select__trigger" variant="secondary" size="sm" :aria-label="ariaLabel">
-        <span class="ui-select__value">{{ selected?.label ?? placeholder }}</span>
+      <Button class="ui-select__trigger" variant="secondary" size="sm" :aria-label="ariaLabel || t('select.aria_label')">
+        <span class="ui-select__value">{{ selected?.label ?? (placeholder || t('select.placeholder')) }}</span>
         <template #trailing><ChevronDown :size="14" /></template>
       </Button>
     </template>
     <template #content="{ close }">
-      <div class="ui-select__options" role="listbox" :aria-label="ariaLabel">
+      <div class="ui-select__options" role="listbox" :aria-label="ariaLabel || t('select.aria_label')">
         <button
           v-for="option in options"
           :key="option.value"

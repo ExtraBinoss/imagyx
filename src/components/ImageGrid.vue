@@ -9,7 +9,9 @@ import Skeleton from './ui/Skeleton/Skeleton.vue'
 import ThumbnailImage from './ThumbnailImage.vue'
 import Button from './ui/Button/Button.vue'
 import CopyButton from './ui/Button/CopyButton.vue'
+import { useTranslate } from '../i18n'
 
+const { t } = useTranslate()
 const props = defineProps<{ images: ImageAsset[]; loading: boolean; hasFolders: boolean; viewKey: string }>()
 const emit = defineEmits<{ explain: [imageId: string]; preview: [image: ImageAsset]; loadMore: [] }>()
 const GAP = 16
@@ -253,11 +255,11 @@ watch(() => props.images.length, () => {
 
 <template>
   <section ref="viewport" class="image-area" @scroll.passive="handleScroll">
-    <div v-if="loading && images.length === 0" class="loading-grid" aria-label="Chargement">
+    <div v-if="loading && images.length === 0" class="loading-grid" :aria-label="t('search.loading')">
       <Skeleton v-for="item in 18" :key="item" class="skeleton-card" radius="lg" />
     </div>
 
-    <div v-else-if="images.length > 0" class="virtual-grid-spacer" :style="{ height: `${spacerHeight}px` }" role="list" :aria-label="`${images.length} images`">
+    <div v-else-if="images.length > 0" class="virtual-grid-spacer" :style="{ height: `${spacerHeight}px` }" role="list" :aria-label="t('search.result_count', { count: images.length })">
       <div
         class="virtual-grid-window"
         :class="{ 'is-scrolling': isScrolling }"
@@ -290,14 +292,14 @@ watch(() => props.images.length, () => {
                 size="icon"
                 variant="secondary"
                 class="card-action-btn"
-                title="Copy image"
+                :title="t('copy_image')"
                 @copy="copySelectedImage(entry.image)"
               />
               <Button
                 variant="secondary"
                 size="icon"
                 class="card-action-btn"
-                title="Open file"
+                :title="t('open_file')"
                 @click="openFileInExplorer(entry.image, $event)"
               >
                 <ExternalLink :size="13" />
@@ -321,7 +323,7 @@ watch(() => props.images.length, () => {
                   </span>
                 </div>
               </div>
-              <span v-else class="semantic-overlay__loading">Analyse des tags…</span>
+              <span v-else class="semantic-overlay__loading">{{ t('search.analyzing_tags') }}</span>
             </div>
           </div>
 
@@ -335,8 +337,8 @@ watch(() => props.images.length, () => {
 
     <div v-else class="empty-state">
       <component :is="hasFolders ? SearchX : FileImage" :size="34" :stroke-width="1.5" />
-      <strong>{{ hasFolders ? 'Aucune image trouvée' : 'Ajoute ton premier dossier' }}</strong>
-      <p>{{ hasFolders ? 'Essaie un nom de fichier ou une description visuelle différente.' : 'Imagyx l’indexera localement et préparera la recherche sémantique automatiquement.' }}</p>
+      <strong>{{ hasFolders ? t('search.no_images_title') : t('search.no_folder_title') }}</strong>
+      <p>{{ hasFolders ? t('search.no_images_desc') : t('search.no_folder_desc') }}</p>
     </div>
   </section>
 </template>

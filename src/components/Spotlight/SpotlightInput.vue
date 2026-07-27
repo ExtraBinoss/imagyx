@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { ArrowLeft, LoaderCircle, Search, Settings2, X } from '@lucide/vue'
 import Button from '../ui/Button/Button.vue'
 import type { SpotlightView } from './types'
+import { useTranslate } from '../../i18n'
 
 defineProps<{
   modelValue: string
@@ -18,6 +19,7 @@ const emit = defineEmits<{
   back: []
 }>()
 
+const { t } = useTranslate()
 const input = ref<HTMLInputElement | null>(null)
 
 function focus() { input.value?.focus() }
@@ -36,7 +38,7 @@ defineExpose({ focus, select })
       class="spotlight-input__nav"
       variant="ghost"
       size="icon"
-      aria-label="Back to search"
+      :aria-label="t('spotlight.back_to_search')"
       @click="emit('back')"
     >
       <ArrowLeft :size="18" />
@@ -55,7 +57,7 @@ defineExpose({ focus, select })
       autocomplete="off"
       spellcheck="false"
       :placeholder="placeholder"
-      :aria-label="view === 'settings' ? 'Search settings' : 'Quick search'"
+      :aria-label="view === 'settings' ? t('spotlight.search_in_settings') : t('spotlight.quick_search')"
       @input="handleInput"
     />
 
@@ -67,7 +69,7 @@ defineExpose({ focus, select })
       class="spotlight-input__clear"
       variant="ghost"
       size="icon"
-      aria-label="Clear search"
+      :aria-label="t('spotlight.clear_search')"
       @click="emit('update:modelValue', '')"
     >
       <X :size="16" />
@@ -77,7 +79,7 @@ defineExpose({ focus, select })
       class="spotlight-input__settings"
       variant="ghost"
       size="icon"
-      aria-label="Open settings"
+      :aria-label="t('spotlight.open_settings')"
       @click="emit('settings')"
     >
       <Settings2 :size="17" />

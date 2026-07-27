@@ -9,7 +9,9 @@ import Button from './ui/Button/Button.vue'
 import Popover from './ui/Popover/Popover.vue'
 import { usePlatformStore } from '../stores/platform'
 import { useLibraryStore } from '../stores/library'
+import { useTranslate } from '../i18n'
 
+const { t } = useTranslate()
 const props = defineProps<{
   progress: IndexProgress | null
   modelProgress: ModelDownloadProgress | null
@@ -68,53 +70,59 @@ const indeterminate = computed(() =>
 )
 
 const title = computed(() => {
-  if (paused.value) return 'Indexing Paused'
-  if (downloading.value) return 'Downloading AI Model'
+  if (paused.value) return t('indexing.title.paused')
+  if (downloading.value) return t('indexing.title.downloading')
   if (indexing.value) return liveStats.value?.stage === 'saving'
-    ? 'Saving Analysis'
-    : 'WebGPU AI Analysis'
+    ? t('indexing.title.saving')
+    : t('indexing.title.analyzing')
   if (folderIndexing.value) return props.progress?.stage === 'queued'
-    ? 'Waiting for AI Analysis'
-    : `Indexing ${props.progress?.folderName ?? 'Folder'}`
-  if (preparingModel.value) return 'Loading Model'
-  if (props.modelProgress?.stage === 'error') return 'AI Unavailable'
-  return 'Indexing Completed'
+    ? t('indexing.title.waiting')
+    : t('indexing.title.indexing', { folder: props.progress?.folderName ?? 'Folder' })
+  if (preparingModel.value) return t('indexing.title.loading')
+  if (props.modelProgress?.stage === 'error') return t('indexing.title.unavailable')
+  return t('indexing.title.completed')
 })
 
 const detail = computed(() => {
   if (indexing.value || paused.value) {
     const speed = liveStats.value?.imagesPerSecond ?? 0
-    return `${current.value} / ${total.value}${speed > 0 ? ` · ${speed.toFixed(1)} img/s` : ''}`
+    if (speed > 0) {
+      return t('indexing.message.indexing', { current: current.value, total: total.value, speed: speed.toFixed(1) })
+    }
+    return t('indexing.message.indexing_no_speed', { current: current.value, total: total.value })
   }
-  if (folderIndexing.value) return props.progress?.message ?? 'Indexation en cours…'
+  if (folderIndexing.value) return props.progress?.message ?? t('indexing.message.analyzing')
   if (downloading.value && props.modelProgress) {
     if (props.modelProgress.totalBytes > 0) {
-      return `${formatBytes(props.modelProgress.currentBytes)} / ${formatBytes(props.modelProgress.totalBytes)}`
+      return t('indexing.message.downloading', {
+        current: formatBytes(props.modelProgress.currentBytes),
+        total: formatBytes(props.modelProgress.totalBytes),
+      })
     }
-    return props.modelProgress.fileName ?? 'Downloading…'
+    return props.modelProgress.fileName ?? t('indexing.message.downloading_name')
   }
-  return liveStats.value?.accelerationLabel ?? 'Local AI Ready'
+  return liveStats.value?.accelerationLabel ?? t('indexing.title.ready')
 })
 
 const phaseLabel = computed(() => {
   if (folderIndexing.value && !indexing.value) {
     switch (props.progress?.stage) {
-      case 'discovering': return 'Discovering Files'
-      case 'metadata': return 'Reading Metadata'
-      case 'queued': return 'Queued for Semantic Analysis'
+      case 'discovering': return t('indexing.phase.discovering')
+      case 'metadata': return t('indexing.phase.metadata')
+      case 'queued': return t('indexing.phase.queued')
     }
   }
   switch (liveStats.value?.stage) {
-    case 'checking': return 'Checking Cache'
-    case 'loading': return 'Loading Model'
-    case 'loading-text': return 'Loading Text Encoder'
-    case 'decoding': return 'Decoding Images'
-    case 'inference': return 'WebGPU Inference'
-    case 'indexing': return 'Semantic Indexing'
-    case 'saving': return 'Writing to SQLite'
-    case 'paused': return 'Resume Available'
-    case 'error': return 'Error'
-    default: return 'Ready'
+    case 'checking': return t('indexing.phase.checking')
+    case 'loading': return t('indexing.phase.loading')
+    case 'loading-text': return t('indexing.phase.loading_text')
+    case 'decoding': return t('indexing.phase.decoding')
+    case 'inference': return t('indexing.phase.inference')
+    case 'indexing': return t('indexing.phase.indexing')
+    case 'saving': return t('indexing.phase.saving')
+    case 'paused': return t('indexing.phase.paused')
+    case 'error': return t('indexing.phase.error')
+    default: return t('indexing.phase.ready')
   }
 })
 
@@ -162,7 +170,7 @@ async function copyAiDetails() {
             }"
             role="button"
             tabindex="0"
-            title="Détails de l'indexation IA"
+            :title="t('indexing.details_title')"
             @click="popoverOpen = !open"
           >
             <span class="card-icon">
@@ -190,7 +198,7 @@ async function copyAiDetails() {
               class="card-control"
               variant="ghost"
               size="icon"
-              :aria-label="paused ? 'Reprendre' : 'Pause'"
+              :aria-label="paused ? t('indexing.aria_resume') : t('indexing.aria_pause')"
               @click.stop="emit(paused ? 'resume' : 'pause')"
             >
               <Play v-if="paused" :size="14" />
@@ -209,16 +217,16 @@ async function copyAiDetails() {
             </div>
 
             <dl class="ai-simple-dl">
-              <div><dt>Progress</dt><dd>{{ current }} / {{ total }}</dd></div>
+              <div><dt>{{ t('indexing.info.progress') }}</dt><dd>{{ current }} / {{ total }}</dd></div>
               <div v-if="liveStats?.imagesPerSecond">
-                <dt>Speed</dt><dd>{{ liveStats.imagesPerSecond.toFixed(1) }} img/s</dd>
+                <dt>{{ t('indexing.info.speed') }}</dt><dd>{{ liveStats.imagesPerSecond.toFixed(1) }} img/s</dd>
               </div>
               <div>
-                <dt>Resources</dt>
+                <dt>{{ t('indexing.info.resources') }}</dt>
                 <dd>CPU {{ liveStats?.processCpuPercent?.toFixed(0) ?? 0 }}% · RAM {{ formatBytes(liveStats?.processMemoryBytes ?? 0) }}</dd>
               </div>
               <div>
-                <dt>Hardware Accelerated</dt>
+                <dt>{{ t('indexing.info.hardware') }}</dt>
                 <dd>{{ liveStats?.accelerationActive ? 'OK' : 'KO' }}</dd>
               </div>
             </dl>
@@ -228,7 +236,7 @@ async function copyAiDetails() {
                 <Check v-if="copied" :size="14" />
                 <Copy v-else :size="14" />
               </template>
-              {{ copied ? 'Copied!' : 'Copy additional information' }}
+              {{ copied ? t('indexing.info.copied') : t('copy_additional_info') }}
             </Button>
 
             <p v-if="liveStats?.fallbackReason" class="ai-stats__warning">

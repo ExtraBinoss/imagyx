@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Check, Copy } from '@lucide/vue'
+import { useTranslate } from '../../../i18n'
 import Button from './Button.vue'
+
+const { t } = useTranslate()
 
 const props = withDefaults(
   defineProps<{
@@ -72,7 +75,7 @@ defineExpose({ triggerCopied, copied })
       </Transition>
     </template>
     <span v-else>
-      {{ copied ? copiedText : idleText }}
+      {{ copied ? (copiedText || t('copied')) : (idleText || t('copy')) }}
     </span>
 
     <template v-if="$slots.trailing" #trailing>

@@ -3,8 +3,11 @@ import { ref } from 'vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Minus, Square, X } from '@lucide/vue'
 import { usePlatformStore } from '../stores/platform'
+import { useTranslate } from '../i18n'
+import Tooltip from './ui/Tooltip/Tooltip.vue'
 
 const appWindow = getCurrentWindow()
+const { t } = useTranslate()
 const platform = usePlatformStore()
 const isMaximized = ref(false)
 
@@ -35,26 +38,38 @@ async function close(event: MouseEvent) {
     data-tauri-drag-region
   >
     <div v-if="platform.controlsPosition === 'right'" class="titlebar-traffic-lights" @click.stop @pointerdown.stop>
-      <button class="mac-btn mac-minimize" title="Minimize" @click="minimize" @pointerdown.stop>
-        <Minus :size="9" class="mac-icon" />
-      </button>
-      <button class="mac-btn mac-maximize" title="Maximize" @click="toggleMaximize" @pointerdown.stop>
-        <Square :size="8" class="mac-icon" />
-      </button>
-      <button class="mac-btn mac-close" title="Close" @click="close" @pointerdown.stop>
-        <X :size="9" class="mac-icon" />
-      </button>
+      <Tooltip :text="t('titlebar.minimize')">
+        <button class="mac-btn mac-minimize" @click="minimize" @pointerdown.stop>
+          <Minus :size="9" class="mac-icon" />
+        </button>
+      </Tooltip>
+      <Tooltip :text="t('titlebar.maximize')">
+        <button class="mac-btn mac-maximize" @click="toggleMaximize" @pointerdown.stop>
+          <Square :size="8" class="mac-icon" />
+        </button>
+      </Tooltip>
+      <Tooltip :text="t('titlebar.close')">
+        <button class="mac-btn mac-close" @click="close" @pointerdown.stop>
+          <X :size="9" class="mac-icon" />
+        </button>
+      </Tooltip>
     </div>
     <div v-else class="titlebar-traffic-lights" @click.stop @pointerdown.stop>
-      <button class="mac-btn mac-close" title="Close" @click="close" @pointerdown.stop>
-        <X :size="9" class="mac-icon" />
-      </button>
-      <button class="mac-btn mac-minimize" title="Minimize" @click="minimize" @pointerdown.stop>
-        <Minus :size="9" class="mac-icon" />
-      </button>
-      <button class="mac-btn mac-maximize" title="Maximize" @click="toggleMaximize" @pointerdown.stop>
-        <Square :size="8" class="mac-icon" />
-      </button>
+      <Tooltip :text="t('titlebar.close')">
+        <button class="mac-btn mac-close" @click="close" @pointerdown.stop>
+          <X :size="9" class="mac-icon" />
+        </button>
+      </Tooltip>
+      <Tooltip :text="t('titlebar.minimize')">
+        <button class="mac-btn mac-minimize" @click="minimize" @pointerdown.stop>
+          <Minus :size="9" class="mac-icon" />
+        </button>
+      </Tooltip>
+      <Tooltip :text="t('titlebar.maximize')">
+        <button class="mac-btn mac-maximize" @click="toggleMaximize" @pointerdown.stop>
+          <Square :size="8" class="mac-icon" />
+        </button>
+      </Tooltip>
     </div>
   </div>
 </template>

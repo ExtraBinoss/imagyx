@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Check, EyeOff, FolderPlus, PartyPopper, X } from
 import type { ThemeMode } from '../../stores/theme'
 import Button from '../ui/Button/Button.vue'
 import OnboardingFeaturePreview from './OnboardingFeaturePreview.vue'
+import { useTranslate } from '../../i18n'
 
 const props = defineProps<{
   open: boolean
@@ -21,54 +22,63 @@ const emit = defineEmits<{
   themeChange: [value: ThemeMode]
 }>()
 
+const { t } = useTranslate()
+
 const steps = [
   {
     component: 'Imagyx Desktop',
-    title: 'Welcome to your visual library',
-    description: 'Imagyx keeps your images on your computer, organizes them by folder, and makes them searchable with natural language.',
+    titleKey: 'onboarding.step_welcome_title',
+    descKey: 'onboarding.step_welcome_desc',
     kind: 'welcome' as const,
   },
   {
     component: 'AppSidebar.vue',
-    title: 'Keep every image folder under control',
-    description: 'Add, select, reindex, or reveal folders in Explorer, Finder, or your file manager. Local AI progress remains visible and controllable from the sidebar.',
+    titleKey: 'onboarding.step_sidebar_title',
+    descKey: 'onboarding.step_sidebar_desc',
     kind: 'sidebar' as const,
   },
   {
     component: 'SearchHeader.vue · ImageGrid.vue',
-    title: 'Search the way you remember an image',
-    description: 'Type a visual idea such as “woman green” or “tribal”. The virtualized grid stays responsive, semantic tags appear on hover, and selection covers the complete card.',
+    titleKey: 'onboarding.step_search_title',
+    descKey: 'onboarding.step_search_desc',
     kind: 'search' as const,
   },
   {
     component: 'ImagePreviewDialog.vue',
-    title: 'Inspect an image without leaving your flow',
-    description: 'Select or hover a card and press Space. The full preview opens inside Imagyx and closes with Space, Escape, or a click outside.',
+    titleKey: 'onboarding.step_preview_title',
+    descKey: 'onboarding.step_preview_desc',
     kind: 'preview' as const,
   },
   {
     component: 'SpotlightSearch.vue',
-    title: 'Find and use an image from anywhere',
-    description: 'The global shortcut opens a compact Raycast-style search. Copy the active image, reveal it in your file manager, or open it directly in Imagyx.',
+    titleKey: 'onboarding.step_spotlight_title',
+    descKey: 'onboarding.step_spotlight_desc',
     kind: 'spotlight' as const,
   },
   {
     component: 'SpotlightSettings.vue',
-    title: 'Make Imagyx fit your desktop',
-    description: 'Change the Spotlight shortcut, theme, and window controls instantly. Your preferences stay local and persist across restarts.',
+    titleKey: 'onboarding.step_settings_title',
+    descKey: 'onboarding.step_settings_desc',
     kind: 'settings' as const,
   },
   {
     component: 'Indexer · Background jobs',
-    title: 'Start with an image folder',
-    description: 'Metadata appears quickly while semantic analysis continues in the background. Search remains available, and indexing can pause and resume without losing completed work.',
+    titleKey: 'onboarding.step_indexing_title',
+    descKey: 'onboarding.step_indexing_desc',
     kind: 'indexing' as const,
   },
 ]
 
 const stepIndex = ref(0)
 const direction = ref<'forward' | 'backward'>('forward')
-const currentStep = computed(() => steps[stepIndex.value] ?? steps[0])
+const currentStep = computed(() => {
+  const step = steps[stepIndex.value] ?? steps[0]
+  return {
+    ...step,
+    title: t(step.titleKey),
+    description: t(step.descKey),
+  }
+})
 const isFirst = computed(() => stepIndex.value === 0)
 const isLast = computed(() => stepIndex.value === steps.length - 1)
 
@@ -120,7 +130,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
           :aria-labelledby="`onboarding-title-${stepIndex}`"
           :aria-describedby="`onboarding-description-${stepIndex}`"
         >
-          <Button class="onboarding-close" variant="ghost" size="icon" aria-label="Close onboarding" @click="emit('close')">
+          <Button class="onboarding-close" variant="ghost" size="icon" :aria-label="t('onboarding.close')" @click="emit('close')">
             <X :size="18" />
           </Button>
 
@@ -161,10 +171,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
                 <Check v-if="neverAskAgain" :size="14" />
                 <EyeOff v-else :size="14" />
               </template>
-              Don’t show again
+              {{ t('onboarding.dont_show_again') }}
             </Button>
 
-            <div class="onboarding-progress" :aria-label="`Step ${stepIndex + 1} of ${steps.length}`">
+            <div class="onboarding-progress" :aria-label="t('onboarding.step_of', { current: stepIndex + 1, total: steps.length })">
               <Button
                 v-for="(_, index) in steps"
                 :key="index"
@@ -173,21 +183,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
                 variant="ghost"
                 size="icon"
                 :depth="false"
-                :aria-label="`Go to step ${index + 1}`"
+                :aria-label="t('onboarding.go_to_step', { number: index + 1 })"
                 @click="goTo(index)"
               />
             </div>
 
             <div class="onboarding-actions">
               <Button v-if="!isFirst" variant="secondary" size="md" @click="goTo(stepIndex - 1)">
-                <template #leading><ArrowLeft :size="15" /></template>Back
+                <template #leading><ArrowLeft :size="15" /></template>{{ t('onboarding.back') }}
               </Button>
               <Button v-if="currentStep.kind === 'welcome' && !hasFolders" variant="secondary" size="md" @click="emit('addFolder')">
-                <template #leading><FolderPlus :size="15" /></template>Add a folder
+                <template #leading><FolderPlus :size="15" /></template>{{ t('onboarding.add_folder') }}
               </Button>
               <Button variant="primary" size="md" @click="next">
                 <template #leading><PartyPopper v-if="isLast" :size="15" /></template>
-                {{ isLast ? 'Get started' : 'Next' }}
+                {{ isLast ? t('onboarding.get_started') : t('onboarding.next') }}
                 <template #trailing><ArrowRight v-if="!isLast" :size="15" /></template>
               </Button>
             </div>

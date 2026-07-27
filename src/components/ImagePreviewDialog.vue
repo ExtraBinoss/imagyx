@@ -5,9 +5,12 @@ import type { ImageAsset } from '../types'
 import { imagyxApi } from '../api/tauri'
 import { usePlatformStore } from '../stores/platform'
 import { formatBytes } from '../utils'
+import { useTranslate } from '../i18n'
 import Button from './ui/Button/Button.vue'
 import CopyButton from './ui/Button/CopyButton.vue'
 import Badge from './ui/Badge/Badge.vue'
+
+const { t } = useTranslate()
 
 const props = defineProps<{ image: ImageAsset | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -78,8 +81,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
             <div class="bar-actions">
               <CopyButton
                 ref="copyBtnRef"
-                idle-text="Copy"
-                copied-text="Copied"
+                :idle-text="t('copy')"
+                :copied-text="t('copied')"
                 variant="secondary"
                 size="sm"
                 @copy="copyImage"
@@ -89,22 +92,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
                 class="spotlight-action-button"
                 variant="secondary"
                 size="sm"
-                :aria-label="`Open in ${platform.fileManagerName}`"
+                :aria-label="t('open_in_file_manager', { name: platform.fileManagerName })"
                 @click="revealInFolder"
               >
                 <template #leading><FolderOpen :size="14" /></template>
-                {{ platform.fileManagerName }}
+                {{ t('open_in_file_manager_short', { name: platform.fileManagerName }) }}
               </Button>
 
               <Button
                 class="spotlight-action-button"
                 variant="primary"
                 size="sm"
-                aria-label="Open file"
+                :aria-label="t('preview.open_file_title')"
                 @click="openFile"
               >
                 <template #leading><ExternalLink :size="14" /></template>
-                Open File
+                {{ t('open_file') }}
               </Button>
 
               <Button
@@ -112,7 +115,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
                 size="icon"
                 :class="{ 'btn-info--active': showInfo }"
                 class="btn-info"
-                title="Details & AI Tags"
+                :title="t('preview.details_ai_tags')"
                 @click="showInfo = !showInfo"
               >
                 <Info :size="15" />
@@ -120,7 +123,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
 
               <div class="divider" />
 
-              <Button variant="ghost" size="icon" aria-label="Close" class="close-btn" @click="emit('close')">
+              <Button variant="ghost" size="icon" :aria-label="t('titlebar.close')" class="close-btn" @click="emit('close')">
                 <X :size="16" />
               </Button>
             </div>
@@ -141,9 +144,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
             <Transition name="drawer-slide">
               <aside v-if="showInfo" class="info-drawer">
                 <div class="info-drawer__header">
-                  <h3>Information</h3>
+                  <h3>{{ t('preview.information') }}</h3>
                   <Badge variant="primary" class="ai-badge">
-                    <Sparkles :size="12" /> Local AI
+                    <Sparkles :size="12" /> {{ t('preview.local_ai') }}
                   </Badge>
                 </div>
                 
@@ -153,7 +156,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
                     <div class="stat-card">
                       <span class="stat-card__icon"><Maximize :size="15" /></span>
                       <div class="stat-card__content">
-                        <span class="stat-card__label">Resolution</span>
+                        <span class="stat-card__label">{{ t('preview.resolution') }}</span>
                         <strong class="stat-card__value">{{ image.width }} × {{ image.height }}</strong>
                       </div>
                     </div>
@@ -161,7 +164,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
                     <div class="stat-card">
                       <span class="stat-card__icon"><HardDrive :size="15" /></span>
                       <div class="stat-card__content">
-                        <span class="stat-card__label">Size</span>
+                        <span class="stat-card__label">{{ t('preview.size') }}</span>
                         <strong class="stat-card__value">{{ formatBytes(image.sizeBytes) }}</strong>
                       </div>
                     </div>
@@ -170,12 +173,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
                   <!-- File Location Card -->
                   <div class="location-card">
                     <div class="location-card__header">
-                      <span class="info-item__label">Location</span>
+                      <span class="info-item__label">{{ t('preview.location') }}</span>
                       <Button
                         variant="ghost"
                         size="icon"
                         class="path-open-btn"
-                        title="Open file"
+                        :title="t('preview.open_file_title')"
                         @click="openFile"
                       >
                         <ExternalLink :size="13" />
@@ -186,7 +189,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
 
                   <!-- Detected Concepts -->
                   <div v-if="image.semanticMatches?.length" class="info-item">
-                    <span class="info-item__label">Detected Concepts</span>
+                    <span class="info-item__label">{{ t('preview.detected_concepts') }}</span>
                     <div class="tags-cloud">
                       <span
                         v-for="(match, idx) in image.semanticMatches"

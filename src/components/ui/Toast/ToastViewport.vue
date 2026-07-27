@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { AlertCircle, CheckCircle2, Info, X } from '@lucide/vue'
 import { useToastStore } from '../../../stores/toasts'
+import { useTranslate } from '../../../i18n'
 import Button from '../Button/Button.vue'
 import ProgressBar from '../ProgressBar/ProgressBar.vue'
 
+const { t } = useTranslate()
 const toasts = useToastStore()
 </script>
 
@@ -23,7 +25,7 @@ const toasts = useToastStore()
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Fermer la notification"
+              :aria-label="t('toast.dismiss')"
               @click="toasts.dismiss(toast.id)"
             >
               <X :size="15" />

@@ -15,6 +15,7 @@ import type {
 import { imagyxApi } from "../api/tauri";
 import { semanticRuntime } from "../services/semantic";
 import { formatBytes, perfLog } from "../utils";
+import { storeT } from "../i18n";
 import { useToastStore } from "./toasts";
 
 const explainingImages = new Set<string>();
@@ -256,16 +257,16 @@ export const useLibraryStore = defineStore("library", {
         this.scheduleRefresh();
         toasts.upsert({
           id: `reindex-${progress.folderId}`,
-          title: `${progress.folderName} est à jour`,
+          title: storeT('indexing.toast.complete_title', undefined, { folder: progress.folderName }),
           description: progress.message,
           kind: "success",
           duration: 2600,
         });
         this.scheduleProgressClear(progress.folderId);
       } else if (progress.stage === "error") {
-        toasts.upsert({
+        useToastStore().upsert({
           id: `reindex-${progress.folderId}`,
-          title: `Indexation de ${progress.folderName} impossible`,
+          title: storeT('indexing.toast.error_title', undefined, { folder: progress.folderName }),
           description: progress.message,
           kind: "error",
           duration: 8000,
@@ -288,12 +289,12 @@ export const useLibraryStore = defineStore("library", {
           ...progress,
           stage: "complete",
           current: progress.total,
-          message: "Indexation terminée",
+          message: storeT('indexing.title.completed'),
         };
         useToastStore().upsert({
           id: `reindex-${progress.folderId}`,
-          title: `${progress.folderName} est à jour`,
-          description: "Métadonnées et analyse sémantique terminées.",
+          title: storeT('indexing.toast.complete_title', undefined, { folder: progress.folderName }),
+          description: storeT('indexing.toast.complete_desc'),
           kind: "success",
           duration: 2600,
         });
@@ -325,7 +326,7 @@ export const useLibraryStore = defineStore("library", {
       if (progress.stage === "ready") {
         toasts.upsert({
           id: "model-download",
-          title: "IA locale prête",
+          title: storeT('indexing.toast.model_ready'),
           description: progress.message,
           kind: "success",
           duration: 3200,
@@ -333,9 +334,9 @@ export const useLibraryStore = defineStore("library", {
         return;
       }
       if (progress.stage === "error") {
-        toasts.upsert({
+        useToastStore().upsert({
           id: "model-download",
-          title: "Chargement du modèle impossible",
+          title: storeT('indexing.toast.model_error'),
           description: progress.message,
           kind: "error",
           duration: 9000,
@@ -347,8 +348,8 @@ export const useLibraryStore = defineStore("library", {
         id: "model-download",
         title:
           progress.stage === "downloading"
-            ? "Téléchargement du modèle"
-            : "Préparation de WebGPU",
+            ? storeT('indexing.toast.model_downloading')
+            : storeT('indexing.toast.model_preparing'),
         description: progress.message,
         kind: "info",
         progress: hasBytes
@@ -357,10 +358,10 @@ export const useLibraryStore = defineStore("library", {
         progressLabel:
           [
             hasBytes
-              ? `${formatBytes(progress.currentBytes)} sur ${formatBytes(progress.totalBytes)}`
+              ? storeT('indexing.message.downloading', undefined, { current: formatBytes(progress.currentBytes), total: formatBytes(progress.totalBytes) })
               : undefined,
             progress.totalFiles
-              ? `Fichier ${progress.currentFile} sur ${progress.totalFiles}`
+              ? storeT('indexing.toast.file_progress', undefined, { current: progress.currentFile, total: progress.totalFiles })
               : undefined,
           ]
             .filter(Boolean)
@@ -373,7 +374,7 @@ export const useLibraryStore = defineStore("library", {
       this.error = String(error);
       useToastStore().upsert({
         id: "library-error",
-        title: "Une opération a échoué",
+        title: storeT('indexing.toast.operation_failed'),
         description: this.error,
         kind: "error",
         duration: 7000,
@@ -617,7 +618,7 @@ export const useLibraryStore = defineStore("library", {
           current: 0,
           total: 0,
           stage: "discovering",
-          message: "Analyse du dossier…",
+          message: storeT('indexing.message.analyzing'),
         };
         void imagyxApi
           .indexFolder(folder.id)
@@ -646,12 +647,12 @@ export const useLibraryStore = defineStore("library", {
         current: 0,
         total: folder.imageCount,
         stage: "discovering",
-        message: "Nouvelle analyse du dossier…",
+        message: storeT('indexing.message.reindexing', undefined, { folder: folder!.name }),
       };
       useToastStore().upsert({
         id: `reindex-${folderId}`,
-        title: `Réindexation de ${folder.name}`,
-        description: "Analyse des fichiers et des métadonnées en cours.",
+        title: storeT('indexing.toast.reindex_title', undefined, { folder: folder.name }),
+        description: storeT('indexing.toast.reindex_desc'),
         kind: "info",
         persistent: true,
       });

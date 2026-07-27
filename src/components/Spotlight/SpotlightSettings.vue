@@ -10,6 +10,7 @@ import Accordion from '../ui/Accordion/Accordion.vue'
 import Button from '../ui/Button/Button.vue'
 import ButtonGroup from '../ui/ButtonGroup/ButtonGroup.vue'
 import { copyDebugInfoToClipboard } from '../../utils/copy-information'
+import { useTranslate } from '../../i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -31,6 +32,7 @@ const emit = defineEmits<{
   themeChange: [value: ThemeMode]
 }>()
 
+const { t } = useTranslate()
 const platform = usePlatformStore()
 const library = useLibraryStore()
 const copied = ref(false)
@@ -81,12 +83,12 @@ async function copyDebugInfo() {
     <section v-if="showShortcut" class="settings-section">
       <header>
         <span class="settings-section__icon"><Keyboard :size="17" /></span>
-        <div><strong>Global shortcut</strong><p>Open Imagyx Spotlight from any application.</p></div>
+        <div><strong>{{ t('settings.shortcut_title') }}</strong><p>{{ t('settings.shortcut_desc') }}</p></div>
       </header>
       <ShortcutView
         :model-value="shortcut"
-        label="Open Spotlight"
-        description="Click the field, then enter a shortcut with at least one modifier key."
+        :label="t('settings.shortcut_label')"
+        :description="t('settings.shortcut_hint')"
         :disabled="shortcutUpdating"
         @change="emit('shortcutChange', $event)"
       />
@@ -96,17 +98,17 @@ async function copyDebugInfo() {
     <section v-if="showTheme" class="settings-section">
       <header>
         <span class="settings-section__icon"><Palette :size="17" /></span>
-        <div><strong>Appearance</strong><p>The theme is applied immediately to every Imagyx window.</p></div>
+        <div><strong>{{ t('settings.appearance_title') }}</strong><p>{{ t('settings.appearance_desc') }}</p></div>
       </header>
       <ButtonGroup full>
         <Button variant="ghost" size="md" :pressed="themeMode === 'system'" @click="emit('themeChange', 'system')">
-          <template #leading><Monitor :size="16" /></template>System
+          <template #leading><Monitor :size="16" /></template>{{ t('settings.appearance_system') }}
         </Button>
         <Button variant="ghost" size="md" :pressed="themeMode === 'light'" @click="emit('themeChange', 'light')">
-          <template #leading><Sun :size="16" /></template>Light
+          <template #leading><Sun :size="16" /></template>{{ t('settings.appearance_light') }}
         </Button>
         <Button variant="ghost" size="md" :pressed="themeMode === 'dark'" @click="emit('themeChange', 'dark')">
-          <template #leading><Moon :size="16" /></template>Dark
+          <template #leading><Moon :size="16" /></template>{{ t('settings.appearance_dark') }}
         </Button>
       </ButtonGroup>
     </section>
@@ -114,14 +116,14 @@ async function copyDebugInfo() {
     <section v-if="showControls" class="settings-section">
       <header>
         <span class="settings-section__icon"><Layout :size="17" /></span>
-        <div><strong>Window controls</strong><p>Choose where the close, minimize, and maximize buttons appear.</p></div>
+        <div><strong>{{ t('settings.controls_title') }}</strong><p>{{ t('settings.controls_desc') }}</p></div>
       </header>
       <ButtonGroup full>
         <Button variant="ghost" size="md" :pressed="platform.controlsPosition === 'left'" @click="platform.setControlsPosition('left')">
-          <template #leading><AlignLeft :size="16" /></template>Left
+          <template #leading><AlignLeft :size="16" /></template>{{ t('settings.controls_left') }}
         </Button>
         <Button variant="ghost" size="md" :pressed="platform.controlsPosition === 'right'" @click="platform.setControlsPosition('right')">
-          <template #leading><AlignRight :size="16" /></template>Right
+          <template #leading><AlignRight :size="16" /></template>{{ t('settings.controls_right') }}
         </Button>
       </ButtonGroup>
     </section>
@@ -129,34 +131,34 @@ async function copyDebugInfo() {
     <section v-if="showOnboarding" class="settings-section">
       <header>
         <span class="settings-section__icon"><BookOpen :size="17" /></span>
-        <div><strong>Discovery guide</strong><p>Review the core features or add an image folder from the guided tour.</p></div>
+        <div><strong>{{ t('settings.onboarding_title') }}</strong><p>{{ t('settings.onboarding_desc') }}</p></div>
       </header>
       <Button variant="secondary" size="md" block @click="openOnboarding">
-        <template #leading><BookOpen :size="16" /></template>Replay onboarding
+        <template #leading><BookOpen :size="16" /></template>{{ t('settings.onboarding_replay') }}
       </Button>
     </section>
 
     <section v-if="showInfo" class="settings-section info-section">
-      <Accordion title="Imagyx information" :default-open="false">
+      <Accordion :title="t('settings.info_title')" :default-open="false">
         <template #title>
           <Info :size="15" />
-          <span>Imagyx information</span>
+          <span>{{ t('settings.info_title') }}</span>
         </template>
         <div class="info-details">
           <div class="info-row">
-            <span class="info-label">Version</span>
+            <span class="info-label">{{ t('settings.info_version') }}</span>
             <span class="info-value">v{{ platform.appVersion }}</span>
           </div>
           <div class="info-row">
-            <span class="info-label">Platform</span>
+            <span class="info-label">{{ t('settings.info_platform') }}</span>
             <span class="info-value">{{ platform.platform }}</span>
           </div>
           <div class="info-row">
-            <span class="info-label">AI model</span>
+            <span class="info-label">{{ t('settings.info_ai_model') }}</span>
             <span class="info-value">MobileCLIP-S0 (WebGPU)</span>
           </div>
           <div class="info-row">
-            <span class="info-label">Library</span>
+            <span class="info-label">{{ t('settings.info_library') }}</span>
             <span class="info-value">{{ library.folders.length }} folder(s) · {{ library.totalImages }} images</span>
           </div>
 
@@ -165,7 +167,7 @@ async function copyDebugInfo() {
               <Check v-if="copied" :size="14" />
               <Copy v-else :size="14" />
             </template>
-            {{ copied ? 'Copied!' : 'Copy debug information' }}
+            {{ copied ? t('indexing.info.copied') : t('copy_debug') }}
           </Button>
         </div>
       </Accordion>
@@ -173,8 +175,8 @@ async function copyDebugInfo() {
 
     <div v-if="!hasResults" class="settings-empty">
       <SearchX :size="25" />
-      <strong>No settings found</strong>
-      <span>Try “shortcut”, “theme”, “onboarding”, or “appearance”.</span>
+      <strong>{{ t('settings.no_results_title') }}</strong>
+      <span>{{ t('settings.no_results_desc') }}</span>
     </div>
   </div>
 </template>

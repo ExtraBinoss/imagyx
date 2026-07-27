@@ -27,6 +27,7 @@ import { useShortcutStore } from "@/stores/shortcut";
 import { usePlatformStore } from "@/stores/platform";
 import TitleBar from "@/components/TitleBar.vue";
 import imagyxLogo from "../../src-tauri/icons/imagyx-bigger.png";
+import { useTranslate } from "@/i18n";
 
 const props = defineProps<{
   folders: FollowedFolder[];
@@ -46,6 +47,7 @@ const emit = defineEmits<{
   resumeIndexing: [];
 }>();
 
+const { t } = useTranslate();
 const platform = usePlatformStore();
 const theme = useThemeStore();
 const shortcut = useShortcutStore();
@@ -114,16 +116,16 @@ onBeforeUnmount(() => {
     </div>
     <div class="brand">
       <img :src="imagyxLogo" class="brand-mark-img" alt="Imagyx logo" />
-      <div><strong>Imagyx</strong><span>Local Intelligence</span></div>
+      <div><strong>Imagyx</strong><span>{{ t('app.tagline') }}</span></div>
     </div>
 
     <Button variant="primary" size="lg" block @click="emit('add')">
       <template #leading><Plus :size="17" :stroke-width="2.2" /></template>
-      Add Folder
+      {{ t('sidebar.add_folder') }}
     </Button>
 
-    <nav class="folder-nav" aria-label="Watched Folders">
-      <p class="section-label">Library</p>
+    <nav class="folder-nav" :aria-label="t('sidebar.watched_folders')">
+      <p class="section-label">{{ t('sidebar.library') }}</p>
       <Button
         class="folder-row"
         :class="{ active: allSelected }"
@@ -132,13 +134,13 @@ onBeforeUnmount(() => {
         @click="emit('select', null)"
       >
         <Images :size="17" />
-        <span class="folder-name">All Images</span>
+        <span class="folder-name">{{ t('sidebar.all_images') }}</span>
         <span class="folder-count">{{ totalImages }}</span>
       </Button>
 
-      <p class="section-label followed-label">Watched Folders</p>
+      <p class="section-label followed-label">{{ t('sidebar.watched_folders') }}</p>
       <div v-if="folders.length === 0" class="sidebar-empty">
-        <FolderOpen :size="19" /><span>No watched folders</span>
+        <FolderOpen :size="19" /><span>{{ t('sidebar.no_watched_folders') }}</span>
       </div>
 
       <div
@@ -166,7 +168,7 @@ onBeforeUnmount(() => {
         <div class="folder-actions" @click.stop @pointerdown.stop>
           <Popover align="end" width="224px">
             <template #trigger>
-              <Button variant="ghost" size="icon" aria-label="Folder Actions">
+              <Button variant="ghost" size="icon" :aria-label="t('sidebar.folder_actions')">
                 <MoreHorizontal :size="16" />
               </Button>
             </template>
@@ -182,7 +184,7 @@ onBeforeUnmount(() => {
                   "
                 >
                   <template #leading><FolderOpen :size="15" /></template
-                  >{{ platform.openFolderLabel }}
+                  >{{ t('open_in_file_manager', { name: platform.fileManagerName }) }}
                 </Button>
                 <Button
                   variant="ghost"
@@ -195,7 +197,7 @@ onBeforeUnmount(() => {
                   "
                 >
                   <template #leading><RefreshCw :size="15" /></template>
-                  {{ isFolderReindexing(folder.id) ? "Reindexing…" : "Reindex" }}
+                  {{ isFolderReindexing(folder.id) ? t('sidebar.reindexing') : t('sidebar.reindex') }}
                 </Button>
                 <Button
                   variant="danger"
@@ -206,7 +208,7 @@ onBeforeUnmount(() => {
                     close();
                   "
                 >
-                  <template #leading><Trash2 :size="15" /></template>Unfollow
+                  <template #leading><Trash2 :size="15" /></template>{{ t('sidebar.unfollow') }}
                 </Button>
               </div>
             </template>
@@ -233,7 +235,7 @@ onBeforeUnmount(() => {
         <template #trigger>
           <Button variant="ghost" size="sm" block class="settings-trigger-btn">
             <template #leading><Settings :size="15" /></template>
-            Settings
+            {{ t('settings') }}
             <template #trailing
               ><ChevronsUpDown :size="14" class="settings-chevron"
             /></template>
@@ -263,7 +265,7 @@ onBeforeUnmount(() => {
     >
       <Button variant="ghost" size="sm" block @click="runContextAction('open')">
         <template #leading><FolderOpen :size="15" /></template
-        >{{ platform.openFolderLabel }}
+        >{{ t('open_in_file_manager', { name: platform.fileManagerName }) }}
       </Button>
       <Button
         variant="ghost"
@@ -273,7 +275,7 @@ onBeforeUnmount(() => {
         @click="runContextAction('reindex')"
       >
         <template #leading><RefreshCw :size="15" /></template>
-        {{ isFolderReindexing(contextMenu.folderId) ? "Reindexing…" : "Reindex" }}
+        {{ isFolderReindexing(contextMenu.folderId) ? t('sidebar.reindexing') : t('sidebar.reindex') }}
       </Button>
       <Button
         variant="danger"
@@ -281,7 +283,7 @@ onBeforeUnmount(() => {
         block
         @click="runContextAction('remove')"
       >
-        <template #leading><Trash2 :size="15" /></template>Unfollow
+        <template #leading><Trash2 :size="15" /></template>{{ t('sidebar.unfollow') }}
       </Button>
     </div>
   </aside>

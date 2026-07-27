@@ -25,6 +25,7 @@ import Button from '../ui/Button/Button.vue'
 import ButtonGroup from '../ui/ButtonGroup/ButtonGroup.vue'
 import KbdChip from '../ui/KbdChip/KbdChip.vue'
 import MovingBorder from '../ui/MovingBorder/MovingBorder.vue'
+import { useTranslate } from '../../i18n'
 
 defineProps<{
   kind: 'welcome' | 'sidebar' | 'search' | 'preview' | 'spotlight' | 'settings' | 'indexing'
@@ -32,6 +33,8 @@ defineProps<{
   shortcut: string
   hasFolders: boolean
 }>()
+
+const { t } = useTranslate()
 
 const emit = defineEmits<{
   addFolder: []
@@ -72,18 +75,18 @@ const demoImages = [
       <aside class="mini-sidebar">
         <div class="mini-brand">
           <img :src="imagyxLogo" class="brand-logo" alt="Imagyx logo" />
-          <div><strong>Imagyx</strong><small>Local Intelligence</small></div>
+          <div><strong>Imagyx</strong><small>{{ t('app.tagline') }}</small></div>
         </div>
         <Button class="preview-row-button" variant="primary" size="sm" block @click="emit('addFolder')">
           <template #leading><Plus :size="14" :stroke-width="2.2" /></template>
-          Add Folder
+          {{ t('sidebar.add_folder') }}
         </Button>
         <div class="mini-sidebar__rows">
-          <span class="mini-section-label">Library</span>
+          <span class="mini-section-label">{{ t('sidebar.library') }}</span>
           <Button class="preview-row-button" variant="ghost" size="sm" block pressed>
-            <template #leading><Images :size="14" /></template>All Images
+            <template #leading><Images :size="14" /></template>{{ t('sidebar.all_images') }}
           </Button>
-          <span class="mini-section-label">Watched Folders</span>
+          <span class="mini-section-label">{{ t('sidebar.watched_folders') }}</span>
           <Button class="preview-row-button" variant="ghost" size="sm" block>
             <template #leading><Folder :size="14" /></template>Visual references
           </Button>
@@ -107,29 +110,29 @@ const demoImages = [
     <div v-else-if="kind === 'sidebar'" class="sidebar-demo">
       <div class="sidebar-demo__brand">
         <img :src="imagyxLogo" class="brand-logo" alt="Imagyx logo" />
-        <div><strong>Imagyx</strong><small>Local Intelligence</small></div>
+        <div><strong>Imagyx</strong><small>{{ t('app.tagline') }}</small></div>
       </div>
       <Button class="preview-row-button" variant="primary" size="md" block @click="emit('addFolder')">
-        <template #leading><Plus :size="16" :stroke-width="2.2" /></template>Add Folder
+        <template #leading><Plus :size="16" :stroke-width="2.2" /></template>{{ t('sidebar.add_folder') }}
       </Button>
       <div class="sidebar-demo__list">
-        <span class="sidebar-section-label">Library</span>
+        <span class="sidebar-section-label">{{ t('sidebar.library') }}</span>
         <Button class="preview-row-button" variant="ghost" size="md" block pressed>
           <template #leading><Images :size="16" /></template>
-          <span class="row-copy">All Images</span><span class="row-count">1,248</span>
+          <span class="row-copy">{{ t('sidebar.all_images') }}</span><span class="row-count">1,248</span>
         </Button>
-        <span class="sidebar-section-label">Watched Folders</span>
+        <span class="sidebar-section-label">{{ t('sidebar.watched_folders') }}</span>
         <div class="folder-row-demo">
           <Button class="preview-row-button" variant="ghost" size="md" block>
             <template #leading><Folder :size="16" /></template>
             <span class="row-copy">Visual references</span><span class="row-count">438</span>
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Folder actions"><MoreHorizontal :size="15" /></Button>
+          <Button variant="ghost" size="icon" :aria-label="t('sidebar.folder_actions')"><MoreHorizontal :size="15" /></Button>
         </div>
       </div>
       <div class="ai-demo">
         <WandSparkles :size="16" />
-        <div><strong>Local AI ready</strong><small>MobileCLIP-S0 · WebGPU</small></div>
+        <div><strong>{{ t('indexing.title.ready') }}</strong><small>MobileCLIP-S0 · WebGPU</small></div>
         <span class="status-dot" />
       </div>
     </div>
@@ -140,10 +143,10 @@ const demoImages = [
           <div class="search-demo__input">
             <Search :size="18" />
             <span>woman green</span>
-            <strong>4 results</strong>
+            <strong>{{ t('search.result_count', { count: 4 }) }}</strong>
           </div>
         </MovingBorder>
-        <span class="shortcut-hint"><KbdChip shortcut="Space" size="md" /> Preview selected image</span>
+        <span class="shortcut-hint"><KbdChip shortcut="Space" size="md" /> {{ t('preview.open_file_title') }}</span>
       </div>
       <div class="search-demo__grid">
         <article
@@ -172,7 +175,7 @@ const demoImages = [
           <strong>{{ demoImages[0].fileName }}</strong>
           <span>Full-resolution preview without leaving the grid</span>
         </div>
-        <Button variant="ghost" size="icon" aria-label="Image information"><Info :size="16" /></Button>
+        <Button variant="ghost" size="icon" :aria-label="t('preview.information')"><Info :size="16" /></Button>
       </div>
       <div class="preview-demo__hints">
         <span><KbdChip shortcut="Space" size="md" /> Open or close</span>
@@ -189,9 +192,9 @@ const demoImages = [
           <SpotlightInput
             model-value="tribal"
             view="search"
-            placeholder="All images: name or description…"
+            :placeholder="t('spotlight.placeholder.search')"
             :searching="false"
-            result-label="3 results"
+            :result-label="t('spotlight.result_count', { count: 3 })"
           />
           <div class="spotlight-demo__results">
             <article v-for="(image, index) in demoImages.slice(1, 4)" :key="image.fileName" :class="{ active: index === 0 }">
@@ -210,17 +213,17 @@ const demoImages = [
 
     <div v-else-if="kind === 'settings'" class="settings-demo">
       <div class="settings-demo__shortcut-summary">
-        <div><Keyboard :size="16" /><span><strong>Global shortcut</strong><small>Change it instantly and keep it across restarts.</small></span></div>
+        <div><Keyboard :size="16" /><span><strong>{{ t('settings.shortcut_title') }}</strong><small>{{ t('settings.shortcut_desc') }}</small></span></div>
         <KbdChip :shortcut="shortcut" size="md" />
       </div>
       <ShortcutView
         :model-value="shortcut"
-        label="Open Spotlight"
-        description="The global shortcut can be changed at any time."
+        :label="t('settings.shortcut_label')"
+        :description="t('settings.shortcut_desc')"
         disabled
       />
       <div class="settings-demo__section">
-        <header><Keyboard :size="16" /><div><strong>Appearance</strong><small>Applied immediately to every Imagyx window.</small></div></header>
+        <header><Keyboard :size="16" /><div><strong>{{ t('settings.appearance_title') }}</strong><small>{{ t('settings.appearance_desc') }}</small></div></header>
         <ButtonGroup full>
           <Button variant="ghost" size="sm" :pressed="themeMode === 'system'" @click="emit('themeChange', 'system')">
             <template #leading><Check v-if="themeMode === 'system'" :size="13" /></template>System
@@ -239,13 +242,13 @@ const demoImages = [
       <div class="indexing-demo__hero">
         <FolderOpen :size="28" />
         <div>
-          <strong>{{ hasFolders ? 'Your library is ready to grow' : 'Add your first image folder' }}</strong>
+          <strong>{{ hasFolders ? t('indexing.title.completed') : t('search.no_folder_title') }}</strong>
           <span>Indexing continues in the background while search remains available.</span>
         </div>
       </div>
       <div class="indexing-demo__job">
         <span><WandSparkles :size="17" /></span>
-        <div><strong>Visual references</strong><small>AI analysis · 684 of 1,248</small><div class="progress-track"><i /></div></div>
+        <div><strong>Visual references</strong><small>{{ t('indexing.message.embedding', { current: 684, total: 1248 }) }}</small><div class="progress-track"><i /></div></div>
         <b>55%</b>
       </div>
       <Button variant="primary" size="lg" block @click="emit('addFolder')">

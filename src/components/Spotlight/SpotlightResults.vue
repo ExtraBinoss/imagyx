@@ -15,6 +15,7 @@ import Button from '../ui/Button/Button.vue'
 import KbdChip from '../ui/KbdChip/KbdChip.vue'
 import SpotlightIndexProgress from './SpotlightIndexProgress.vue'
 import type { SpotlightIndexJob } from './types'
+import { useTranslate } from '../../i18n'
 
 const props = defineProps<{
   results: ImageAsset[]
@@ -42,6 +43,7 @@ const emit = defineEmits<{
   addFolder: []
 }>()
 
+const { t } = useTranslate()
 const viewport = ref<HTMLElement | null>(null)
 const canScrollDown = ref(false)
 
@@ -85,13 +87,13 @@ defineExpose({ scrollToIndex })
     <div ref="viewport" class="spotlight-results" role="listbox" @scroll.passive="updateScrollShadow">
       <div v-if="!libraryReady" class="spotlight-library-loading" aria-live="polite">
         <LoaderCircle class="spin" :size="22" />
-        <strong>Loading library…</strong>
+        <strong>{{ t('spotlight.loading_library') }}</strong>
       </div>
 
       <section v-else-if="!hasFolders" class="spotlight-library-empty" aria-labelledby="spotlight-library-empty-title">
         <span class="spotlight-library-empty__icon"><FolderPlus :size="24" /></span>
-        <strong id="spotlight-library-empty-title">No folders to scan</strong>
-        <p>Add an image folder to enable Imagyx search.</p>
+        <strong id="spotlight-library-empty-title">{{ t('spotlight.no_folder_title') }}</strong>
+        <p>{{ t('spotlight.no_folder_desc') }}</p>
         <Button
           class="spotlight-library-empty__button"
           variant="primary"
@@ -99,9 +101,9 @@ defineExpose({ scrollToIndex })
           @click="emit('addFolder')"
         >
           <template #leading><FolderPlus :size="17" /></template>
-          Add folder
+          {{ t('spotlight.no_folder_action') }}
         </Button>
-        <small>Your files stay on this device and indexing runs locally.</small>
+        <small>{{ t('spotlight.no_folder_privacy') }}</small>
       </section>
 
       <template v-else>
@@ -115,16 +117,16 @@ defineExpose({ scrollToIndex })
         >
           <template #leading><FolderPlus :size="18" /></template>
           <span class="spotlight-add-folder__copy">
-            <strong>Add an image folder</strong>
-            <small>Choose a folder and start background indexing</small>
+            <strong>{{ t('spotlight.add_folder_title') }}</strong>
+            <small>{{ t('spotlight.add_folder_desc') }}</small>
           </span>
         </Button>
 
         <aside v-if="showBackgroundHint" class="spotlight-background-hint" aria-live="polite">
           <span class="spotlight-background-hint__icon"><LoaderCircle class="spin" :size="16" /></span>
           <span>
-            <strong>Indexing in the background</strong>
-            <small>You can close this window. Imagyx will keep working.</small>
+            <strong>{{ t('spotlight.indexing_background_title') }}</strong>
+            <small>{{ t('spotlight.indexing_background_desc') }}</small>
           </span>
         </aside>
 
@@ -160,14 +162,14 @@ defineExpose({ scrollToIndex })
               :variant="copiedImageId === image.id ? 'primary' : 'secondary'"
               size="sm"
               :loading="copyingImageId === image.id"
-              aria-label="Copy image"
+              :aria-label="t('copy_image')"
               @click.stop="emit('copy', image)"
             >
               <template #leading>
                 <Check v-if="copiedImageId === image.id" :size="14" />
                 <Copy v-else :size="14" />
               </template>
-              {{ copiedImageId === image.id ? 'Copied' : 'Copy' }}
+              {{ copiedImageId === image.id ? t('copied') : t('copy') }}
               <template #trailing><KbdChip shortcut="Ctrl+C" size="sm" /></template>
             </Button>
             <Button
@@ -175,11 +177,11 @@ defineExpose({ scrollToIndex })
               variant="secondary"
               size="sm"
               :loading="revealingImageId === image.id"
-              :aria-label="`Open in ${fileManagerName}`"
+              :aria-label="t('open_in_file_manager', { name: fileManagerName })"
               @click.stop="emit('reveal', image)"
             >
               <template #leading><FolderOpen :size="14" /></template>
-              {{ fileManagerName }}
+              {{ t('open_in_file_manager_short', { name: fileManagerName }) }}
               <template #trailing><KbdChip shortcut="Ctrl+E" size="sm" /></template>
             </Button>
             <Button
@@ -187,7 +189,7 @@ defineExpose({ scrollToIndex })
               variant="primary"
               size="sm"
               :loading="openingImageId === image.id"
-              aria-label="Open in Imagyx"
+              :aria-label="t('open_in_imagyx')"
               @click.stop="emit('open', image)"
             >
               <template #leading><ExternalLink :size="14" /></template>
@@ -200,7 +202,7 @@ defineExpose({ scrollToIndex })
         <div
           v-if="searching && hasSearchQuery && results.length === 0"
           class="spotlight-loading-list"
-          aria-label="Searching"
+          :aria-label="t('spotlight.searching')"
         >
           <span v-for="item in 5" :key="item" :style="{ animationDelay: `${item * 45}ms` }" />
         </div>
@@ -210,8 +212,8 @@ defineExpose({ scrollToIndex })
           class="spotlight-empty"
         >
           <Search :size="24" />
-          <strong>No convincing results</strong>
-          <span>Try a shorter description or a more visual keyword.</span>
+          <strong>{{ t('spotlight.no_results_title') }}</strong>
+          <span>{{ t('spotlight.no_results_desc') }}</span>
         </div>
       </template>
 

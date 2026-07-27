@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useTranslate } from '../../../i18n'
+
+const { t } = useTranslate()
 
 const props = withDefaults(
   defineProps<{
@@ -12,7 +15,7 @@ const props = withDefaults(
     value: 0,
     indeterminate: false,
     size: 'md',
-    label: 'Progression',
+    label: '',
   },
 )
 
@@ -24,7 +27,7 @@ const normalizedValue = computed(() => Math.min(100, Math.max(0, props.value)))
     class="ui-progress"
     :class="[`ui-progress--${size}`, { 'ui-progress--indeterminate': indeterminate }]"
     role="progressbar"
-    :aria-label="label"
+    :aria-label="label || t('progress.aria_label')"
     :aria-valuemin="indeterminate ? undefined : 0"
     :aria-valuemax="indeterminate ? undefined : 100"
     :aria-valuenow="indeterminate ? undefined : Math.round(normalizedValue)"
