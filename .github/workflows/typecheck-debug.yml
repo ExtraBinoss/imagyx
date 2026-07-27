@@ -1,0 +1,33 @@
+name: Typecheck debug
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          show-progress: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund --silent
+      - name: Capture typecheck output
+        shell: bash
+        run: |
+          set +e
+          npm run typecheck > typecheck.log 2>&1
+          echo "$?" > typecheck.status
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: typecheck-log
+          path: typecheck.log
+      - name: Assert typecheck success
+        shell: bash
+        run: test "$(cat typecheck.status)" = "0"
