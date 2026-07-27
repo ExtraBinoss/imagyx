@@ -55,13 +55,19 @@ defineExpose({ triggerCopied, copied })
     class="copy-button"
     @click="handleClick"
   >
-    <template #leading>
+    <template v-if="!iconOnly" #leading>
       <Transition name="copy-icon" mode="out-in">
         <Check v-if="copied" key="check" :size="14" class="copy-icon-check" />
         <Copy v-else key="copy" :size="14" />
       </Transition>
     </template>
-    <span v-if="!iconOnly">
+    <template v-if="iconOnly">
+      <Transition name="copy-icon" mode="out-in">
+        <Check v-if="copied" key="check" :size="14" class="copy-icon-check" />
+        <Copy v-else key="copy" :size="14" />
+      </Transition>
+    </template>
+    <span v-else>
       {{ copied ? copiedText : idleText }}
     </span>
   </Button>
@@ -70,6 +76,13 @@ defineExpose({ triggerCopied, copied })
 <style scoped>
 .copy-button {
   transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.copy-button :deep(.ui-button__content) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
 }
 .copy-button--copied {
   animation: copySuccessPop 280ms cubic-bezier(0.16, 1, 0.3, 1) both;

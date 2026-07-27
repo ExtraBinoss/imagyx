@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { FileImage, SearchX } from '@lucide/vue'
+import { ExternalLink, FileImage, SearchX } from '@lucide/vue'
 import type { ImageAsset } from '../types'
+import { imagyxApi } from '../api/tauri'
 import { formatBytes } from '../utils'
 import Badge from './ui/Badge/Badge.vue'
 import Skeleton from './ui/Skeleton/Skeleton.vue'
 import ThumbnailImage from './ThumbnailImage.vue'
+import Button from './ui/Button/Button.vue'
+import CopyButton from './ui/Button/CopyButton.vue'
 
 const props = defineProps<{ images: ImageAsset[]; loading: boolean; hasFolders: boolean; viewKey: string }>()
 const emit = defineEmits<{ explain: [imageId: string]; preview: [image: ImageAsset] }>()
@@ -20,6 +23,7 @@ const scrollTop = ref(0)
 const activeImageId = ref<string | null>(null)
 const selectedImageId = ref<string | null>(null)
 const isScrolling = ref<boolean>(false)
+const copyBtnRefs = ref<Map<string, InstanceType<typeof CopyButton>>>(new Map())
 let resizeObserver: ResizeObserver | null = null
 let scrollFrame = 0
 let scrollTimeout: number | undefined
@@ -37,6 +41,11 @@ const visibleEntries = computed(() => props.images.slice(startIndex.value, endIn
 const spacerHeight = computed(() => Math.max(0, totalRows.value * rowStride.value - GAP))
 const windowOffset = computed(() => startRow.value * rowStride.value)
 
+function registerCopyBtn(id: string, el: unknown) {
+  if (el) copyBtnRefs.value.set(id, el as InstanceType<typeof CopyButton>)
+  else copyBtnRefs.value.delete(id)
+}
+
 function activate(image: ImageAsset) {
   if (isScrolling.value) return
   activeImageId.value = image.id
@@ -47,9 +56,25 @@ function selectImage(image: ImageAsset) {
   activeImageId.value = image.id
   selectedImageId.value = image.id
   emit('explain', image.id)
+  scrollToImage(image.id)
+}
+
+function scrollToImage(id: string) {
+  const index = props.images.findIndex((img) => img.id === id)
+  if (index < 0) return
+  const row = Math.floor(index / columns.value)
+  const targetTop = row * rowStride.value
+  if (!viewport.value) return
+  if (targetTop < viewport.value.scrollTop) {
+    viewport.value.scrollTop = targetTop
+  } else if (targetTop + rowStride.value > viewport.value.scrollTop + viewportHeight.value) {
+    viewport.value.scrollTop = targetTop + rowStride.value - viewportHeight.value
+  }
 }
 
 async function copySelectedImage(image: ImageAsset) {
+  const btn = copyBtnRefs.value.get(image.id)
+  btn?.triggerCopied()
   try {
     await imagyxApi.copyImage(image.path)
   } catch {
@@ -57,9 +82,29 @@ async function copySelectedImage(image: ImageAsset) {
   }
 }
 
+async function openFileInExplorer(image: ImageAsset, event: MouseEvent) {
+  event.stopPropagation()
+  await imagyxApi.openInFileManager(image.path, false)
+}
+
+function moveSelection(deltaIndex: number) {
+  if (!props.images.length) return
+  const currentIndex = props.images.findIndex((img) => img.id === (selectedImageId.value ?? activeImageId.value))
+  const newIndex = currentIndex < 0
+    ? 0
+    : Math.max(0, Math.min(props.images.length - 1, currentIndex + deltaIndex))
+  const targetImage = props.images[newIndex]
+  if (targetImage) selectImage(targetImage)
+}
+
 function handleGlobalKeydown(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null
   if (target?.matches('input, textarea, select, [contenteditable="true"]')) return
+
+  if (event.key === 'ArrowRight') { event.preventDefault(); moveSelection(1); return }
+  if (event.key === 'ArrowLeft') { event.preventDefault(); moveSelection(-1); return }
+  if (event.key === 'ArrowDown') { event.preventDefault(); moveSelection(columns.value); return }
+  if (event.key === 'ArrowUp') { event.preventDefault(); moveSelection(-columns.value); return }
 
   if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 'c') {
     const imageId = selectedImageId.value ?? activeImageId.value
@@ -171,6 +216,28 @@ watch(() => props.images.length, () => {
               {{ Math.round(entry.image.semanticScore * 100) }}%
             </Badge>
 
+            <!-- Card Hover Quick Actions -->
+            <div class="card-hover-actions">
+              <CopyButton
+                :ref="(el: unknown) => registerCopyBtn(entry.image.id, el)"
+                icon-only
+                size="icon"
+                variant="secondary"
+                class="card-action-btn"
+                title="Copy image"
+                @copy="copySelectedImage(entry.image)"
+              />
+              <Button
+                variant="secondary"
+                size="icon"
+                class="card-action-btn"
+                title="Open file"
+                @click="openFileInExplorer(entry.image, $event)"
+              >
+                <ExternalLink :size="13" />
+              </Button>
+            </div>
+
             <div class="semantic-overlay">
               <div
                 v-if="entry.image.semanticMatches?.length"
@@ -237,6 +304,36 @@ watch(() => props.images.length, () => {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 18%, transparent), 0 10px 28px rgb(15 23 42 / 0.08);
 }
 .image-card:focus-visible { border-color: var(--primary); box-shadow: 0 0 0 3px var(--focus-ring-soft); }
+
+.card-hover-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.image-card:hover .card-hover-actions,
+.image-card--selected .card-hover-actions,
+.image-card:focus-within .card-hover-actions {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.card-action-btn {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: var(--radius-sm) !important;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
+}
 
 .semantic-overlay {
   position: absolute;

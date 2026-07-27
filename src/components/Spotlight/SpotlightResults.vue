@@ -104,16 +104,18 @@ defineExpose({ scrollToIndex })
             size="sm"
             class="spotlight-action-button"
             @copy="emit('copy', image)"
-          />
+          >
+            <template #trailing><kbd class="shortcut-kbd">Ctrl+C</kbd></template>
+          </CopyButton>
           <Button class="spotlight-action-button" variant="secondary" size="sm" :aria-label="`Open in ${fileManagerName}`" @click.stop="emit('reveal', image)">
             <template #leading><FolderOpen :size="14" /></template>
             {{ fileManagerName }}
-            <template #trailing><kbd class="shortcut-kbd">E</kbd></template>
+            <template #trailing><kbd class="shortcut-kbd">Ctrl+E</kbd></template>
           </Button>
           <Button class="spotlight-action-button" variant="primary" size="sm" aria-label="Open in Imagyx" @click.stop="emit('open', image)">
             <template #leading><ExternalLink :size="14" /></template>
             Imagyx
-            <template #trailing><kbd class="shortcut-kbd">I</kbd></template>
+            <template #trailing><kbd class="shortcut-kbd">Ctrl+I</kbd></template>
           </Button>
         </span>
       </div>
