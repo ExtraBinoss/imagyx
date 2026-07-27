@@ -1,5 +1,6 @@
 mod commands;
-mod db;
+mod database;
+mod fuzzy;
 mod indexer;
 mod ml;
 mod models;
@@ -9,6 +10,8 @@ mod preferences;
 mod state;
 mod system_stats;
 mod thumbnails;
+mod tracing;
+mod vector_store;
 mod watcher;
 
 use std::{path::PathBuf, sync::Arc};
@@ -41,21 +44,28 @@ pub enum AppError {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    tracing::init();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, _shortcut, event| {
-                    if event.state() != ShortcutState::Pressed { return; }
-                    let Some(window) = app.get_webview_window("spotlight") else { return; };
+                    if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    let Some(window) = app.get_webview_window("spotlight") else {
+                        return;
+                    };
                     let visible = window.is_visible().unwrap_or(false);
                     if visible {
                         let _ = window.emit("spotlight-will-hide", ());
                         let _ = window.hide();
                     } else {
                         let _ = window.emit("spotlight-will-open", ());
-                        if let Err(error) = commands::layout_spotlight_window(&window, false) {
-                            eprintln!("Impossible de positionner Spotlight: {error}");
+                        if let Err(error) =
+                            commands::spotlight::layout_spotlight_window(&window, false)
+                        {
+                            tracing::event("spotlight.layout.failed", error);
                         }
                         let _ = window.show();
                         let _ = window.set_focus();
@@ -65,18 +75,34 @@ pub fn run() {
                 .build(),
         )
         .setup(move |app| {
+            let _trace = tracing::span("startup.setup");
             let paths = AppPaths::discover()?;
             let shortcut_preferences = ShortcutPreferences::load(paths.root.join("settings.json"));
             if let Err(error) = shortcut_preferences.register(app.handle()) {
-                eprintln!("Impossible d’enregistrer le raccourci Spotlight: {error}");
+                tracing::event("shortcut.register.failed", error);
             }
 
             let state = Arc::new(AppState::new(paths)?);
             let folders = state.database.folders()?;
-            app.asset_protocol_scope().allow_directory(&state.paths.thumbnails, true)?;
-            app.asset_protocol_scope().allow_directory(&state.paths.models, true)?;
-            for folder in &folders { app.asset_protocol_scope().allow_directory(&folder.path, true)?; }
-            let folder_watcher = FolderWatcher::start(app.handle().clone(), Arc::clone(&state), folders)?;
+            app.asset_protocol_scope()
+                .allow_directory(&state.paths.thumbnails, true)?;
+            app.asset_protocol_scope()
+                .allow_directory(&state.paths.models, true)?;
+            for folder in &folders {
+                app.asset_protocol_scope()
+                    .allow_directory(&folder.path, true)?;
+            }
+            let folder_watcher =
+                FolderWatcher::start(app.handle().clone(), Arc::clone(&state), folders)?;
+
+            let vector_state = Arc::clone(&state);
+            tauri::async_runtime::spawn_blocking(move || {
+                let _trace = tracing::span("startup.load_vectors");
+                if let Err(error) = vector_state.load_vectors() {
+                    tracing::event("startup.load_vectors.failed", error);
+                }
+            });
+
             app.manage(shortcut_preferences);
             app.manage(folder_watcher);
             app.manage(state);
@@ -103,32 +129,32 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::get_app_info,
-            commands::get_platform,
-            commands::get_runtime_stats,
-            commands::update_runtime_stats,
-            commands::update_model_progress,
-            commands::get_spotlight_shortcut,
-            commands::set_spotlight_shortcut,
-            commands::prepare_local_model,
-            commands::reset_embeddings,
-            commands::list_folders,
-            commands::add_folder,
-            commands::remove_folder,
-            commands::index_folder,
-            commands::pending_images,
-            commands::prepare_ai_images,
-            commands::save_embeddings,
-            commands::explain_results,
-            commands::top_image_tags,
-            commands::get_thumbnail,
-            commands::search_images,
-            commands::open_in_file_manager,
-            commands::copy_image_to_clipboard,
-            commands::open_in_imagyx,
+            commands::app::get_app_info,
+            commands::app::get_platform,
+            commands::app::get_runtime_stats,
+            commands::app::update_runtime_stats,
+            commands::app::update_model_progress,
+            commands::app::get_spotlight_shortcut,
+            commands::app::set_spotlight_shortcut,
+            commands::app::prepare_local_model,
+            commands::app::reset_embeddings,
+            commands::folders::list_folders,
+            commands::folders::add_folder,
+            commands::folders::remove_folder,
+            commands::folders::index_folder,
+            commands::folders::pending_images,
+            commands::semantic::prepare_ai_images,
+            commands::semantic::save_embeddings,
+            commands::semantic::explain_results,
+            commands::semantic::top_image_tags,
+            commands::search::get_thumbnail,
+            commands::search::search_images,
+            commands::files::open_in_file_manager,
+            commands::files::copy_image_to_clipboard,
+            commands::files::open_in_imagyx,
             onboarding::open_onboarding,
-            commands::set_spotlight_expanded,
-            commands::hide_spotlight,
+            commands::spotlight::set_spotlight_expanded,
+            commands::spotlight::hide_spotlight,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Imagyx");
