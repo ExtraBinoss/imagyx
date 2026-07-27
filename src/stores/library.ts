@@ -615,7 +615,7 @@ export const useLibraryStore = defineStore("library", {
         current: 0,
         total: folder.imageCount,
         stage: "queued",
-        message: storeT('spotlight.index_message.queued', { total: folder.imageCount }),
+        message: storeT('spotlight.index_message.queued', undefined, { total: folder.imageCount }),
       };
       try {
         await semanticRuntime.resumeIndexing(folderId);
