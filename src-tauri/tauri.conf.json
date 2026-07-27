@@ -28,7 +28,8 @@
         "minHeight": 620,
         "resizable": true,
         "fullscreen": false,
-        "center": true
+        "center": true,
+        "decorations": false
       },
       {
         "label": "spotlight",
