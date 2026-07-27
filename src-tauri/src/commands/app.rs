@@ -12,9 +12,16 @@ use crate::{
 };
 
 #[tauri::command]
-pub fn get_app_info(state: State<'_, Arc<AppState>>) -> AppInfo {
+pub fn get_app_info(state: State<'_, Arc<AppState>>, app: AppHandle) -> AppInfo {
     let model_progress = state.model_progress.read().clone();
     let runtime_stats = state.runtime_stats.read().clone();
+    let background_state = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        let _trace = tracing::span("runtime_stats.initial_collect");
+        let stats = collect_runtime_stats(&background_state);
+        *background_state.runtime_stats.write() = stats.clone();
+        let _ = app.emit("runtime-stats", stats);
+    });
     AppInfo {
         root_dir: state.paths.root.to_string_lossy().into_owned(),
         models_dir: state.paths.models.to_string_lossy().into_owned(),
