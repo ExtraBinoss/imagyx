@@ -1,3 +1,3 @@
 Temporary validation marker for the Spotlight image conversion branch.
 
-Rustfmt pass requested.
+Final CI pass requested after scoped rustfmt fixes.
