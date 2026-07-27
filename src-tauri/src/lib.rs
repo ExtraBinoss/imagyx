@@ -75,25 +75,45 @@ pub fn run() {
                 .build(),
         )
         .setup(move |app| {
-            let _trace = tracing::span("startup.setup");
-            let paths = AppPaths::discover()?;
-            let shortcut_preferences = ShortcutPreferences::load(paths.root.join("settings.json"));
-            if let Err(error) = shortcut_preferences.register(app.handle()) {
-                tracing::event("shortcut.register.failed", error);
+            let _setup_trace = tracing::span("startup.setup");
+            let paths = {
+                let _trace = tracing::span("startup.paths");
+                AppPaths::discover()?
+            };
+            let shortcut_preferences = {
+                let _trace = tracing::span("startup.shortcut.load");
+                ShortcutPreferences::load(paths.root.join("settings.json"))
+            };
+            {
+                let _trace = tracing::span("startup.shortcut.register");
+                if let Err(error) = shortcut_preferences.register(app.handle()) {
+                    tracing::event("shortcut.register.failed", error);
+                }
             }
 
-            let state = Arc::new(AppState::new(paths)?);
-            let folders = state.database.folders()?;
-            app.asset_protocol_scope()
-                .allow_directory(&state.paths.thumbnails, true)?;
-            app.asset_protocol_scope()
-                .allow_directory(&state.paths.models, true)?;
-            for folder in &folders {
+            let state = {
+                let _trace = tracing::span("startup.state");
+                Arc::new(AppState::new(paths)?)
+            };
+            let folders = {
+                let _trace = tracing::span("startup.folders");
+                state.database.folders()?
+            };
+            {
+                let _trace = tracing::span("startup.asset_scopes");
                 app.asset_protocol_scope()
-                    .allow_directory(&folder.path, true)?;
+                    .allow_directory(&state.paths.thumbnails, true)?;
+                app.asset_protocol_scope()
+                    .allow_directory(&state.paths.models, true)?;
+                for folder in &folders {
+                    app.asset_protocol_scope()
+                        .allow_directory(&folder.path, true)?;
+                }
             }
-            let folder_watcher =
-                FolderWatcher::start(app.handle().clone(), Arc::clone(&state), folders)?;
+            let folder_watcher = {
+                let _trace = tracing::span("startup.watcher");
+                FolderWatcher::start(app.handle().clone(), Arc::clone(&state), folders)?
+            };
 
             let vector_state = Arc::clone(&state);
             tauri::async_runtime::spawn_blocking(move || {
