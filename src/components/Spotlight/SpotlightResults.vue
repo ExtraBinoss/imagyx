@@ -141,19 +141,11 @@ function closeConverter() {
   void nextTick(scheduleScrollState)
 }
 
-function keepConvertedBesideSource(image: ImageAsset) {
-  const source = converterSource.value
-  if (!source) return
+function promoteConvertedResult(image: ImageAsset) {
   const existingIndex = props.results.findIndex((result) => result.id === image.id)
-  if (existingIndex >= 0) {
-    props.results[existingIndex] = image
-    emit('select', existingIndex)
-    return
-  }
-  const sourceIndex = props.results.findIndex((result) => result.id === source.id)
-  const insertAt = sourceIndex >= 0 ? sourceIndex + 1 : props.results.length
-  props.results.splice(insertAt, 0, image)
-  emit('select', insertAt)
+  if (existingIndex >= 0) props.results.splice(existingIndex, 1)
+  props.results.unshift(image)
+  emit('select', 0)
 }
 
 function handleWindowKeydown(event: KeyboardEvent) {
@@ -203,7 +195,7 @@ defineExpose({ scrollToIndex })
       :opening-image-id="openingImageId"
       :file-manager-name="fileManagerName"
       @back="closeConverter"
-      @converted="keepConvertedBesideSource"
+      @converted="promoteConvertedResult"
       @copy="emit('copy', $event)"
       @reveal="emit('reveal', $event)"
       @open="emit('open', $event)"
