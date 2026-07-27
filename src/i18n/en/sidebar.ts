@@ -8,5 +8,7 @@ export default {
   'sidebar.open': 'Open',
   'sidebar.reindex': 'Reindex',
   'sidebar.reindexing': 'Reindexing…',
+  'sidebar.index_incomplete': 'Index incomplete',
+  'sidebar.reindex_incomplete': 'Reindex incomplete folder',
   'sidebar.unfollow': 'Unfollow',
 } as const

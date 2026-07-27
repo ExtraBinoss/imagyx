@@ -10,6 +10,14 @@ pub struct FollowedFolder {
     pub created_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderIndexCoverage {
+    pub folder_id: String,
+    pub image_count: u64,
+    pub embedded_count: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageAsset {

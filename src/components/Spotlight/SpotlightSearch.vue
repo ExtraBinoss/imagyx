@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { FollowedFolder, ImageAsset, IndexProgress, RuntimeStats } from '../../types'
+import type { FolderIndexCoverage, FollowedFolder, ImageAsset, IndexProgress, RuntimeStats } from '../../types'
 import { imagyxApi } from '../../api/tauri'
 import { semanticRuntime } from '../../services/semantic'
 import { usePlatformStore } from '../../stores/platform'
@@ -38,6 +38,7 @@ const searchQuery = ref('')
 const settingsQuery = ref('')
 const results = ref<ImageAsset[]>([])
 const folders = ref<FollowedFolder[]>([])
+const indexCoverage = ref<FolderIndexCoverage[]>([])
 const libraryReady = ref(false)
 const selectedIndex = ref(0)
 const searching = ref(false)
@@ -87,6 +88,11 @@ const activeQuery = computed({
 const hasFolders = computed(() => folders.value.length > 0)
 const hasActiveJobs = computed(() => jobs.value.some((job) => !['complete', 'error'].includes(job.stage)))
 const hasSearchQuery = computed(() => searchQuery.value.trim().length > 0)
+const incompleteCoverage = computed(() => indexCoverage.value.filter((coverage) => {
+  const job = jobs.value.find((item) => item.folderId === coverage.folderId)
+  return coverage.embeddedCount < coverage.imageCount
+    && !['discovering', 'metadata', 'queued', 'embedding'].includes(job?.stage ?? '')
+}))
 const selectedImage = computed(() => results.value[selectedIndex.value] ?? null)
 const resultLabel = computed(() => {
   if (!libraryReady.value) return t('spotlight.placeholder.loading')
@@ -142,7 +148,12 @@ watch(hasActiveJobs, (active) => {
 
 async function syncFolders(openWhenEmpty = false) {
   try {
-    folders.value = await imagyxApi.folders()
+    const [folderList, coverage] = await Promise.all([
+      imagyxApi.folders(),
+      imagyxApi.indexCoverage(),
+    ])
+    folders.value = folderList
+    indexCoverage.value = coverage
     libraryReady.value = true
     if (openWhenEmpty && (!hasFolders.value || hasActiveJobs.value)) {
       await openPanel(++morphSequence)
@@ -300,6 +311,32 @@ async function addFolder() {
   } finally {
     dialogOpen.value = false
     void currentWindow.setFocus()
+  }
+}
+
+function reindexIncompleteFolders(folderIds: string[]) {
+  resultCache.clear()
+  for (const folderId of folderIds) {
+    const folder = folders.value.find((item) => item.id === folderId)
+    if (!folder) continue
+    upsertJob({
+      folderId: folder.id,
+      folderName: folder.name,
+      current: 0,
+      total: folder.imageCount,
+      stage: 'discovering',
+      message: t('spotlight.index_message.scanning'),
+    })
+    void imagyxApi.indexFolder(folderId).catch((reason) => {
+      upsertJob({
+        folderId: folder.id,
+        folderName: folder.name,
+        current: 0,
+        total: folder.imageCount,
+        stage: 'error',
+        message: String(reason),
+      })
+    })
   }
 }
 
@@ -546,6 +583,7 @@ onBeforeUnmount(() => {
                   :has-folders="hasFolders"
                   :library-ready="libraryReady"
                   :show-background-hint="hasActiveJobs"
+                  :incomplete-coverage="incompleteCoverage"
                   :jobs="jobs"
                   :file-manager-name="platform.fileManagerName"
                   @select="selectedIndex = $event"
@@ -553,6 +591,7 @@ onBeforeUnmount(() => {
                   @copy="copyImage"
                   @reveal="revealImage"
                   @add-folder="addFolder"
+                  @reindex="reindexIncompleteFolders"
                 />
               </Transition>
             </div>
@@ -565,6 +604,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .spotlight-root {
+  --spotlight-panel-height: 462px;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -600,7 +640,7 @@ onBeforeUnmount(() => {
   box-shadow: inset 0 1px rgb(255 255 255 / 0.1), 0 18px 38px -28px rgb(15 23 42 / 0.42);
 }
 .spotlight-panel {
-  height: 472px;
+  height: var(--spotlight-panel-height);
   min-height: 0;
   overflow: hidden;
   border-top: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
@@ -618,7 +658,7 @@ onBeforeUnmount(() => {
 }
 .panel-morph-enter-to,
 .panel-morph-leave-from {
-  max-height: 472px;
+  max-height: var(--spotlight-panel-height);
   opacity: 1;
   clip-path: inset(0 round 0 0 21px 21px);
 }

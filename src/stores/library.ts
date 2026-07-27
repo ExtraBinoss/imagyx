@@ -4,6 +4,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AppInfo,
   FollowedFolder,
+  FolderIndexCoverage,
   ImageAsset,
   IndexProgress,
   ModelDownloadProgress,
@@ -53,6 +54,7 @@ function deduplicateMatches(
 
 interface LibraryState {
   folders: FollowedFolder[];
+  indexCoverage: FolderIndexCoverage[];
   images: ImageAsset[];
   selectedFolderId: string | null;
   query: string;
@@ -76,6 +78,7 @@ interface LibraryState {
 export const useLibraryStore = defineStore("library", {
   state: (): LibraryState => ({
     folders: [],
+    indexCoverage: [],
     images: [],
     selectedFolderId: null,
     query: "",
@@ -152,13 +155,15 @@ export const useLibraryStore = defineStore("library", {
           return value;
         });
 
-        const [appInfo, folders] = await Promise.all([
+        const [appInfo, folders, indexCoverage] = await Promise.all([
           appInfoPromise,
           foldersPromise,
+          imagyxApi.indexCoverage(),
         ]);
         this.appInfo = appInfo;
         this.runtimeStats = appInfo.runtimeStats;
         this.folders = folders;
+        this.indexCoverage = indexCoverage;
         this.handleModelProgress(appInfo.modelProgress);
         await Promise.all([firstPagePromise, eventsPromise]);
         this.initialized = true;
@@ -372,7 +377,12 @@ export const useLibraryStore = defineStore("library", {
 
     async refreshFolders() {
       const started = performance.now();
-      this.folders = await imagyxApi.folders();
+      const [folders, indexCoverage] = await Promise.all([
+        imagyxApi.folders(),
+        imagyxApi.indexCoverage(),
+      ]);
+      this.folders = folders;
+      this.indexCoverage = indexCoverage;
       perfLog(
         "LibraryStore",
         "refreshFolders",

@@ -9,11 +9,12 @@ import {
   LoaderCircle,
   Search,
 } from '@lucide/vue'
-import type { ImageAsset } from '../../types'
+import type { FolderIndexCoverage, ImageAsset } from '../../types'
 import ThumbnailImage from '../ThumbnailImage.vue'
 import Button from '../ui/Button/Button.vue'
 import KbdChip from '../ui/KbdChip/KbdChip.vue'
 import SpotlightIndexProgress from './SpotlightIndexProgress.vue'
+import SpotlightIndexCoverageNotice from './SpotlightIndexCoverageNotice.vue'
 import type { SpotlightIndexJob } from './types'
 import { useTranslate } from '../../i18n'
 
@@ -31,6 +32,7 @@ const props = defineProps<{
   hasFolders: boolean
   libraryReady: boolean
   showBackgroundHint: boolean
+  incompleteCoverage: FolderIndexCoverage[]
   jobs: SpotlightIndexJob[]
   fileManagerName: string
 }>()
@@ -41,6 +43,7 @@ const emit = defineEmits<{
   copy: [image: ImageAsset]
   reveal: [image: ImageAsset]
   addFolder: []
+  reindex: [folderIds: string[]]
 }>()
 
 const { t } = useTranslate()
@@ -76,6 +79,7 @@ watch(
     props.hasFolders,
     props.libraryReady,
     props.showBackgroundHint,
+    props.incompleteCoverage.length,
     props.searching,
     props.hasSearchQuery,
   ],
@@ -157,6 +161,11 @@ defineExpose({ scrollToIndex })
       </section>
 
       <template v-else>
+        <SpotlightIndexCoverageNotice
+          v-if="incompleteCoverage.length"
+          :coverage="incompleteCoverage"
+          @reindex="emit('reindex', $event)"
+        />
         <Button
           v-if="showAddAction"
           class="spotlight-add-folder"

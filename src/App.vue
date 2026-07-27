@@ -210,6 +210,7 @@ onBeforeUnmount(() => {
   <main class="app-shell">
     <AppSidebar
       :folders="store.folders"
+      :index-coverage="store.indexCoverage"
       :selected-folder-id="store.selectedFolderId"
       :total-images="store.totalImages"
       :progress="store.progress"

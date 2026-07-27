@@ -8,5 +8,7 @@ export default {
   'sidebar.open': 'Открыть',
   'sidebar.reindex': 'Переиндексировать',
   'sidebar.reindexing': 'Переиндексация…',
+  'sidebar.index_incomplete': 'Индексация не завершена',
+  'sidebar.reindex_incomplete': 'Переиндексировать неполную папку',
   'sidebar.unfollow': 'Отписаться',
 } as const

@@ -26,6 +26,9 @@ export default {
   'spotlight.indexing_background_desc': 'Вы можете закрыть это окно, Imagyx продолжит работу.',
   'spotlight.indexing_results_title': 'Идёт индексация ИИ',
   'spotlight.indexing_results_desc': 'Результаты поиска могут быть неполными до её завершения.',
+  'spotlight.index_incomplete_title': 'Некоторые папки проиндексированы не полностью',
+  'spotlight.index_incomplete_desc': 'Для полного поиска нужно переиндексировать папок: {count}.',
+  'spotlight.reindex_incomplete': 'Переиндексировать папки',
 
   'spotlight.no_results_title': 'Нет убедительных результатов',
   'spotlight.no_results_desc': 'Попробуйте более короткое описание или более визуальное слово.',

@@ -4,7 +4,7 @@ use rusqlite::params;
 use crate::{
     AppError,
     ml::MODEL_ID,
-    models::VectorEntry,
+    models::{FolderIndexCoverage, VectorEntry},
 };
 
 use super::{
@@ -13,6 +13,28 @@ use super::{
 };
 
 impl Database {
+    pub fn folder_index_coverage(&self) -> Result<Vec<FolderIndexCoverage>, AppError> {
+        let connection = self.connect()?;
+        let mut statement = connection.prepare(
+            "SELECT f.id, COUNT(i.id), COUNT(e.image_id)
+             FROM folders f
+             LEFT JOIN images i ON i.folder_id = f.id
+             LEFT JOIN embeddings e ON e.image_id = i.id AND e.model = ?1
+             GROUP BY f.id
+             ORDER BY lower(f.name)",
+        )?;
+        statement
+            .query_map(params![MODEL_ID], |row| {
+                Ok(FolderIndexCoverage {
+                    folder_id: row.get(0)?,
+                    image_count: row.get::<_, i64>(1)?.try_into().unwrap_or_default(),
+                    embedded_count: row.get::<_, i64>(2)?.try_into().unwrap_or_default(),
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(AppError::from)
+    }
+
     pub fn save_embeddings(&self, embeddings: &[(String, Vec<f32>)]) -> Result<(), AppError> {
         if embeddings.is_empty() {
             return Ok(());

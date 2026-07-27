@@ -8,5 +8,7 @@ export default {
   'sidebar.open': 'Öffnen',
   'sidebar.reindex': 'Neu indizieren',
   'sidebar.reindexing': 'Indizierung läuft…',
+  'sidebar.index_incomplete': 'Indizierung unvollständig',
+  'sidebar.reindex_incomplete': 'Unvollständigen Ordner neu indizieren',
   'sidebar.unfollow': 'Nicht mehr folgen',
 } as const

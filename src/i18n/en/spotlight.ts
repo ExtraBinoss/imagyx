@@ -26,6 +26,9 @@ export default {
   'spotlight.indexing_background_desc': 'You can close this window, Imagyx keeps working.',
   'spotlight.indexing_results_title': 'AI indexing in progress',
   'spotlight.indexing_results_desc': 'Search results may be incomplete until it finishes.',
+  'spotlight.index_incomplete_title': 'Some folders are not fully indexed',
+  'spotlight.index_incomplete_desc': '{count} folder needs reindexing before search is complete.',
+  'spotlight.reindex_incomplete': 'Reindex folders',
 
   'spotlight.no_results_title': 'No convincing results',
   'spotlight.no_results_desc': 'Try a shorter description or a more visual word.',

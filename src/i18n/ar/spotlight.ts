@@ -26,6 +26,9 @@ export default {
   'spotlight.indexing_background_desc': 'يمكنك إغلاق هذه النافذة، Imagyx يواصل العمل.',
   'spotlight.indexing_results_title': 'فهرسة الذكاء الاصطناعي قيد التنفيذ',
   'spotlight.indexing_results_desc': 'قد تكون نتائج البحث غير مكتملة إلى أن تنتهي.',
+  'spotlight.index_incomplete_title': 'بعض المجلدات لم تُفهرس بالكامل',
+  'spotlight.index_incomplete_desc': 'يلزم إعادة فهرسة {count} مجلد لإكمال البحث.',
+  'spotlight.reindex_incomplete': 'أعد فهرسة المجلدات',
 
   'spotlight.no_results_title': 'لا توجد نتائج مقنعة',
   'spotlight.no_results_desc': 'جرّب وصفًا أقصر أو كلمة أكثر بصرية.',

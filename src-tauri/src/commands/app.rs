@@ -5,7 +5,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::{
     ml,
-    models::{AppInfo, ModelDownloadProgress, RuntimeStats},
+    models::{AppInfo, FolderIndexCoverage, ModelDownloadProgress, RuntimeStats},
     preferences::ShortcutPreferences,
     state::AppState,
     tracing, tray,
@@ -38,6 +38,17 @@ pub fn get_app_info(state: State<'_, Arc<AppState>>, app: AppHandle) -> AppInfo 
 #[tauri::command]
 pub fn get_platform() -> String {
     std::env::consts::OS.to_owned()
+}
+
+#[tauri::command]
+pub async fn get_index_coverage(
+    state: State<'_, Arc<AppState>>,
+) -> Result<Vec<FolderIndexCoverage>, String> {
+    let state = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || state.database.folder_index_coverage())
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

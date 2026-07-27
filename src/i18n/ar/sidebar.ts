@@ -8,5 +8,7 @@ export default {
   'sidebar.open': 'فتح',
   'sidebar.reindex': 'إعادة الفهرسة',
   'sidebar.reindexing': 'جاري إعادة الفهرسة…',
+  'sidebar.index_incomplete': 'الفهرسة غير مكتملة',
+  'sidebar.reindex_incomplete': 'أعد فهرسة المجلد غير المكتمل',
   'sidebar.unfollow': 'إلغاء المتابعة',
 } as const

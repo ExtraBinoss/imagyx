@@ -26,6 +26,9 @@ export default {
   'spotlight.indexing_background_desc': '您可以关闭此窗口，Imagyx将继续工作。',
   'spotlight.indexing_results_title': '正在进行 AI 索引',
   'spotlight.indexing_results_desc': '完成前，搜索结果可能不完整。',
+  'spotlight.index_incomplete_title': '部分文件夹尚未完全建立索引',
+  'spotlight.index_incomplete_desc': '需重新索引 {count} 个文件夹以完成搜索。',
+  'spotlight.reindex_incomplete': '重新索引文件夹',
 
   'spotlight.no_results_title': '没有令人信服的结果',
   'spotlight.no_results_desc': '尝试更短的描述或更视觉化的词语。',

@@ -17,10 +17,6 @@
   user-select: text;
 }
 
-:root[data-window='spotlight'] .spotlight-results-shell {
-  height: 462px !important;
-}
-
 :root[data-window='spotlight'] .spotlight-loading-list {
   opacity: 0;
   visibility: hidden;

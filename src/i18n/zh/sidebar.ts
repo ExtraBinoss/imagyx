@@ -8,5 +8,7 @@ export default {
   'sidebar.open': '打开',
   'sidebar.reindex': '重新索引',
   'sidebar.reindexing': '重新索引中…',
+  'sidebar.index_incomplete': '索引不完整',
+  'sidebar.reindex_incomplete': '重新索引不完整的文件夹',
   'sidebar.unfollow': '取消关注',
 } as const

@@ -148,6 +148,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::app::get_app_info,
             commands::app::get_platform,
+            commands::app::get_index_coverage,
             commands::app::get_runtime_stats,
             commands::app::update_runtime_stats,
             commands::app::update_model_progress,

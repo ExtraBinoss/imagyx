@@ -26,6 +26,9 @@ export default {
   'spotlight.indexing_background_desc': 'Você pode fechar esta janela, o Imagyx continua funcionando.',
   'spotlight.indexing_results_title': 'Indexação por IA em andamento',
   'spotlight.indexing_results_desc': 'Os resultados da pesquisa podem ficar incompletos até terminar.',
+  'spotlight.index_incomplete_title': 'Algumas pastas não estão totalmente indexadas',
+  'spotlight.index_incomplete_desc': '{count} pasta precisa ser reindexada para completar a pesquisa.',
+  'spotlight.reindex_incomplete': 'Reindexar pastas',
 
   'spotlight.no_results_title': 'Nenhum resultado convincente',
   'spotlight.no_results_desc': 'Tente uma descrição mais curta ou uma palavra mais visual.',

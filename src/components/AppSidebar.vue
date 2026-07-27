@@ -10,10 +10,12 @@ import {
   Plus,
   RefreshCw,
   Settings,
+  TriangleAlert,
   Trash2,
 } from "@lucide/vue";
 import type {
   FollowedFolder,
+  FolderIndexCoverage,
   IndexProgress,
   ModelDownloadProgress,
   RuntimeStats,
@@ -31,6 +33,7 @@ import { useTranslate } from "@/i18n";
 
 const props = defineProps<{
   folders: FollowedFolder[];
+  indexCoverage: FolderIndexCoverage[];
   selectedFolderId: string | null;
   totalImages: number;
   progress: IndexProgress | null;
@@ -64,6 +67,11 @@ function isFolderReindexing(folderId: string): boolean {
     progress.stage !== "complete" &&
     progress.stage !== "error",
   );
+}
+
+function isFolderIncomplete(folderId: string): boolean {
+  const coverage = props.indexCoverage.find((item) => item.folderId === folderId);
+  return Boolean(coverage && coverage.embeddedCount < coverage.imageCount && !isFolderReindexing(folderId));
 }
 
 function openContextMenu(event: MouseEvent, folderId: string) {
@@ -170,6 +178,9 @@ onBeforeUnmount(() => {
           <Folder v-else :size="17" />
           <span class="folder-name">{{ folder.name }}</span>
           <span class="folder-count">{{ folder.imageCount }}</span>
+          <span v-if="isFolderIncomplete(folder.id)" class="folder-index-warning" :aria-label="t('sidebar.index_incomplete')">
+            <TriangleAlert :size="14" />
+          </span>
         </Button>
         <div class="folder-actions" @click.stop @pointerdown.stop>
           <Popover align="end" width="224px">
@@ -185,7 +196,7 @@ onBeforeUnmount(() => {
             <template #content="{ close }">
               <div class="folder-menu">
                 <Button
-                  variant="ghost"
+                  :variant="isFolderIncomplete(folder.id) ? 'secondary' : 'ghost'"
                   size="sm"
                   block
                   @click="
@@ -214,7 +225,9 @@ onBeforeUnmount(() => {
                   {{
                     isFolderReindexing(folder.id)
                       ? t("sidebar.reindexing")
-                      : t("sidebar.reindex")
+                      : isFolderIncomplete(folder.id)
+                        ? t("sidebar.reindex_incomplete")
+                        : t("sidebar.reindex")
                   }}
                 </Button>
                 <Button
@@ -347,6 +360,13 @@ onBeforeUnmount(() => {
 }
 .folder-index-spinner {
   animation: folder-index-spin 0.8s linear infinite;
+}
+.folder-index-warning {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  margin-left: var(--space-1);
+  color: var(--warning-text);
 }
 .folder-actions {
   position: absolute;

@@ -1,6 +1,7 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import type {
   AppInfo,
+  FolderIndexCoverage,
   FollowedFolder,
   ImageAsset,
   ImageEmbedding,
@@ -25,6 +26,7 @@ export const imagyxApi = {
   prepareLocalModel: (modelKey: string) => invoke<string>('prepare_local_model', { modelKey }),
   resetEmbeddings: () => invoke<void>('reset_embeddings'),
   folders: () => invoke<FollowedFolder[]>('list_folders'),
+  indexCoverage: () => invoke<FolderIndexCoverage[]>('get_index_coverage'),
   addFolder: (path: string) => invoke<FollowedFolder>('add_folder', { path }),
   removeFolder: (folderId: string) => invoke<void>('remove_folder', { folderId }),
   indexFolder: (folderId: string, force = true) =>

@@ -6,6 +6,12 @@ export interface FollowedFolder {
   createdAt: number
 }
 
+export interface FolderIndexCoverage {
+  folderId: string
+  imageCount: number
+  embeddedCount: number
+}
+
 export interface SemanticMatch {
   label: string
   score: number

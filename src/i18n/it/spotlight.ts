@@ -26,6 +26,9 @@ export default {
   'spotlight.indexing_background_desc': 'Puoi chiudere questa finestra, Imagyx continua a funzionare.',
   'spotlight.indexing_results_title': 'Indicizzazione IA in corso',
   'spotlight.indexing_results_desc': 'I risultati della ricerca potrebbero essere incompleti fino al termine.',
+  'spotlight.index_incomplete_title': 'Alcune cartelle non sono completamente indicizzate',
+  'spotlight.index_incomplete_desc': '{count} cartella deve essere reindicizzata per completare la ricerca.',
+  'spotlight.reindex_incomplete': 'Reindicizza cartelle',
 
   'spotlight.no_results_title': 'Nessun risultato convincente',
   'spotlight.no_results_desc': 'Prova una descrizione più breve o una parola più visiva.',

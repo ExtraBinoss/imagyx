@@ -26,6 +26,9 @@ export default {
   'spotlight.indexing_background_desc': 'このウィンドウを閉じても、Imagyxは動作し続けます。',
   'spotlight.indexing_results_title': 'AI インデックスを作成中',
   'spotlight.indexing_results_desc': '完了するまで検索結果が不完全な場合があります。',
+  'spotlight.index_incomplete_title': '一部のフォルダーは完全にインデックスされていません',
+  'spotlight.index_incomplete_desc': '検索を完全にするには {count} 個のフォルダーを再インデックスする必要があります。',
+  'spotlight.reindex_incomplete': 'フォルダーを再インデックス',
 
   'spotlight.no_results_title': '該当する結果がありません',
   'spotlight.no_results_desc': 'より短い説明や、より視覚的な言葉をお試しください。',
