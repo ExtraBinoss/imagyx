@@ -1,12 +1,8 @@
-import { createApp } from 'vue'
+import { createApp, type Component } from 'vue'
 import { createPinia } from 'pinia'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import App from './App.vue'
-import SpotlightSearch from './components/Spotlight/SpotlightSearch.vue'
 import { installPerformanceDiagnostics } from './utils'
 import './style.css'
-import './virtual-grid.css'
-import './spotlight-window.css'
 
 installPerformanceDiagnostics()
 
@@ -23,5 +19,15 @@ document.documentElement.dataset.theme = resolvedTheme
 document.documentElement.dataset.window = currentWindow.label
 document.documentElement.style.colorScheme = resolvedTheme
 
-const RootComponent = currentWindow.label === 'spotlight' ? SpotlightSearch : App
-createApp(RootComponent).use(createPinia()).mount('#app')
+async function loadRootComponent(): Promise<Component> {
+  if (currentWindow.label === 'spotlight') {
+    await import('./spotlight-window.css')
+    return (await import('./components/Spotlight/SpotlightSearch.vue')).default
+  }
+  await import('./virtual-grid.css')
+  return (await import('./App.vue')).default
+}
+
+void loadRootComponent().then((RootComponent) => {
+  createApp(RootComponent).use(createPinia()).mount('#app')
+})
