@@ -24,44 +24,44 @@ const emit = defineEmits<{
 const steps = [
   {
     component: 'Imagyx Desktop',
-    title: 'Bienvenue dans ta bibliothèque visuelle',
-    description: 'Imagyx garde tes images sur ton ordinateur, les organise par dossier et les rend recherchables en langage naturel.',
+    title: 'Welcome to your visual library',
+    description: 'Imagyx keeps your images on your computer, organizes them by folder, and makes them searchable with natural language.',
     kind: 'welcome' as const,
   },
   {
     component: 'AppSidebar.vue',
-    title: 'Tes dossiers restent simples à gérer',
-    description: 'Ajoute, sélectionne, réindexe ou ouvre un dossier dans Explorer, Finder ou ton gestionnaire de fichiers. L’IA locale reste visible et contrôlable en bas de la sidebar.',
+    title: 'Keep every image folder under control',
+    description: 'Add, select, reindex, or reveal folders in Explorer, Finder, or your file manager. Local AI progress remains visible and controllable from the sidebar.',
     kind: 'sidebar' as const,
   },
   {
     component: 'SearchHeader.vue · ImageGrid.vue',
-    title: 'Décris ce que tu cherches',
-    description: 'Tape directement depuis l’application. La grille virtualisée reste fluide, les tags apparaissent au survol et une bordure bleue indique clairement l’image sélectionnée.',
+    title: 'Search the way you remember an image',
+    description: 'Type a visual idea such as “woman green” or “tribal”. The virtualized grid stays responsive, semantic tags appear on hover, and selection covers the complete card.',
     kind: 'search' as const,
   },
   {
     component: 'ImagePreviewDialog.vue',
-    title: 'Inspecte une image sans quitter ton flux',
-    description: 'Survole ou sélectionne une carte puis appuie sur Espace. La preview s’ouvre dans l’application avec une animation légère et se ferme avec Échap ou un clic extérieur.',
+    title: 'Inspect an image without leaving your flow',
+    description: 'Select or hover a card and press Space. The full preview opens inside Imagyx and closes with Space, Escape, or a click outside.',
     kind: 'preview' as const,
   },
   {
     component: 'SpotlightSearch.vue',
-    title: 'Retrouve une image depuis n’importe où',
-    description: 'Le raccourci global ouvre une recherche compacte inspirée de Raycast. Copie l’image, révèle son dossier ou ouvre-la directement dans Imagyx.',
+    title: 'Find and use an image from anywhere',
+    description: 'The global shortcut opens a compact Raycast-style search. Copy the active image, reveal it in your file manager, or open it directly in Imagyx.',
     kind: 'spotlight' as const,
   },
   {
     component: 'SpotlightSettings.vue',
-    title: 'Adapte Imagyx à ton bureau',
-    description: 'Le raccourci, le thème et les contrôles de fenêtre se modifient à la volée. Ces préférences sont conservées localement entre les redémarrages.',
+    title: 'Make Imagyx fit your desktop',
+    description: 'Change the Spotlight shortcut, theme, and window controls instantly. Your preferences stay local and persist across restarts.',
     kind: 'settings' as const,
   },
   {
     component: 'Indexer · Background jobs',
-    title: 'Commence avec un dossier d’images',
-    description: 'Les métadonnées apparaissent rapidement, puis l’analyse sémantique continue en arrière-plan. Tu peux rechercher, mettre en pause et reprendre sans perdre la progression.',
+    title: 'Start with an image folder',
+    description: 'Metadata appears quickly while semantic analysis continues in the background. Search remains available, and indexing can pause and resume without losing completed work.',
     kind: 'indexing' as const,
   },
 ]
@@ -113,8 +113,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
   <Teleport to="body">
     <Transition name="onboarding-overlay">
       <div v-if="open" class="onboarding-overlay" role="presentation" @pointerdown.self="emit('close')">
-        <section class="onboarding-dialog" role="dialog" aria-modal="true" :aria-labelledby="`onboarding-title-${stepIndex}`">
-          <Button class="onboarding-close" variant="ghost" size="icon" aria-label="Fermer l’onboarding" @click="emit('close')">
+        <section
+          class="onboarding-dialog"
+          role="dialog"
+          aria-modal="true"
+          :aria-labelledby="`onboarding-title-${stepIndex}`"
+          :aria-describedby="`onboarding-description-${stepIndex}`"
+        >
+          <Button class="onboarding-close" variant="ghost" size="icon" aria-label="Close onboarding" @click="emit('close')">
             <X :size="18" />
           </Button>
 
@@ -123,22 +129,25 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
             <Transition :name="direction === 'forward' ? 'step-forward' : 'step-backward'" mode="out-in">
               <div :key="`copy-${stepIndex}`" class="onboarding-copy">
                 <h2 :id="`onboarding-title-${stepIndex}`">{{ currentStep.title }}</h2>
-                <p>{{ currentStep.description }}</p>
+                <p :id="`onboarding-description-${stepIndex}`">{{ currentStep.description }}</p>
               </div>
             </Transition>
           </header>
 
-          <Transition :name="direction === 'forward' ? 'step-forward' : 'step-backward'" mode="out-in">
-            <OnboardingFeaturePreview
-              :key="currentStep.kind"
-              :kind="currentStep.kind"
-              :theme-mode="themeMode"
-              :shortcut="shortcut"
-              :has-folders="hasFolders"
-              @add-folder="emit('addFolder')"
-              @theme-change="emit('themeChange', $event)"
-            />
-          </Transition>
+          <div class="onboarding-preview">
+            <Transition :name="direction === 'forward' ? 'step-forward' : 'step-backward'" mode="out-in">
+              <OnboardingFeaturePreview
+                :key="currentStep.kind"
+                class="onboarding-preview__content"
+                :kind="currentStep.kind"
+                :theme-mode="themeMode"
+                :shortcut="shortcut"
+                :has-folders="hasFolders"
+                @add-folder="emit('addFolder')"
+                @theme-change="emit('themeChange', $event)"
+              />
+            </Transition>
+          </div>
 
           <footer class="onboarding-footer">
             <Button
@@ -152,10 +161,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
                 <Check v-if="neverAskAgain" :size="14" />
                 <EyeOff v-else :size="14" />
               </template>
-              Ne plus me demander
+              Don’t show again
             </Button>
 
-            <div class="onboarding-progress" :aria-label="`Étape ${stepIndex + 1} sur ${steps.length}`">
+            <div class="onboarding-progress" :aria-label="`Step ${stepIndex + 1} of ${steps.length}`">
               <Button
                 v-for="(_, index) in steps"
                 :key="index"
@@ -164,21 +173,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
                 variant="ghost"
                 size="icon"
                 :depth="false"
-                :aria-label="`Aller à l’étape ${index + 1}`"
+                :aria-label="`Go to step ${index + 1}`"
                 @click="goTo(index)"
               />
             </div>
 
             <div class="onboarding-actions">
               <Button v-if="!isFirst" variant="secondary" size="md" @click="goTo(stepIndex - 1)">
-                <template #leading><ArrowLeft :size="15" /></template>Retour
+                <template #leading><ArrowLeft :size="15" /></template>Back
               </Button>
               <Button v-if="currentStep.kind === 'welcome' && !hasFolders" variant="secondary" size="md" @click="emit('addFolder')">
-                <template #leading><FolderPlus :size="15" /></template>Ajouter un dossier
+                <template #leading><FolderPlus :size="15" /></template>Add a folder
               </Button>
               <Button variant="primary" size="md" @click="next">
                 <template #leading><PartyPopper v-if="isLast" :size="15" /></template>
-                {{ isLast ? 'Commencer' : 'Suivant' }}
+                {{ isLast ? 'Get started' : 'Next' }}
                 <template #trailing><ArrowRight v-if="!isLast" :size="15" /></template>
               </Button>
             </div>
@@ -203,10 +212,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 .onboarding-dialog {
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: 132px minmax(0, 1fr) 44px;
   gap: 18px;
   width: min(920px, calc(100vw - 56px));
-  max-height: min(790px, calc(100vh - 56px));
+  height: min(760px, calc(100vh - 56px));
+  min-height: min(620px, calc(100vh - 56px));
   padding: 26px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--border-strong) 78%, transparent);
@@ -221,7 +231,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
   animation: onboarding-pop 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .onboarding-close { position: absolute; z-index: 3; top: 17px; right: 17px; }
-.onboarding-header { padding-right: 48px; }
+.onboarding-header { min-height: 0; padding-right: 48px; overflow: hidden; }
 .onboarding-component {
   display: inline-flex;
   align-items: center;
@@ -236,7 +246,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
   letter-spacing: 0.02em;
 }
 .onboarding-copy h2 { margin: 13px 0 0; color: var(--text); font-size: clamp(24px, 3vw, 34px); line-height: 1.08; letter-spacing: -0.04em; }
-.onboarding-copy p { max-width: 760px; margin: 11px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.62; }
+.onboarding-copy p { max-width: 790px; margin: 11px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.55; }
+.onboarding-preview { min-height: 0; overflow: hidden; }
+.onboarding-preview__content { height: 100%; }
 .onboarding-footer { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px; min-width: 0; }
 .onboarding-never { justify-self: start; }
 .onboarding-progress { display: flex; align-items: center; justify-content: center; gap: 6px; }
@@ -250,7 +262,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
   border-radius: 99px;
   background: var(--border-strong);
   color: transparent;
-  cursor: pointer;
   overflow: visible;
   transition: width 220ms cubic-bezier(0.16, 1, 0.3, 1), min-width 220ms cubic-bezier(0.16, 1, 0.3, 1), background-color 160ms ease, transform 160ms ease;
 }
@@ -281,7 +292,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 :global(:root[data-theme='dark']) .onboarding-dialog { box-shadow: inset 0 1px rgb(255 255 255 / 0.07), 0 42px 120px -48px rgb(0 0 0 / 0.92); }
 @media (max-width: 820px) {
   .onboarding-overlay { padding: 14px; }
-  .onboarding-dialog { width: calc(100vw - 28px); max-height: calc(100vh - 28px); padding: 20px; border-radius: 22px; }
+  .onboarding-dialog {
+    grid-template-rows: 144px minmax(0, 1fr) auto;
+    width: calc(100vw - 28px);
+    height: calc(100vh - 28px);
+    min-height: 0;
+    padding: 20px;
+    border-radius: 22px;
+  }
   .onboarding-footer { grid-template-columns: 1fr auto; }
   .onboarding-progress { grid-column: 1 / -1; grid-row: 1; }
   .onboarding-never { grid-row: 2; }
