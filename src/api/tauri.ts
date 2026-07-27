@@ -38,7 +38,7 @@ export const imagyxApi = {
   topImageTags: (concepts: QueryConcept[], limit = 10) =>
     invoke<string[]>('top_image_tags', { concepts, limit }),
   thumbnail: (image: Pick<ImageAsset, 'id' | 'path' | 'modifiedAt'>) =>
-    invoke<string>('get_thumbnail', {
+    invoke<ArrayBuffer>('get_thumbnail', {
       imageId: image.id,
       path: image.path,
       modifiedAt: image.modifiedAt,
