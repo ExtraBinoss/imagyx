@@ -1,24 +1,28 @@
 <script setup lang="ts">
+import { LoaderCircle } from '@lucide/vue'
+
 withDefaults(
   defineProps<{
-    variant?: "primary" | "secondary" | "ghost" | "danger";
-    size?: "sm" | "md" | "lg" | "icon";
-    type?: "button" | "submit" | "reset";
-    block?: boolean;
-    disabled?: boolean;
-    pressed?: boolean;
-    depth?: boolean;
+    variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
+    size?: 'sm' | 'md' | 'lg' | 'icon'
+    type?: 'button' | 'submit' | 'reset'
+    block?: boolean
+    disabled?: boolean
+    pressed?: boolean
+    depth?: boolean
+    loading?: boolean
   }>(),
   {
-    variant: "secondary",
-    size: "md",
-    type: "button",
+    variant: 'secondary',
+    size: 'md',
+    type: 'button',
     block: false,
     disabled: false,
     pressed: false,
     depth: true,
+    loading: false,
   },
-);
+)
 </script>
 
 <template>
@@ -31,19 +35,20 @@ withDefaults(
         'ui-button--block': block,
         'ui-button--pressed': pressed,
         'ui-button--flat': !depth,
+        'ui-button--loading': loading,
       },
     ]"
     :type="type"
-    :disabled="disabled"
+    :disabled="disabled || loading"
+    :aria-busy="loading || undefined"
     :aria-pressed="pressed || undefined"
   >
-    <span v-if="$slots.leading" class="ui-button__icon"
-      ><slot name="leading"
-    /></span>
+    <span v-if="loading" class="ui-button__icon ui-button__spinner" aria-hidden="true">
+      <LoaderCircle :size="15" />
+    </span>
+    <span v-else-if="$slots.leading" class="ui-button__icon"><slot name="leading" /></span>
     <span v-if="$slots.default" class="ui-button__content"><slot /></span>
-    <span v-if="$slots.trailing" class="ui-button__icon"
-      ><slot name="trailing"
-    /></span>
+    <span v-if="!loading && $slots.trailing" class="ui-button__icon"><slot name="trailing" /></span>
   </button>
 </template>
 
@@ -93,6 +98,9 @@ withDefaults(
   cursor: not-allowed;
   opacity: 0.48;
   transform: none;
+}
+.ui-button--loading:disabled {
+  opacity: 0.82;
 }
 
 .ui-button--sm {
@@ -178,5 +186,16 @@ withDefaults(
   gap: inherit;
   min-width: 0;
   max-width: 100%;
+}
+.ui-button__spinner {
+  animation: ui-button-spin 720ms linear infinite;
+}
+
+@keyframes ui-button-spin {
+  to { transform: rotate(1turn); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-button__spinner { animation-duration: 1.4s; }
 }
 </style>
