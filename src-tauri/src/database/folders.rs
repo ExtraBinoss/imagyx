@@ -46,4 +46,16 @@ impl Database {
             .collect::<Result<Vec<_>, _>>()
             .map_err(AppError::from)
     }
+
+    pub fn folders_for_watching(&self) -> Result<Vec<FollowedFolder>, AppError> {
+        let connection = self.connect()?;
+        let mut statement = connection.prepare(
+            "SELECT id, name, path, created_at, 0
+             FROM folders ORDER BY lower(name)",
+        )?;
+        statement
+            .query_map([], map_folder)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(AppError::from)
+    }
 }
