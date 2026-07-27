@@ -5,6 +5,7 @@ import Button from './ui/Button/Button.vue'
 import Input from './ui/Input/Input.vue'
 import MovingBorder from './ui/MovingBorder/MovingBorder.vue'
 import TitleBar from './TitleBar.vue'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { usePlatformStore } from '../stores/platform'
 
 const props = defineProps<{
@@ -20,6 +21,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
 }>()
 
+const appWindow = getCurrentWindow()
 const platform = usePlatformStore()
 const searchInput = ref<{ focus: () => void; select: () => void } | null>(null)
 const isFocused = ref(false)
@@ -32,11 +34,25 @@ function selectSearch() {
   searchInput.value?.select()
 }
 
+function startDrag(event: MouseEvent) {
+  if (event.button === 0) {
+    const target = event.target as HTMLElement | null
+    if (target?.closest('button, input, textarea, a, select, [contenteditable="true"], .mac-btn')) {
+      return
+    }
+    void appWindow.startDragging()
+  }
+}
+
 defineExpose({ focusSearch, selectSearch })
 </script>
 
 <template>
-  <header class="search-header" data-tauri-drag-region>
+  <header
+    class="search-header"
+    data-tauri-drag-region
+    @mousedown="startDrag"
+  >
     <div v-if="platform.controlsPosition === 'right'" class="search-header-controls">
       <TitleBar />
     </div>
@@ -108,7 +124,6 @@ defineExpose({ focusSearch, selectSearch })
   );
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  pointer-events: none;
 }
 
 .search-header-controls {

@@ -26,10 +26,23 @@ async function close(event: MouseEvent) {
   event.preventDefault()
   await appWindow.close()
 }
+
+function startDrag(event: MouseEvent) {
+  if (event.button === 0) {
+    const target = event.target as HTMLElement | null
+    if (target?.closest('button, .mac-btn')) return
+    void appWindow.startDragging()
+  }
+}
 </script>
 
 <template>
-  <div class="titlebar" :class="`titlebar--${platform.controlsPosition}`" data-tauri-drag-region>
+  <div
+    class="titlebar"
+    :class="`titlebar--${platform.controlsPosition}`"
+    data-tauri-drag-region
+    @mousedown="startDrag"
+  >
     <div v-if="platform.controlsPosition === 'right'" class="titlebar-traffic-lights" @click.stop @pointerdown.stop>
       <button class="mac-btn mac-minimize" title="Minimize" @click="minimize" @pointerdown.stop>
         <Minus :size="9" class="mac-icon" />
