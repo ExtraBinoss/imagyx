@@ -53,7 +53,7 @@ pub struct ImageConversionResult {
     inherited_semantic_index: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ImageConversionProgress {
     source_image_id: String,
