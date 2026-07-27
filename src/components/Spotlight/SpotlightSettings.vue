@@ -36,16 +36,16 @@ const library = useLibraryStore()
 const copied = ref(false)
 
 const isPopover = computed(() => props.variant === 'popover')
-const normalizedQuery = computed(() => (props.query ?? '').trim().toLocaleLowerCase('fr'))
-const showShortcut = computed(() => isPopover.value || matches(['raccourci', 'shortcut', 'clavier', 'keybind', 'spotlight', 'ouvrir']))
-const showTheme = computed(() => isPopover.value || matches(['thème', 'theme', 'apparence', 'clair', 'sombre', 'système', 'couleur']))
-const showControls = computed(() => isPopover.value || matches(['boutons', 'bouton', 'contrôles', 'controles', 'fermeture', 'réduction', 'reduction', 'fenêtre', 'fenetre', 'position', 'gauche', 'droite', 'titlebar', 'barre']))
-const showOnboarding = computed(() => isPopover.value || matches(['onboarding', 'guide', 'tutorial', 'tutoriel', 'discover', 'découvrir', 'decouvrir', 'welcome', 'bienvenue', 'help', 'aide']))
-const showInfo = computed(() => isPopover.value || matches(['info', 'information', 'version', 'débug', 'debug', 'système', 'imagyx', 'stats', 'indexation', 'base', 'sqlite']))
+const normalizedQuery = computed(() => (props.query ?? '').trim().toLocaleLowerCase('en'))
+const showShortcut = computed(() => isPopover.value || matches(['shortcut', 'keyboard', 'keybind', 'spotlight', 'open']))
+const showTheme = computed(() => isPopover.value || matches(['theme', 'appearance', 'light', 'dark', 'system', 'color']))
+const showControls = computed(() => isPopover.value || matches(['buttons', 'controls', 'close', 'minimize', 'window', 'position', 'left', 'right', 'titlebar']))
+const showOnboarding = computed(() => isPopover.value || matches(['onboarding', 'guide', 'tutorial', 'discover', 'welcome', 'help']))
+const showInfo = computed(() => isPopover.value || matches(['info', 'information', 'version', 'debug', 'system', 'imagyx', 'stats', 'indexing', 'database', 'sqlite']))
 const hasResults = computed(() => showShortcut.value || showTheme.value || showControls.value || showOnboarding.value || showInfo.value)
 
 const stats = computed(() => library.runtimeStats)
-const dbPath = computed(() => library.appInfo?.databasePath ?? 'Indisponible')
+const dbPath = computed(() => library.appInfo?.databasePath ?? 'Unavailable')
 
 function matches(keywords: string[]) {
   const query = normalizedQuery.value
@@ -81,12 +81,12 @@ async function copyDebugInfo() {
     <section v-if="showShortcut" class="settings-section">
       <header>
         <span class="settings-section__icon"><Keyboard :size="17" /></span>
-        <div><strong>Raccourci global</strong><p>Ouvre Imagyx Spotlight depuis n’importe quelle application.</p></div>
+        <div><strong>Global shortcut</strong><p>Open Imagyx Spotlight from any application.</p></div>
       </header>
       <ShortcutView
         :model-value="shortcut"
-        label="Ouvrir Spotlight"
-        description="Clique dans le champ puis saisis une combinaison avec au moins un modificateur."
+        label="Open Spotlight"
+        description="Click the field, then enter a shortcut with at least one modifier key."
         :disabled="shortcutUpdating"
         @change="emit('shortcutChange', $event)"
       />
@@ -96,17 +96,17 @@ async function copyDebugInfo() {
     <section v-if="showTheme" class="settings-section">
       <header>
         <span class="settings-section__icon"><Palette :size="17" /></span>
-        <div><strong>Apparence</strong><p>Le thème est appliqué immédiatement à toutes les fenêtres Imagyx.</p></div>
+        <div><strong>Appearance</strong><p>The theme is applied immediately to every Imagyx window.</p></div>
       </header>
       <ButtonGroup full>
         <Button variant="ghost" size="md" :pressed="themeMode === 'system'" @click="emit('themeChange', 'system')">
-          <template #leading><Monitor :size="16" /></template>Système
+          <template #leading><Monitor :size="16" /></template>System
         </Button>
         <Button variant="ghost" size="md" :pressed="themeMode === 'light'" @click="emit('themeChange', 'light')">
-          <template #leading><Sun :size="16" /></template>Clair
+          <template #leading><Sun :size="16" /></template>Light
         </Button>
         <Button variant="ghost" size="md" :pressed="themeMode === 'dark'" @click="emit('themeChange', 'dark')">
-          <template #leading><Moon :size="16" /></template>Sombre
+          <template #leading><Moon :size="16" /></template>Dark
         </Button>
       </ButtonGroup>
     </section>
@@ -114,14 +114,14 @@ async function copyDebugInfo() {
     <section v-if="showControls" class="settings-section">
       <header>
         <span class="settings-section__icon"><Layout :size="17" /></span>
-        <div><strong>Boutons de fenêtre</strong><p>Position des contrôles de fermeture, réduction et agrandissement.</p></div>
+        <div><strong>Window controls</strong><p>Choose where the close, minimize, and maximize buttons appear.</p></div>
       </header>
       <ButtonGroup full>
         <Button variant="ghost" size="md" :pressed="platform.controlsPosition === 'left'" @click="platform.setControlsPosition('left')">
-          <template #leading><AlignLeft :size="16" /></template>Gauche
+          <template #leading><AlignLeft :size="16" /></template>Left
         </Button>
         <Button variant="ghost" size="md" :pressed="platform.controlsPosition === 'right'" @click="platform.setControlsPosition('right')">
-          <template #leading><AlignRight :size="16" /></template>Droite
+          <template #leading><AlignRight :size="16" /></template>Right
         </Button>
       </ButtonGroup>
     </section>
@@ -129,7 +129,7 @@ async function copyDebugInfo() {
     <section v-if="showOnboarding" class="settings-section">
       <header>
         <span class="settings-section__icon"><BookOpen :size="17" /></span>
-        <div><strong>Discovery guide</strong><p>Review the core features or add an image folder directly from the guided tour.</p></div>
+        <div><strong>Discovery guide</strong><p>Review the core features or add an image folder from the guided tour.</p></div>
       </header>
       <Button variant="secondary" size="md" block @click="openOnboarding">
         <template #leading><BookOpen :size="16" /></template>Replay onboarding
@@ -137,10 +137,10 @@ async function copyDebugInfo() {
     </section>
 
     <section v-if="showInfo" class="settings-section info-section">
-      <Accordion title="Imagyx Information" :default-open="false">
+      <Accordion title="Imagyx information" :default-open="false">
         <template #title>
           <Info :size="15" />
-          <span>Imagyx Information</span>
+          <span>Imagyx information</span>
         </template>
         <div class="info-details">
           <div class="info-row">
@@ -152,7 +152,7 @@ async function copyDebugInfo() {
             <span class="info-value">{{ platform.platform }}</span>
           </div>
           <div class="info-row">
-            <span class="info-label">AI Model</span>
+            <span class="info-label">AI model</span>
             <span class="info-value">MobileCLIP-S0 (WebGPU)</span>
           </div>
           <div class="info-row">
@@ -165,7 +165,7 @@ async function copyDebugInfo() {
               <Check v-if="copied" :size="14" />
               <Copy v-else :size="14" />
             </template>
-            {{ copied ? 'Copied!' : 'Copy additional information' }}
+            {{ copied ? 'Copied!' : 'Copy debug information' }}
           </Button>
         </div>
       </Accordion>
@@ -173,8 +173,8 @@ async function copyDebugInfo() {
 
     <div v-if="!hasResults" class="settings-empty">
       <SearchX :size="25" />
-      <strong>Aucun réglage trouvé</strong>
-      <span>Essaie “raccourci”, “thème”, “onboarding” ou “apparence”.</span>
+      <strong>No settings found</strong>
+      <span>Try “shortcut”, “theme”, “onboarding”, or “appearance”.</span>
     </div>
   </div>
 </template>
