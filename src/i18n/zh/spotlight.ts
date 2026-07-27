@@ -24,6 +24,8 @@ export default {
 
   'spotlight.indexing_background_title': '后台索引',
   'spotlight.indexing_background_desc': '您可以关闭此窗口，Imagyx将继续工作。',
+  'spotlight.indexing_results_title': '正在进行 AI 索引',
+  'spotlight.indexing_results_desc': '完成前，搜索结果可能不完整。',
 
   'spotlight.no_results_title': '没有令人信服的结果',
   'spotlight.no_results_desc': '尝试更短的描述或更视觉化的词语。',

@@ -24,6 +24,8 @@ export default {
 
   'spotlight.indexing_background_title': 'Indicizzazione in background',
   'spotlight.indexing_background_desc': 'Puoi chiudere questa finestra, Imagyx continua a funzionare.',
+  'spotlight.indexing_results_title': 'Indicizzazione IA in corso',
+  'spotlight.indexing_results_desc': 'I risultati della ricerca potrebbero essere incompleti fino al termine.',
 
   'spotlight.no_results_title': 'Nessun risultato convincente',
   'spotlight.no_results_desc': 'Prova una descrizione più breve o una parola più visiva.',

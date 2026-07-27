@@ -24,6 +24,8 @@ export default {
 
   'spotlight.indexing_background_title': 'Hintergrundindizierung',
   'spotlight.indexing_background_desc': 'Du kannst dieses Fenster schließen, Imagyx arbeitet weiter.',
+  'spotlight.indexing_results_title': 'KI-Indizierung läuft',
+  'spotlight.indexing_results_desc': 'Suchergebnisse können bis zum Abschluss unvollständig sein.',
 
   'spotlight.no_results_title': 'Keine überzeugenden Ergebnisse',
   'spotlight.no_results_desc': 'Versuche eine kürzere Beschreibung oder ein visuelleres Wort.',

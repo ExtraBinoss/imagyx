@@ -175,8 +175,8 @@ defineExpose({ scrollToIndex })
         <aside v-if="showBackgroundHint" class="spotlight-background-hint" aria-live="polite">
           <span class="spotlight-background-hint__icon"><LoaderCircle class="spin" :size="16" /></span>
           <span>
-            <strong>{{ t('spotlight.indexing_background_title') }}</strong>
-            <small>{{ t('spotlight.indexing_background_desc') }}</small>
+            <strong>{{ t('spotlight.indexing_results_title') }}</strong>
+            <small>{{ t('spotlight.indexing_results_desc') }}</small>
           </span>
         </aside>
 

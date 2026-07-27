@@ -24,6 +24,8 @@ export default {
 
   'spotlight.indexing_background_title': 'الفهرسة في الخلفية',
   'spotlight.indexing_background_desc': 'يمكنك إغلاق هذه النافذة، Imagyx يواصل العمل.',
+  'spotlight.indexing_results_title': 'فهرسة الذكاء الاصطناعي قيد التنفيذ',
+  'spotlight.indexing_results_desc': 'قد تكون نتائج البحث غير مكتملة إلى أن تنتهي.',
 
   'spotlight.no_results_title': 'لا توجد نتائج مقنعة',
   'spotlight.no_results_desc': 'جرّب وصفًا أقصر أو كلمة أكثر بصرية.',
