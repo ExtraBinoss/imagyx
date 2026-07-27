@@ -108,6 +108,7 @@ impl ThumbnailCache {
         result
     }
 
+    #[cfg(test)]
     pub fn prepare_ai_pixels(
         &self,
         image_id: &str,
@@ -148,7 +149,7 @@ impl ThumbnailCache {
                         profile.ai_resize_ms = elapsed_ms(resize_started);
                         Ok(pixels)
                     }
-                    Err(error) if !path.is_file() => {
+                    Err(_error) if !path.is_file() => {
                         profile.thumbnail_read_decode_ms = elapsed_ms(decode_started);
                         let (thumbnail, source_decode_ms, thumbnail_resize_ms) =
                             create_thumbnail_profiled(source)?;
