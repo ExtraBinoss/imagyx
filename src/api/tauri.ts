@@ -26,7 +26,8 @@ export const imagyxApi = {
   folders: () => invoke<FollowedFolder[]>('list_folders'),
   addFolder: (path: string) => invoke<FollowedFolder>('add_folder', { path }),
   removeFolder: (folderId: string) => invoke<void>('remove_folder', { folderId }),
-  indexFolder: (folderId: string) => invoke<void>('index_folder', { folderId }),
+  indexFolder: (folderId: string, force = true) =>
+    invoke<void>('index_folder', { folderId, force }),
   pendingImages: (folderId?: string) =>
     invoke<ImageAsset[]>('pending_images', { folderId: folderId ?? null }),
   prepareAiImages: (imageIds: string[]) => invoke<string[]>('prepare_ai_images', { imageIds }),

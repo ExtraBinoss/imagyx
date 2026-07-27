@@ -21,4 +21,15 @@
   height: 462px !important;
 }
 
+:root[data-window='spotlight'] .spotlight-loading-list {
+  opacity: 0;
+  visibility: hidden;
+  animation: spotlight-loading-reveal 0s linear 300ms forwards !important;
+}
 
+@keyframes spotlight-loading-reveal {
+  to {
+    opacity: 1;
+    visibility: visible;
+  }
+}

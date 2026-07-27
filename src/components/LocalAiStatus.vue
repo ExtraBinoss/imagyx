@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Check, Copy, Cpu, FolderSync, Gauge, LoaderCircle, MemoryStick, Pause, Play } from '@lucide/vue'
+import { Check, Copy, FolderSync, LoaderCircle, Pause, Play } from '@lucide/vue'
 import type { IndexProgress, ModelDownloadProgress, RuntimeStats } from '../types'
 import { imagyxApi } from '../api/tauri'
 import { formatBytes } from '../utils'
-import Badge from './ui/Badge/Badge.vue'
+import { copyDebugInfoToClipboard } from '../utils/copy-information'
 import Button from './ui/Button/Button.vue'
 import Popover from './ui/Popover/Popover.vue'
-
 import { usePlatformStore } from '../stores/platform'
 import { useLibraryStore } from '../stores/library'
 
@@ -25,26 +24,58 @@ const popoverOpen = ref(false)
 const copied = ref(false)
 let timer: number | undefined
 
-watch(() => props.runtimeStats, (value) => { if (value) liveStats.value = value }, { immediate: true })
+watch(
+  () => props.runtimeStats,
+  (value) => { if (value) liveStats.value = value },
+  { immediate: true },
+)
 
 const paused = computed(() => liveStats.value?.stage === 'paused')
 const indexing = computed(() =>
   ['decoding', 'inference', 'indexing', 'saving'].includes(liveStats.value?.stage ?? ''),
 )
+const folderIndexing = computed(() => {
+  const stage = props.progress?.stage
+  return stage === 'discovering' || stage === 'metadata' || stage === 'queued'
+})
 const downloading = computed(() => props.modelProgress?.stage === 'downloading')
 const preparingModel = computed(() =>
   props.modelProgress?.stage === 'checking' || props.modelProgress?.stage === 'loading',
 )
-const active = computed(() => indexing.value || downloading.value || preparingModel.value)
-const current = computed(() => (indexing.value || paused.value) ? liveStats.value?.current ?? 0 : props.modelProgress?.currentBytes ?? 0)
-const total = computed(() => (indexing.value || paused.value) ? liveStats.value?.total ?? 0 : props.modelProgress?.totalBytes ?? 0)
-const percent = computed(() => total.value > 0 ? Math.min(100, Math.max(0, (current.value / total.value) * 100)) : (active.value ? null : 100))
-const indeterminate = computed(() => preparingModel.value || (indexing.value && current.value === 0))
+const active = computed(() =>
+  indexing.value || folderIndexing.value || downloading.value || preparingModel.value,
+)
+
+const current = computed(() => {
+  if (indexing.value || paused.value) return liveStats.value?.current ?? 0
+  if (folderIndexing.value) return props.progress?.current ?? 0
+  return props.modelProgress?.currentBytes ?? 0
+})
+const total = computed(() => {
+  if (indexing.value || paused.value) return liveStats.value?.total ?? 0
+  if (folderIndexing.value) return props.progress?.total ?? 0
+  return props.modelProgress?.totalBytes ?? 0
+})
+const percent = computed(() =>
+  total.value > 0
+    ? Math.min(100, Math.max(0, (current.value / total.value) * 100))
+    : active.value ? null : 100,
+)
+const indeterminate = computed(() =>
+  preparingModel.value ||
+  (indexing.value && current.value === 0) ||
+  (folderIndexing.value && (props.progress?.stage === 'discovering' || total.value === 0)),
+)
 
 const title = computed(() => {
   if (paused.value) return 'Indexing Paused'
   if (downloading.value) return 'Downloading AI Model'
-  if (indexing.value) return liveStats.value?.stage === 'saving' ? 'Saving Analysis' : 'WebGPU AI Analysis'
+  if (indexing.value) return liveStats.value?.stage === 'saving'
+    ? 'Saving Analysis'
+    : 'WebGPU AI Analysis'
+  if (folderIndexing.value) return props.progress?.stage === 'queued'
+    ? 'Waiting for AI Analysis'
+    : `Indexing ${props.progress?.folderName ?? 'Folder'}`
   if (preparingModel.value) return 'Loading Model'
   if (props.modelProgress?.stage === 'error') return 'AI Unavailable'
   return 'Indexing Completed'
@@ -55,6 +86,7 @@ const detail = computed(() => {
     const speed = liveStats.value?.imagesPerSecond ?? 0
     return `${current.value} / ${total.value}${speed > 0 ? ` · ${speed.toFixed(1)} img/s` : ''}`
   }
+  if (folderIndexing.value) return props.progress?.message ?? 'Indexation en cours…'
   if (downloading.value && props.modelProgress) {
     if (props.modelProgress.totalBytes > 0) {
       return `${formatBytes(props.modelProgress.currentBytes)} / ${formatBytes(props.modelProgress.totalBytes)}`
@@ -65,6 +97,13 @@ const detail = computed(() => {
 })
 
 const phaseLabel = computed(() => {
+  if (folderIndexing.value && !indexing.value) {
+    switch (props.progress?.stage) {
+      case 'discovering': return 'Discovering Files'
+      case 'metadata': return 'Reading Metadata'
+      case 'queued': return 'Queued for Semantic Analysis'
+    }
+  }
   switch (liveStats.value?.stage) {
     case 'checking': return 'Checking Cache'
     case 'loading': return 'Loading Model'
@@ -85,12 +124,11 @@ async function refreshStats() {
 
 watch(popoverOpen, (open) => { if (open) void refreshStats() })
 onMounted(() => {
-  void refreshStats()
-  timer = window.setInterval(() => { if (popoverOpen.value || active.value || paused.value) void refreshStats() }, 1200)
+  timer = window.setInterval(() => {
+    if (popoverOpen.value || active.value || paused.value) void refreshStats()
+  }, 1400)
 })
 onBeforeUnmount(() => { if (timer) window.clearInterval(timer) })
-
-import { copyDebugInfoToClipboard } from '../utils/copy-information'
 
 async function copyAiDetails() {
   await copyDebugInfoToClipboard({
@@ -107,9 +145,7 @@ async function copyAiDetails() {
     totalProgress: total.value,
   })
   copied.value = true
-  setTimeout(() => {
-    copied.value = false
-  }, 2000)
+  window.setTimeout(() => { copied.value = false }, 2000)
 }
 </script>
 
@@ -122,7 +158,7 @@ async function copyAiDetails() {
             class="sidebar-index-card"
             :class="{
               'sidebar-index-card--active': active,
-              'sidebar-index-card--open': open
+              'sidebar-index-card--open': open,
             }"
             role="button"
             tabindex="0"
@@ -131,18 +167,19 @@ async function copyAiDetails() {
           >
             <span class="card-icon">
               <Pause v-if="paused" :size="16" />
-              <LoaderCircle v-else-if="indexing || downloading" class="spin" :size="16" />
+              <LoaderCircle v-else-if="active" class="spin" :size="16" />
               <FolderSync v-else :size="16" />
             </span>
 
             <div class="card-copy">
               <div class="card-title-row">
                 <strong>{{ title }}</strong>
-                <span v-if="percent != null && active && !indeterminate" class="card-percent">{{ Math.round(percent) }}%</span>
+                <span
+                  v-if="percent != null && active && !indeterminate"
+                  class="card-percent"
+                >{{ Math.round(percent) }}%</span>
               </div>
               <span class="card-detail">{{ detail }}</span>
-
-              <!-- Spotlight style progress bar -->
               <div class="card-track" :class="{ 'card-track--indeterminate': indeterminate }">
                 <i :style="percent != null ? { width: `${percent}%` } : undefined" />
               </div>
@@ -173,9 +210,17 @@ async function copyAiDetails() {
 
             <dl class="ai-simple-dl">
               <div><dt>Progress</dt><dd>{{ current }} / {{ total }}</dd></div>
-              <div v-if="liveStats?.imagesPerSecond"><dt>Speed</dt><dd>{{ liveStats.imagesPerSecond.toFixed(1) }} img/s</dd></div>
-              <div><dt>Resources</dt><dd>CPU {{ liveStats?.processCpuPercent?.toFixed(0) ?? 0 }}% · RAM {{ formatBytes(liveStats?.processMemoryBytes ?? 0) }}</dd></div>
-              <div><dt>Hardware Accelerated</dt><dd>{{ liveStats?.accelerationActive ? 'OK' : 'KO' }}</dd></div>
+              <div v-if="liveStats?.imagesPerSecond">
+                <dt>Speed</dt><dd>{{ liveStats.imagesPerSecond.toFixed(1) }} img/s</dd>
+              </div>
+              <div>
+                <dt>Resources</dt>
+                <dd>CPU {{ liveStats?.processCpuPercent?.toFixed(0) ?? 0 }}% · RAM {{ formatBytes(liveStats?.processMemoryBytes ?? 0) }}</dd>
+              </div>
+              <div>
+                <dt>Hardware Accelerated</dt>
+                <dd>{{ liveStats?.accelerationActive ? 'OK' : 'KO' }}</dd>
+              </div>
             </dl>
 
             <Button variant="secondary" size="sm" block class="ai-copy-btn" @click="copyAiDetails">
@@ -186,7 +231,9 @@ async function copyAiDetails() {
               {{ copied ? 'Copied!' : 'Copy additional information' }}
             </Button>
 
-            <p v-if="liveStats?.fallbackReason" class="ai-stats__warning">{{ liveStats.fallbackReason }}</p>
+            <p v-if="liveStats?.fallbackReason" class="ai-stats__warning">
+              {{ liveStats.fallbackReason }}
+            </p>
           </div>
         </template>
       </Popover>
@@ -195,16 +242,12 @@ async function copyAiDetails() {
 </template>
 
 <style scoped>
-.sidebar-status-container {
-  width: 100%;
-}
-
+.sidebar-status-container,
 .sidebar-status-container :deep(.ui-popover),
 .sidebar-status-container :deep(.ui-popover__trigger) {
   width: 100%;
-  display: flex;
 }
-
+.sidebar-status-container :deep(.ui-popover__trigger) { display: flex; }
 .sidebar-index-card {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr) auto;
@@ -218,66 +261,41 @@ async function copyAiDetails() {
   cursor: pointer;
   transition: all var(--transition-fast);
 }
-
 .sidebar-index-card:hover,
 .sidebar-index-card--open {
   border-color: var(--border-strong);
   background: var(--surface-hover);
 }
-
 .sidebar-index-card--active {
   border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
   background: color-mix(in srgb, var(--primary-soft) 30%, var(--surface));
 }
-
 .card-icon {
   display: grid;
   place-items: center;
   width: 32px;
   height: 32px;
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-elevated);
   color: var(--primary-text);
-  border: 1px solid var(--border);
 }
-
-.card-copy {
-  min-width: 0;
-}
-
+.card-copy { min-width: 0; }
 .card-title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
 }
-
-.card-copy strong {
-  color: var(--text);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.card-percent {
-  color: var(--primary-text);
-  font-size: 10px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
+.card-copy strong,
 .card-detail {
-  display: block;
-  margin-top: 2px;
-  color: var(--text-muted);
-  font-size: 10px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
+.card-copy strong { color: var(--text); font-size: var(--text-xs); font-weight: 600; }
+.card-detail { display: block; margin-top: 2px; color: var(--text-muted); font-size: 10px; }
+.card-percent { color: var(--primary-text); font-size: 10px; font-weight: 700; }
 .card-track {
   position: relative;
   height: 3px;
@@ -286,7 +304,6 @@ async function copyAiDetails() {
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--border) 80%, transparent);
 }
-
 .card-track i {
   display: block;
   height: 100%;
@@ -294,116 +311,23 @@ async function copyAiDetails() {
   background: linear-gradient(90deg, var(--primary), var(--primary-hover));
   transition: width 200ms ease;
 }
-
-.card-track--indeterminate i {
-  width: 35%;
-  animation: progress-slide 1.2s ease-in-out infinite;
-}
-
-.card-control {
-  width: 26px;
-  height: 26px;
-  padding: 0;
-}
-
-.ai-stats {
-  display: grid;
-  gap: var(--space-3);
-}
-
-.ai-stats__title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--border);
-}
-
-.ai-stats__title strong {
-  font-size: var(--text-sm);
-  color: var(--text);
-}
-
-.ai-stats__title span {
-  display: block;
-  margin-top: 2px;
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-}
-
-.ai-stats dl {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-}
-
-.ai-stats dl div {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
-  font-size: var(--text-xs);
-}
-
-.ai-stats dt {
-  color: var(--text-muted);
-}
-
-.ai-simple-dl {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-}
-
-.ai-simple-dl div {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
-  font-size: var(--text-xs);
-}
-
-.ai-simple-dl dt {
-  color: var(--text-muted);
-}
-
-.ai-simple-dl dd {
-  margin: 0;
-  color: var(--text);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.ai-copy-btn {
-  margin-top: var(--space-1);
-}
-
-.ai-stats__warning {
-  margin: 0;
-  color: var(--warning-text);
-  font-size: var(--text-xs);
-}
-
+.card-track--indeterminate i { width: 35%; animation: progress-slide 1.2s ease-in-out infinite; }
+.card-control { width: 26px; height: 26px; padding: 0; }
+.ai-stats { display: grid; gap: var(--space-3); }
+.ai-stats__title { padding-bottom: var(--space-2); border-bottom: 1px solid var(--border); }
+.ai-stats__title strong { color: var(--text); font-size: var(--text-sm); }
+.ai-stats__title span { display: block; margin-top: 2px; color: var(--text-muted); font-size: var(--text-xs); }
+.ai-simple-dl { display: grid; gap: 6px; margin: 0; }
+.ai-simple-dl div { display: flex; justify-content: space-between; gap: var(--space-3); font-size: var(--text-xs); }
+.ai-simple-dl dt { color: var(--text-muted); }
+.ai-simple-dl dd { margin: 0; color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+.ai-copy-btn { margin-top: var(--space-1); }
+.ai-stats__warning { margin: 0; color: var(--warning-text); font-size: var(--text-xs); }
 .fade-enter-active,
-.fade-leave-active {
-  transition: opacity var(--transition-fast), transform var(--transition-fast);
-}
-
+.fade-leave-active { transition: opacity var(--transition-fast), transform var(--transition-fast); }
 .fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-  transform: translateY(4px);
-}
-
-.spin {
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes progress-slide {
-  from { transform: translateX(-120%); }
-  to { transform: translateX(310%); }
-}
-
-@keyframes spin {
-  to { transform: rotate(1turn); }
-}
+.fade-leave-to { opacity: 0; transform: translateY(4px); }
+.spin { animation: spin 0.8s linear infinite; }
+@keyframes progress-slide { from { transform: translateX(-120%); } to { transform: translateX(310%); } }
+@keyframes spin { to { transform: rotate(1turn); } }
 </style>

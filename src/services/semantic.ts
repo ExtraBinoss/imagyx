@@ -1,14 +1,8 @@
-import {
-  AutoProcessor,
-  AutoTokenizer,
-  CLIPTextModelWithProjection,
-  CLIPVisionModelWithProjection,
-  RawImage,
-  env,
-} from '@huggingface/transformers'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { imagyxApi } from '../api/tauri'
 import type { ModelDownloadProgress, QueryConcept, RuntimeStats } from '../types'
 import { perfLog } from '../utils'
+import { requestSemanticEmbedding } from './semantic-channel'
 import { buildQueryPromptPlan, combinePromptVectors } from './query-prompts'
 
 const MODEL_ID = 'Xenova/mobileclip_s0'
@@ -16,6 +10,8 @@ const MODEL_NAME = 'MobileCLIP-S0'
 const INDEX_PAUSED_KEY = 'imagyx.index-paused'
 const INITIAL_BATCH_SIZE = 4
 const MAX_BATCH_SIZE = 16
+const QUERY_CACHE_CAPACITY = 24
+const currentWindow = getCurrentWindow()
 const DEFAULT_IMAGE_LABELS = [
   'personne', 'femme', 'homme', 'enfant', 'groupe de personnes', 'visage',
   'animal', 'chien', 'chat', 'oiseau', 'voiture', 'vélo', 'bâtiment', 'maison',
@@ -26,9 +22,23 @@ const DEFAULT_IMAGE_LABELS = [
 ]
 
 type Device = 'webgpu' | 'wasm'
+type TransformersModule = typeof import('@huggingface/transformers')
 type RuntimeCallbacks = {
   progress: (progress: ModelDownloadProgress) => void
   stats: (stats: RuntimeStats) => void
+}
+
+let transformersLoading: Promise<TransformersModule> | null = null
+
+function loadTransformers(): Promise<TransformersModule> {
+  if (!transformersLoading) {
+    const started = performance.now()
+    transformersLoading = import('@huggingface/transformers').then((module) => {
+      perfLog('SemanticIA', 'Transformers.js module load', performance.now() - started)
+      return module
+    })
+  }
+  return transformersLoading
 }
 
 export interface EmbeddedQuery {
@@ -51,6 +61,7 @@ class SemanticRuntime {
   private indexing: Promise<void> | null = null
   private genericConcepts: QueryConcept[] | null = null
   private callbacks: RuntimeCallbacks | null = null
+  private queryCache = new Map<string, EmbeddedQuery>()
   private paused = localStorage.getItem(INDEX_PAUSED_KEY) === 'true'
   private stats: RuntimeStats = { ...defaultStats(), stage: this.paused ? 'paused' : 'idle' }
 
@@ -81,6 +92,7 @@ class SemanticRuntime {
   }
 
   async prewarmText() {
+    if (currentWindow.label === 'spotlight') return
     await this.ensureTextReady()
     if (this.textPrimed) return
     if (!this.textPriming) {
@@ -101,12 +113,14 @@ class SemanticRuntime {
   }
 
   private async runPendingIndex(folderId?: string) {
-    await this.prepare()
     const pending = await imagyxApi.pendingImages(folderId)
     if (pending.length === 0) {
       this.patchStats({ stage: 'ready', current: 0, total: 0 })
       return
     }
+
+    await this.prepare()
+    const { RawImage } = await loadTransformers()
     const started = performance.now()
     let processed = 0
     let batchSize = INITIAL_BATCH_SIZE
@@ -157,9 +171,23 @@ class SemanticRuntime {
   async embedQuery(query: string): Promise<EmbeddedQuery | undefined> {
     const trimmed = query.trim()
     if (!trimmed) return undefined
-    await this.prewarmText()
+    if (currentWindow.label === 'spotlight') {
+      return requestSemanticEmbedding(trimmed)
+    }
+    return this.embedLocalQuery(trimmed)
+  }
 
-    const plan = buildQueryPromptPlan(trimmed)
+  private async embedLocalQuery(query: string): Promise<EmbeddedQuery> {
+    const cacheKey = query.toLocaleLowerCase('fr')
+    const cached = this.queryCache.get(cacheKey)
+    if (cached) {
+      this.queryCache.delete(cacheKey)
+      this.queryCache.set(cacheKey, cached)
+      return cached
+    }
+
+    await this.prewarmText()
+    const plan = buildQueryPromptPlan(query)
     const texts = [
       ...plan.positivePrompts,
       ...plan.negativePrompts,
@@ -185,7 +213,14 @@ class SemanticRuntime {
       const vector = vectors[negativeEnd + index]
       return vector ? [{ label, vector }] : []
     })
-    return { queryVector, concepts }
+    const embedded = { queryVector, concepts }
+    this.queryCache.set(cacheKey, embedded)
+    while (this.queryCache.size > QUERY_CACHE_CAPACITY) {
+      const oldest = this.queryCache.keys().next().value as string | undefined
+      if (!oldest) break
+      this.queryCache.delete(oldest)
+    }
+    return embedded
   }
 
   async genericImageConcepts(): Promise<QueryConcept[]> {
@@ -209,13 +244,28 @@ class SemanticRuntime {
       this.patchStats({ stage: 'loading-text' })
       await this.ensureModelEnvironment()
       try {
+        this.device = 'webgpu'
         await this.loadTextForDevice('webgpu')
-      } catch {
+        this.patchStats({
+          stage: this.paused ? 'paused' : 'ready',
+          backendEffective: 'Transformers.js · WebGPU',
+          accelerationActive: true,
+          accelerationLabel: 'GPU WebGPU actif',
+          fallbackReason: undefined,
+        })
+      } catch (error) {
+        this.device = 'wasm'
         this.textModel = null
         this.tokenizer = null
         await this.loadTextForDevice('wasm')
+        this.patchStats({
+          stage: this.paused ? 'paused' : 'ready',
+          backendEffective: 'Transformers.js · WASM',
+          accelerationActive: false,
+          accelerationLabel: 'CPU WASM',
+          fallbackReason: `WebGPU indisponible: ${String(error)}`,
+        })
       }
-      this.patchStats({ stage: this.paused ? 'paused' : 'ready' })
     })()
     try { await this.textLoading } finally { this.textLoading = null }
   }
@@ -232,6 +282,7 @@ class SemanticRuntime {
   }
 
   private async loadTextForDevice(device: Device) {
+    const { AutoTokenizer, CLIPTextModelWithProjection } = await loadTransformers()
     const options = this.modelOptions(device)
     ;[this.tokenizer, this.textModel] = await Promise.all([
       AutoTokenizer.from_pretrained(MODEL_ID, options),
@@ -244,7 +295,10 @@ class SemanticRuntime {
     if (this.environmentReady) return
     if (this.environmentLoading) return this.environmentLoading
     this.environmentLoading = (async () => {
-      const modelRoot = await imagyxApi.prepareLocalModel('mobileclip-s0')
+      const [{ env }, modelRoot] = await Promise.all([
+        loadTransformers(),
+        imagyxApi.prepareLocalModel('mobileclip-s0'),
+      ])
       const modelsDir = modelRoot.replace(/[\\/]+Xenova[\\/]mobileclip_s0$/, '')
       env.allowLocalModels = true
       env.allowRemoteModels = false
@@ -265,7 +319,9 @@ class SemanticRuntime {
       await this.loadVisionForDevice('webgpu')
       this.patchStats({ stage: this.paused ? 'paused' : 'ready', backendEffective: 'Transformers.js · WebGPU', accelerationActive: true, accelerationLabel: 'GPU WebGPU actif', fallbackReason: undefined })
     } catch (error) {
-      this.device = 'wasm'; this.visionModel = null; this.processor = null
+      this.device = 'wasm'
+      this.visionModel = null
+      this.processor = null
       await this.loadVisionForDevice('wasm')
       this.patchStats({ stage: this.paused ? 'paused' : 'ready', backendEffective: 'Transformers.js · WASM', accelerationActive: false, accelerationLabel: 'CPU WASM', fallbackReason: `WebGPU indisponible: ${String(error)}` })
     }
@@ -274,6 +330,11 @@ class SemanticRuntime {
   }
 
   private async loadVisionForDevice(device: Device) {
+    const {
+      AutoProcessor,
+      CLIPVisionModelWithProjection,
+      RawImage,
+    } = await loadTransformers()
     const options = this.modelOptions(device)
     ;[this.processor, this.visionModel] = await Promise.all([
       AutoProcessor.from_pretrained(MODEL_ID, options),
@@ -283,14 +344,28 @@ class SemanticRuntime {
     await this.visionModel(await this.processor(blank))
   }
 
-  private modelOptions(device: Device = this.device) { return { device, dtype: 'fp32', local_files_only: true } as const }
+  private modelOptions(device: Device = this.device) {
+    return { device, dtype: 'fp32', local_files_only: true } as const
+  }
+
   private publishProgress(progress: ModelDownloadProgress) {
     if (!this.callbacks) return
     this.callbacks.progress(progress)
     void imagyxApi.updateModelProgress(progress)
   }
+
   private patchStats(patch: Partial<RuntimeStats>) {
-    this.stats = { ...this.stats, ...patch, updatedAt: Date.now() }
+    const stage = patch.stage === 'ready' && this.textLoading
+      ? 'text-ready'
+      : patch.stage === 'ready' && this.loading
+        ? 'vision-ready'
+        : patch.stage
+    this.stats = {
+      ...this.stats,
+      ...patch,
+      ...(stage ? { stage } : {}),
+      updatedAt: Date.now(),
+    }
     if (!this.callbacks) return
     this.callbacks.stats(this.stats)
     void imagyxApi.updateRuntimeStats(this.stats)

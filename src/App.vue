@@ -18,6 +18,8 @@ import { useOnboardingStore } from "./stores/onboarding";
 import { usePlatformStore } from "./stores/platform";
 import { useShortcutStore } from "./stores/shortcut";
 import { useThemeStore } from "./stores/theme";
+import { semanticRuntime } from "./services/semantic";
+import { registerSemanticQueryProvider } from "./services/semantic-provider";
 import { capitalize, useTagTypewriter } from "./useTagTypewriter";
 import { debounce, perfLog } from "./utils";
 
@@ -48,6 +50,7 @@ const searchHeader = ref<{
 } | null>(null);
 let unlistenOpenImage: UnlistenFn | null = null;
 let unlistenOpenOnboarding: UnlistenFn | null = null;
+let unlistenSemanticProvider: UnlistenFn | null = null;
 
 const folderPrefix = computed(() =>
   store.selectedFolder ? `${store.selectedFolder.name}: ` : "All images: ",
@@ -116,22 +119,43 @@ async function openImageFromSpotlight(imageId: string) {
     store.images.find((image) => image.id === imageId) ?? null;
 }
 
+function scheduleEarlyTextWarmup() {
+  window.requestAnimationFrame(() =>
+    window.requestAnimationFrame(() => {
+      const started = performance.now();
+      void semanticRuntime
+        .prewarmText()
+        .then(() =>
+          perfLog(
+            "SemanticIA",
+            "early text warmup",
+            performance.now() - started,
+          ),
+        )
+        .catch(() => undefined);
+    }),
+  );
+}
+
 onMounted(async () => {
   const start = performance.now();
   theme.initialize();
   onboarding.initialize();
   void platform.initialize();
   void shortcut.initialize();
-  void store.initialize().then(() => {
+  unlistenSemanticProvider = await registerSemanticQueryProvider();
+  const initializePromise = store.initialize();
+  scheduleEarlyTextWarmup();
+  void initializePromise.then(() => {
     perfLog("App", "Full store initial load", performance.now() - start);
   });
   window.addEventListener("keydown", handleTypeToSearch);
-  unlistenOpenImage = await listen<string>("open-image-requested", (event) => {
-    void openImageFromSpotlight(event.payload);
-  });
-  unlistenOpenOnboarding = await listen("open-onboarding-requested", () =>
-    onboarding.show(),
-  );
+  [unlistenOpenImage, unlistenOpenOnboarding] = await Promise.all([
+    listen<string>("open-image-requested", (event) => {
+      void openImageFromSpotlight(event.payload);
+    }),
+    listen("open-onboarding-requested", () => onboarding.show()),
+  ]);
   perfLog("App", "onMounted shell setup", performance.now() - start);
 });
 
@@ -139,6 +163,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleTypeToSearch);
   unlistenOpenImage?.();
   unlistenOpenOnboarding?.();
+  unlistenSemanticProvider?.();
   for (const unlisten of store.listeners) unlisten();
 });
 </script>

@@ -8,6 +8,7 @@ use crate::{
     indexer,
     models::{FollowedFolder, ImageAsset},
     state::AppState,
+    tracing,
     watcher::FolderWatcher,
 };
 
@@ -87,6 +88,7 @@ pub fn remove_folder(
 #[tauri::command(rename_all = "camelCase")]
 pub async fn index_folder(
     folder_id: String,
+    force: Option<bool>,
     state: State<'_, Arc<AppState>>,
     app: AppHandle,
 ) -> Result<(), String> {
@@ -96,10 +98,20 @@ pub async fn index_folder(
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "Dossier inconnu".to_owned())?;
     let state = Arc::clone(state.inner());
-    tauri::async_runtime::spawn_blocking(move || indexer::index_folder(&state, &app, &folder))
-        .await
-        .map_err(|error| error.to_string())?
-        .map_err(|error| error.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        if force.unwrap_or(false) {
+            let removed = state.database.reset_embeddings_for_folder(&folder.id)?;
+            state.vectors.write().remove_folder(&folder.id);
+            tracing::event(
+                "indexer.folder.force_reset",
+                format_args!("folder_id={} embeddings={removed}", folder.id),
+            );
+        }
+        indexer::index_folder(&state, &app, &folder)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command(rename_all = "camelCase")]

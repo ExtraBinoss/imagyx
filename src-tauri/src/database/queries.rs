@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use rusqlite::{params_from_iter, types::Value};
+use rusqlite::{
+    OptionalExtension, params, params_from_iter,
+    types::Value,
+};
 
 use crate::{AppError, models::ImageAsset};
 
@@ -49,5 +52,44 @@ impl Database {
             })?
             .collect::<Result<HashMap<_, _>, _>>()
             .map_err(AppError::from)
+    }
+
+    pub fn image_path_is_known(&self, image_id: &str, path: &str) -> Result<bool, AppError> {
+        self.connect()?
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM images WHERE id = ?1 AND path = ?2)",
+                params![image_id, path],
+                |row| row.get(0),
+            )
+            .map_err(AppError::from)
+    }
+
+    pub fn thumbnail_path(
+        &self,
+        image_id: &str,
+        source_path: &str,
+    ) -> Result<Option<String>, AppError> {
+        self.connect()?
+            .query_row(
+                "SELECT thumbnail_path FROM images WHERE id = ?1 AND path = ?2",
+                params![image_id, source_path],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map(|value| value.filter(|path| !path.is_empty()))
+            .map_err(AppError::from)
+    }
+
+    pub fn save_thumbnail_path(
+        &self,
+        image_id: &str,
+        source_path: &str,
+        thumbnail_path: &str,
+    ) -> Result<(), AppError> {
+        self.connect()?.execute(
+            "UPDATE images SET thumbnail_path = ?3 WHERE id = ?1 AND path = ?2",
+            params![image_id, source_path, thumbnail_path],
+        )?;
+        Ok(())
     }
 }

@@ -99,3 +99,28 @@ fn validates_thumbnail_identity_and_path() {
             .expect("unknown path")
     );
 }
+
+#[test]
+fn persists_thumbnail_paths_for_known_images() {
+    let (_temp, database, folder) = fixture();
+    let image = asset(&folder.id, "one", "one.jpg", 1);
+    let image_path = image.path.clone();
+    database.save_assets(&[image], &[]).expect("save image");
+
+    assert_eq!(
+        database
+            .thumbnail_path("one", &image_path)
+            .expect("empty thumbnail"),
+        None,
+    );
+    database
+        .save_thumbnail_path("one", &image_path, "/tmp/cache/one.jpg")
+        .expect("save thumbnail");
+    assert_eq!(
+        database
+            .thumbnail_path("one", &image_path)
+            .expect("stored thumbnail")
+            .as_deref(),
+        Some("/tmp/cache/one.jpg"),
+    );
+}

@@ -2,7 +2,7 @@ import type { ImageAsset } from '../types'
 import { imagyxApi } from '../api/tauri'
 import { perfSample } from '../utils'
 
-const MAX_CONCURRENT_REQUESTS = 4
+const MAX_CONCURRENT_REQUESTS = 6
 const MAX_QUEUED_REQUESTS = 96
 const MEMORY_CACHE_CAPACITY = 512
 
