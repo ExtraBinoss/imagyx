@@ -1,94 +1,89 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Image as ImageIcon } from '@lucide/vue'
-import { imagyxApi } from '../api/tauri'
 import type { ImageAsset } from '../types'
-import { requestThumbnail } from '../services/thumbnails'
+import {
+  forgetThumbnail,
+  peekThumbnail,
+  requestThumbnail,
+} from '../services/thumbnails'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   image: ImageAsset
-}>()
+  priority?: number
+}>(), {
+  priority: 0,
+})
 
-const host = ref<HTMLElement | null>(null)
-const source = ref<string | null>(cachedSource())
+const source = ref<string | null>(peekThumbnail(props.image))
 const failed = ref(false)
-const visible = ref(false)
 let requestVersion = 0
-let cachedSourceFailed = false
-let observer: IntersectionObserver | null = null
+let retriedAfterImageError = false
+let controller: AbortController | null = null
 
-function cachedSource(): string | null {
-  return props.image.thumbnailPath
-    ? imagyxApi.fileUrl(props.image.thumbnailPath)
-    : null
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
 }
 
 async function loadThumbnail() {
-  if (!visible.value || source.value) return
+  if (source.value) return
+  controller?.abort()
+  controller = new AbortController()
   const version = ++requestVersion
   failed.value = false
   try {
-    const url = await requestThumbnail(props.image)
+    const url = await requestThumbnail(props.image, {
+      priority: props.priority,
+      signal: controller.signal,
+    })
     if (version === requestVersion) source.value = url
-  } catch {
-    if (version === requestVersion) failed.value = true
+  } catch (error) {
+    if (version === requestVersion && !isAbortError(error)) failed.value = true
   }
 }
 
+function resetThumbnail() {
+  controller?.abort()
+  requestVersion += 1
+  retriedAfterImageError = false
+  failed.value = false
+  source.value = peekThumbnail(props.image)
+  if (!source.value) void loadThumbnail()
+}
+
 function handleImageError() {
-  if (!props.image.thumbnailPath || cachedSourceFailed) {
+  if (retriedAfterImageError) {
     failed.value = true
     return
   }
-  cachedSourceFailed = true
+  retriedAfterImageError = true
+  forgetThumbnail(props.image)
   source.value = null
   void loadThumbnail()
 }
 
 watch(
-  () => [props.image.id, props.image.modifiedAt, props.image.thumbnailPath] as const,
-  () => {
-    requestVersion += 1
-    cachedSourceFailed = false
-    source.value = cachedSource()
-    failed.value = false
-    void loadThumbnail()
-  },
+  () => [props.image.id, props.image.modifiedAt] as const,
+  resetThumbnail,
 )
 
 onMounted(() => {
-  const element = host.value
-  if (!element || typeof IntersectionObserver === 'undefined') {
-    visible.value = true
-    void loadThumbnail()
-    return
-  }
-  observer = new IntersectionObserver(
-    (entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return
-      visible.value = true
-      observer?.disconnect()
-      observer = null
-      void loadThumbnail()
-    },
-    { rootMargin: '320px' },
-  )
-  observer.observe(element)
+  if (!source.value) void loadThumbnail()
 })
 
 onBeforeUnmount(() => {
   requestVersion += 1
-  observer?.disconnect()
+  controller?.abort()
 })
 </script>
 
 <template>
-  <span ref="host" class="thumbnail-loader">
+  <span class="thumbnail-loader">
     <img
       v-if="source"
       :src="source"
       :alt="image.name"
-      loading="lazy"
+      loading="eager"
       decoding="async"
       draggable="false"
       @error="handleImageError"
@@ -111,7 +106,13 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
 }
+.thumbnail-loader {
+  contain: paint;
+  overflow: hidden;
+}
 .thumbnail-loader > img {
   object-fit: cover;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 </style>
