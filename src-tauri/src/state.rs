@@ -7,6 +7,7 @@ use crate::{
     paths::AppPaths,
     system_stats::SystemMonitor,
     thumbnails::ThumbnailCache,
+    tracing,
     vector_store::VectorStore,
 };
 
@@ -48,12 +49,10 @@ impl AppState {
     }
 
     pub fn load_vectors(&self) -> Result<(), AppError> {
-        let vectors = self.database.vectors()?;
-        self.vectors.write().upsert(
-            vectors
-                .into_iter()
-                .map(|entry| (entry.image_id, entry.folder_id, entry.vector)),
-        );
+        let store = VectorStore::from_entries(self.database.vectors()?);
+        let count = store.len();
+        *self.vectors.write() = store;
+        tracing::event("startup.vectors.loaded", format_args!("count={count}"));
         Ok(())
     }
 }
