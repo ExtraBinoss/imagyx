@@ -11,6 +11,7 @@ mod state;
 mod system_stats;
 mod thumbnails;
 mod tracing;
+mod tray;
 mod vector_store;
 mod watcher;
 
@@ -81,6 +82,10 @@ pub fn run() {
                 let _trace = tracing::span("startup.folders");
                 state.database.folders_for_watching()?
             };
+            let indexed_images = folders
+                .iter()
+                .filter_map(|folder| usize::try_from(folder.image_count).ok())
+                .sum();
             {
                 let _trace = tracing::span("startup.asset_scopes");
                 app.asset_protocol_scope()
@@ -107,7 +112,8 @@ pub fn run() {
 
             app.manage(shortcut_preferences);
             app.manage(folder_watcher);
-            app.manage(state);
+            app.manage(Arc::clone(&state));
+            tray::setup(app.handle(), indexed_images)?;
 
             if let Some(main) = app.get_webview_window("main") {
                 let window = main.clone();
@@ -117,6 +123,12 @@ pub fn run() {
                         let _ = window.hide();
                     }
                 });
+
+                #[cfg(debug_assertions)]
+                {
+                    let _ = main.show();
+                    let _ = main.set_focus();
+                }
             }
             Ok(())
         })
@@ -147,6 +159,7 @@ pub fn run() {
             onboarding::open_onboarding,
             commands::spotlight::set_spotlight_expanded,
             commands::spotlight::hide_spotlight,
+            tray::set_tray_paused,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Imagyx");
