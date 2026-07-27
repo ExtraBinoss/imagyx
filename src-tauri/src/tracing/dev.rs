@@ -7,8 +7,14 @@ use std::{
 use super::helpers::{MAX_SAMPLES_PER_SPAN, percentile};
 
 static INIT: Once = Once::new();
-static METRICS: OnceLock<Mutex<HashMap<&'static str, VecDeque<u64>>>> = OnceLock::new();
+static METRICS: OnceLock<Mutex<HashMap<&'static str, SpanSamples>>> = OnceLock::new();
 const SUMMARY_INTERVAL: usize = 32;
+
+#[derive(Debug, Default)]
+struct SpanSamples {
+    total: usize,
+    values: VecDeque<u64>,
+}
 
 #[derive(Debug)]
 pub struct TraceSpan {
@@ -48,7 +54,7 @@ pub fn event(name: &'static str, detail: impl std::fmt::Display) {
 #[cfg(test)]
 fn snapshot(name: &'static str) -> Option<(usize, u64, u64)> {
     let metrics = METRICS.get()?.lock().ok()?;
-    let samples = metrics.get(name)?;
+    let samples = &metrics.get(name)?.values;
     Some((
         samples.len(),
         percentile(samples, 0.50)?,
@@ -62,19 +68,19 @@ fn record(name: &'static str, elapsed_ms: u64) -> Option<(usize, u64, u64)> {
         return None;
     };
     let samples = metrics.entry(name).or_default();
-    if samples.len() == MAX_SAMPLES_PER_SPAN {
-        samples.pop_front();
+    samples.total = samples.total.saturating_add(1);
+    if samples.values.len() == MAX_SAMPLES_PER_SPAN {
+        samples.values.pop_front();
     }
-    samples.push_back(elapsed_ms);
+    samples.values.push_back(elapsed_ms);
 
-    let count = samples.len();
-    if count < SUMMARY_INTERVAL || count % SUMMARY_INTERVAL != 0 {
+    if samples.total % SUMMARY_INTERVAL != 0 {
         return None;
     }
     Some((
-        count,
-        percentile(samples, 0.50)?,
-        percentile(samples, 0.95)?,
+        samples.values.len(),
+        percentile(&samples.values, 0.50)?,
+        percentile(&samples.values, 0.95)?,
     ))
 }
 
