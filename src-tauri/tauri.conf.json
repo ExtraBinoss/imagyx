@@ -33,6 +33,7 @@
       },
       {
         "label": "spotlight",
+        "create": false,
         "title": "Imagyx Spotlight",
         "width": 780,
         "height": 126,
