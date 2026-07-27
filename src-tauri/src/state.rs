@@ -27,8 +27,14 @@ pub struct AppState {
 impl AppState {
     pub fn new(paths: AppPaths) -> Result<Self, AppError> {
         let database = Database::new(paths.database.clone())?;
+        if let Err(error) = std::fs::remove_dir_all(&paths.thumbnails)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::event("thumbnail.legacy_cache.cleanup_failed", error);
+        }
+
         Ok(Self {
-            thumbnails: ThumbnailCache::new(paths.thumbnails.clone()),
+            thumbnails: ThumbnailCache::new(),
             paths,
             database,
             vectors: RwLock::new(VectorStore::default()),
