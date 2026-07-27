@@ -49,21 +49,6 @@ impl VectorStore {
         self.retain(|entry| entry.folder_id != folder_id);
     }
 
-    pub fn snapshot_for_ids(&self, ids: &HashSet<&str>) -> Vec<VectorEntry> {
-        ids.iter()
-            .filter_map(|image_id| {
-                let position = *self.positions.get(*image_id)?;
-                let metadata = &self.entries[position];
-                let start = position * self.dimensions;
-                Some(VectorEntry {
-                    image_id: metadata.image_id.clone(),
-                    folder_id: metadata.folder_id.clone(),
-                    vector: self.vectors[start..start + self.dimensions].to_vec(),
-                })
-            })
-            .collect()
-    }
-
     pub fn snapshot(&self, limit: usize) -> Vec<VectorEntry> {
         self.entries
             .iter()
