@@ -156,12 +156,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
             </Button>
 
             <div class="onboarding-progress" :aria-label="`Étape ${stepIndex + 1} sur ${steps.length}`">
-              <button
+              <Button
                 v-for="(_, index) in steps"
                 :key="index"
                 class="onboarding-dot"
                 :class="{ 'onboarding-dot--active': index === stepIndex, 'onboarding-dot--done': index < stepIndex }"
-                type="button"
+                variant="ghost"
+                size="icon"
+                :depth="false"
                 :aria-label="`Aller à l’étape ${index + 1}`"
                 @click="goTo(index)"
               />
@@ -177,7 +179,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
               <Button variant="primary" size="md" @click="next">
                 <template #leading><PartyPopper v-if="isLast" :size="15" /></template>
                 {{ isLast ? 'Commencer' : 'Suivant' }}
-                <template v-if="!isLast" #trailing><ArrowRight :size="15" /></template>
+                <template #trailing><ArrowRight v-if="!isLast" :size="15" /></template>
               </Button>
             </div>
           </footer>
@@ -240,17 +242,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 .onboarding-progress { display: flex; align-items: center; justify-content: center; gap: 6px; }
 .onboarding-dot {
   width: 7px;
+  min-width: 7px;
   height: 7px;
+  min-height: 7px;
   padding: 0;
   border: 0;
   border-radius: 99px;
   background: var(--border-strong);
+  color: transparent;
   cursor: pointer;
-  transition: width 220ms cubic-bezier(0.16, 1, 0.3, 1), background-color 160ms ease, transform 160ms ease;
+  overflow: visible;
+  transition: width 220ms cubic-bezier(0.16, 1, 0.3, 1), min-width 220ms cubic-bezier(0.16, 1, 0.3, 1), background-color 160ms ease, transform 160ms ease;
 }
-.onboarding-dot:hover { transform: scale(1.25); }
+.onboarding-dot:hover { transform: scale(1.25); background: color-mix(in srgb, var(--primary) 42%, var(--border)); }
 .onboarding-dot--done { background: color-mix(in srgb, var(--primary) 56%, var(--border)); }
-.onboarding-dot--active { width: 22px; background: var(--primary); }
+.onboarding-dot--active { width: 22px; min-width: 22px; background: var(--primary); }
 .onboarding-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .onboarding-overlay-enter-active,
 .onboarding-overlay-leave-active { transition: opacity 220ms ease, backdrop-filter 220ms ease; }
