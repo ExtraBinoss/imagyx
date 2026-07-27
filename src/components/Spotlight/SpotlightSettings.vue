@@ -40,7 +40,7 @@ const normalizedQuery = computed(() => (props.query ?? '').trim().toLocaleLowerC
 const showShortcut = computed(() => isPopover.value || matches(['raccourci', 'shortcut', 'clavier', 'keybind', 'spotlight', 'ouvrir']))
 const showTheme = computed(() => isPopover.value || matches(['thème', 'theme', 'apparence', 'clair', 'sombre', 'système', 'couleur']))
 const showControls = computed(() => isPopover.value || matches(['boutons', 'bouton', 'contrôles', 'controles', 'fermeture', 'réduction', 'reduction', 'fenêtre', 'fenetre', 'position', 'gauche', 'droite', 'titlebar', 'barre']))
-const showOnboarding = computed(() => isPopover.value || matches(['onboarding', 'guide', 'tutoriel', 'découvrir', 'decouvrir', 'bienvenue', 'aide', 'fonctionnalités', 'fonctionnalites']))
+const showOnboarding = computed(() => isPopover.value || matches(['onboarding', 'guide', 'tutorial', 'tutoriel', 'discover', 'découvrir', 'decouvrir', 'welcome', 'bienvenue', 'help', 'aide']))
 const showInfo = computed(() => isPopover.value || matches(['info', 'information', 'version', 'débug', 'debug', 'système', 'imagyx', 'stats', 'indexation', 'base', 'sqlite']))
 const hasResults = computed(() => showShortcut.value || showTheme.value || showControls.value || showOnboarding.value || showInfo.value)
 
@@ -129,10 +129,10 @@ async function copyDebugInfo() {
     <section v-if="showOnboarding" class="settings-section">
       <header>
         <span class="settings-section__icon"><BookOpen :size="17" /></span>
-        <div><strong>Guide de découverte</strong><p>Revois les fonctions principales et ajoute un dossier depuis le parcours.</p></div>
+        <div><strong>Discovery guide</strong><p>Review the core features or add an image folder directly from the guided tour.</p></div>
       </header>
       <Button variant="secondary" size="md" block @click="openOnboarding">
-        <template #leading><BookOpen :size="16" /></template>Relancer l’onboarding
+        <template #leading><BookOpen :size="16" /></template>Replay onboarding
       </Button>
     </section>
 
