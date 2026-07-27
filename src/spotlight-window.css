@@ -24,7 +24,7 @@
 :root[data-window='spotlight'] .spotlight-loading-list {
   opacity: 0;
   visibility: hidden;
-  animation: spotlight-loading-reveal 0s linear 180ms forwards !important;
+  animation: spotlight-loading-reveal 0s linear 300ms forwards !important;
 }
 
 @keyframes spotlight-loading-reveal {
