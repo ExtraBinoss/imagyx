@@ -18,6 +18,14 @@ import SpotlightSettings from './SpotlightSettings.vue'
 import type { SpotlightIndexJob, SpotlightView } from './types'
 import { useSpotlightResultActions } from './useSpotlightResultActions'
 
+const CACHE_TTL_MS = 2_000
+const SEARCH_DEBOUNCE_MS = 140
+
+interface CachedResults {
+  images: ImageAsset[]
+  storedAt: number
+}
+
 const platform = usePlatformStore()
 const shortcut = useShortcutStore()
 const theme = useThemeStore()
@@ -37,7 +45,7 @@ const dialogOpen = ref(false)
 const jobs = ref<SpotlightIndexJob[]>([])
 const inputView = ref<InstanceType<typeof SpotlightInput> | null>(null)
 const resultsView = ref<InstanceType<typeof SpotlightResults> | null>(null)
-const resultCache = new Map<string, ImageAsset[]>()
+const resultCache = new Map<string, CachedResults>()
 const {
   copiedImageId,
   copyingImageId,
@@ -61,6 +69,7 @@ let unlistenWillHide: UnlistenFn | null = null
 let unlistenFocus: UnlistenFn | null = null
 let unlistenIndex: UnlistenFn | null = null
 let unlistenRuntime: UnlistenFn | null = null
+let unlistenLibrary: UnlistenFn | null = null
 
 const activeQuery = computed({
   get: () => view.value === 'settings' ? settingsQuery.value : searchQuery.value,
@@ -82,7 +91,7 @@ const showAddAction = computed(() => {
   return query.startsWith('add') || query.startsWith('ajout') || query.startsWith('folder') || query.startsWith('dossier')
 })
 
-const searchLater = debounce(() => { void runSearch() }, 65)
+const searchLater = debounce(() => { void runSearch() }, SEARCH_DEBOUNCE_MS)
 
 watch(searchQuery, (value) => {
   selectedIndex.value = 0
@@ -161,13 +170,26 @@ async function runSearch() {
   const cacheKey = text.toLocaleLowerCase('fr')
   if (!text) return
   const cached = resultCache.get(cacheKey)
-  if (cached) { results.value = cached; searching.value = false; return }
+  if (cached && performance.now() - cached.storedAt <= CACHE_TTL_MS) {
+    results.value = cached.images
+    searching.value = false
+    return
+  }
+  if (cached) resultCache.delete(cacheKey)
 
   searching.value = true
   const lexicalPromise = imagyxApi.search({ query: text, limit: 60 })
-  const embeddingPromise = text.length >= 2 ? semanticRuntime.embedQuery(text) : Promise.resolve(undefined)
+  const embeddingPromise = text.length >= 2
+    ? semanticRuntime.embedQuery(text)
+    : Promise.resolve(undefined)
   void lexicalPromise.then((images) => {
-    if (sequence === searchSequence && searchQuery.value.trim() === text && (images.length || !results.value.length)) results.value = images
+    if (
+      sequence === searchSequence &&
+      searchQuery.value.trim() === text &&
+      (images.length || !results.value.length)
+    ) {
+      results.value = images
+    }
   }).catch(() => undefined)
 
   try {
@@ -190,7 +212,7 @@ async function runSearch() {
 }
 
 function rememberResults(key: string, images: ImageAsset[]) {
-  resultCache.set(key, images)
+  resultCache.set(key, { images, storedAt: performance.now() })
   if (resultCache.size <= 24) return
   const oldest = resultCache.keys().next().value as string | undefined
   if (oldest) resultCache.delete(oldest)
@@ -203,7 +225,7 @@ async function addFolder() {
     if (typeof selected !== 'string') return
     const folder = await imagyxApi.addFolder(selected)
     upsertJob({ folderId: folder.id, folderName: folder.name, current: 0, total: 0, stage: 'discovering', message: 'Analyse du dossier…' })
-    void imagyxApi.indexFolder(folder.id).catch((reason) => {
+    void imagyxApi.indexFolder(folder.id, false).catch((reason) => {
       upsertJob({ folderId: folder.id, folderName: folder.name, current: 0, total: 0, stage: 'error', message: String(reason) })
     })
   } catch (reason) {
@@ -220,7 +242,10 @@ function handleIndexProgress(progress: IndexProgress) {
       : progress.stage === 'error' ? 'error'
         : progress.stage === 'metadata' ? 'metadata' : 'discovering'
   upsertJob({ folderId: progress.folderId, folderName: progress.folderName, current: progress.current, total: progress.total, stage, message: progress.message })
-  if (stage === 'complete') scheduleJobCleanup(progress.folderId)
+  if (stage === 'complete') {
+    resultCache.clear()
+    scheduleJobCleanup(progress.folderId)
+  }
 }
 
 function handleRuntimeStats(stats: RuntimeStats) {
@@ -230,6 +255,7 @@ function handleRuntimeStats(stats: RuntimeStats) {
     upsertJob({ ...job, stage: 'embedding', current: stats.current, total: stats.total, message: `Analyse IA · ${stats.current} sur ${stats.total}` })
   } else if (stats.stage === 'ready' && job.stage === 'embedding') {
     upsertJob({ ...job, stage: 'complete', current: job.total, message: 'Indexation terminée' })
+    resultCache.clear()
     scheduleJobCleanup(job.folderId)
   }
 }
@@ -333,17 +359,35 @@ onMounted(async () => {
   void platform.initialize()
   void shortcut.initialize()
   window.addEventListener('keydown', handleKeydown, { capture: true })
-  unlistenWillOpen = await listen('spotlight-will-open', prepareOpen)
-  unlistenOpened = await listen('spotlight-opened', animateOpen)
-  unlistenWillHide = await listen('spotlight-will-hide', prepareHide)
-  unlistenIndex = await listen<IndexProgress>('index-progress', (event) => handleIndexProgress(event.payload))
-  unlistenRuntime = await listen<RuntimeStats>('runtime-stats', (event) => handleRuntimeStats(event.payload))
-  unlistenFocus = await currentWindow.onFocusChanged(({ payload }) => { if (!payload && !dialogOpen.value) void imagyxApi.hideSpotlight() })
+  [
+    unlistenWillOpen,
+    unlistenOpened,
+    unlistenWillHide,
+    unlistenIndex,
+    unlistenRuntime,
+    unlistenLibrary,
+  ] = await Promise.all([
+    listen('spotlight-will-open', prepareOpen),
+    listen('spotlight-opened', animateOpen),
+    listen('spotlight-will-hide', prepareHide),
+    listen<IndexProgress>('index-progress', (event) => handleIndexProgress(event.payload)),
+    listen<RuntimeStats>('runtime-stats', (event) => handleRuntimeStats(event.payload)),
+    listen('library-updated', () => resultCache.clear()),
+  ])
+  unlistenFocus = await currentWindow.onFocusChanged(({ payload }) => {
+    if (!payload && !dialogOpen.value) void imagyxApi.hideSpotlight()
+  })
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeydown, { capture: true })
-  unlistenWillOpen?.(); unlistenOpened?.(); unlistenWillHide?.(); unlistenFocus?.(); unlistenIndex?.(); unlistenRuntime?.()
+  unlistenWillOpen?.()
+  unlistenOpened?.()
+  unlistenWillHide?.()
+  unlistenFocus?.()
+  unlistenIndex?.()
+  unlistenRuntime?.()
+  unlistenLibrary?.()
   if (collapseTimer) window.clearTimeout(collapseTimer)
   if (jobTimer) window.clearTimeout(jobTimer)
 })
