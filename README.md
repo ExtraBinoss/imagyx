@@ -132,7 +132,8 @@ Pictures/imagyx/
 - on-demand cached thumbnails;
 - keyboard-first navigation and quick actions;
 - light and dark appearance;
-- Windows and macOS desktop support.
+- Windows and macOS desktop support;
+- multilingual interface: English, Français, Español, Deutsch, Italiano, Português, 日本語, 简体中文, العربية, Русский.
 
 ## Contributing
 

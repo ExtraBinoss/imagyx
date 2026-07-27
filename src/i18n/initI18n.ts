@@ -1,12 +1,20 @@
 import { createI18n, type I18n } from 'vue-i18n'
 import en from './en'
 import fr from './fr'
+import es from './es'
+import de from './de'
+import it from './it'
+import pt from './pt'
+import ja from './ja'
+import zh from './zh'
+import ar from './ar'
+import ru from './ru'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AppI18n = I18n<any, any, any, any, false>
 let _i18n: AppI18n | null = null
 
-const SUPPORTED_LOCALES = ['en', 'fr'] as const
+const SUPPORTED_LOCALES = ['en', 'fr', 'es', 'de', 'it', 'pt', 'ja', 'zh', 'ar', 'ru'] as const
 
 function detectLocale(): string {
   const stored = localStorage.getItem('imagyx-locale')
@@ -24,7 +32,7 @@ export function initI18n(): AppI18n {
     legacy: false,
     locale,
     fallbackLocale: 'en',
-    messages: { en, fr },
+    messages: { en, fr, es, de, it, pt, ja, zh, ar, ru },
   })
 
   _i18n = i18n as unknown as AppI18n
