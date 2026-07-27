@@ -6,9 +6,11 @@ import {
   RawImage,
   env,
 } from '@huggingface/transformers'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { imagyxApi } from '../api/tauri'
 import type { ModelDownloadProgress, QueryConcept, RuntimeStats } from '../types'
 import { perfLog } from '../utils'
+import { requestSemanticEmbedding } from './semantic-channel'
 import { buildQueryPromptPlan, combinePromptVectors } from './query-prompts'
 
 const MODEL_ID = 'Xenova/mobileclip_s0'
@@ -16,6 +18,8 @@ const MODEL_NAME = 'MobileCLIP-S0'
 const INDEX_PAUSED_KEY = 'imagyx.index-paused'
 const INITIAL_BATCH_SIZE = 4
 const MAX_BATCH_SIZE = 16
+const QUERY_CACHE_CAPACITY = 24
+const currentWindow = getCurrentWindow()
 const DEFAULT_IMAGE_LABELS = [
   'personne', 'femme', 'homme', 'enfant', 'groupe de personnes', 'visage',
   'animal', 'chien', 'chat', 'oiseau', 'voiture', 'vélo', 'bâtiment', 'maison',
@@ -51,6 +55,7 @@ class SemanticRuntime {
   private indexing: Promise<void> | null = null
   private genericConcepts: QueryConcept[] | null = null
   private callbacks: RuntimeCallbacks | null = null
+  private queryCache = new Map<string, EmbeddedQuery>()
   private paused = localStorage.getItem(INDEX_PAUSED_KEY) === 'true'
   private stats: RuntimeStats = { ...defaultStats(), stage: this.paused ? 'paused' : 'idle' }
 
@@ -81,6 +86,7 @@ class SemanticRuntime {
   }
 
   async prewarmText() {
+    if (currentWindow.label === 'spotlight') return
     await this.ensureTextReady()
     if (this.textPrimed) return
     if (!this.textPriming) {
@@ -101,12 +107,13 @@ class SemanticRuntime {
   }
 
   private async runPendingIndex(folderId?: string) {
-    await this.prepare()
     const pending = await imagyxApi.pendingImages(folderId)
     if (pending.length === 0) {
       this.patchStats({ stage: 'ready', current: 0, total: 0 })
       return
     }
+
+    await this.prepare()
     const started = performance.now()
     let processed = 0
     let batchSize = INITIAL_BATCH_SIZE
@@ -157,9 +164,23 @@ class SemanticRuntime {
   async embedQuery(query: string): Promise<EmbeddedQuery | undefined> {
     const trimmed = query.trim()
     if (!trimmed) return undefined
-    await this.prewarmText()
+    if (currentWindow.label === 'spotlight') {
+      return requestSemanticEmbedding(trimmed)
+    }
+    return this.embedLocalQuery(trimmed)
+  }
 
-    const plan = buildQueryPromptPlan(trimmed)
+  private async embedLocalQuery(query: string): Promise<EmbeddedQuery> {
+    const cacheKey = query.toLocaleLowerCase('fr')
+    const cached = this.queryCache.get(cacheKey)
+    if (cached) {
+      this.queryCache.delete(cacheKey)
+      this.queryCache.set(cacheKey, cached)
+      return cached
+    }
+
+    await this.prewarmText()
+    const plan = buildQueryPromptPlan(query)
     const texts = [
       ...plan.positivePrompts,
       ...plan.negativePrompts,
@@ -185,7 +206,14 @@ class SemanticRuntime {
       const vector = vectors[negativeEnd + index]
       return vector ? [{ label, vector }] : []
     })
-    return { queryVector, concepts }
+    const embedded = { queryVector, concepts }
+    this.queryCache.set(cacheKey, embedded)
+    while (this.queryCache.size > QUERY_CACHE_CAPACITY) {
+      const oldest = this.queryCache.keys().next().value as string | undefined
+      if (!oldest) break
+      this.queryCache.delete(oldest)
+    }
+    return embedded
   }
 
   async genericImageConcepts(): Promise<QueryConcept[]> {
