@@ -1,21 +1,22 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { X } from '@lucide/vue'
-import AppSidebar from './components/AppSidebar.vue'
-import ImageGrid from './components/ImageGrid.vue'
-import ImagePreviewDialog from './components/ImagePreviewDialog.vue'
-import SearchHeader from './components/SearchHeader.vue'
-import StatusBar from './components/StatusBar.vue'
 import Button from './components/ui/Button/Button.vue'
-import ToastViewport from './components/ui/Toast/ToastViewport.vue'
 import type { ImageAsset } from './types'
 import { useLibraryStore } from './stores/library'
 import { usePlatformStore } from './stores/platform'
 import { useThemeStore } from './stores/theme'
 import { capitalize, useTagTypewriter } from './useTagTypewriter'
 import { debounce } from './utils'
+
+const AppSidebar = defineAsyncComponent(() => import('./components/AppSidebar.vue'))
+const ImageGrid = defineAsyncComponent(() => import('./components/ImageGrid.vue'))
+const ImagePreviewDialog = defineAsyncComponent(() => import('./components/ImagePreviewDialog.vue'))
+const SearchHeader = defineAsyncComponent(() => import('./components/SearchHeader.vue'))
+const StatusBar = defineAsyncComponent(() => import('./components/StatusBar.vue'))
+const ToastViewport = defineAsyncComponent(() => import('./components/ui/Toast/ToastViewport.vue'))
 
 const store = useLibraryStore()
 const platform = usePlatformStore()
