@@ -1,21 +1,22 @@
 use std::{collections::HashMap, path::Path, sync::Arc};
 
 use rayon::prelude::*;
-use tauri::State;
+use tauri::{State, ipc::Response};
 
 use crate::{
     indexer,
     models::{ImageEmbedding, ImageExplanation, QueryConcept, SemanticMatch},
     state::AppState,
+    thumbnails::{AI_IMAGE_CHANNELS, AI_IMAGE_EDGE},
 };
 
 #[tauri::command(rename_all = "camelCase")]
 pub async fn prepare_ai_images(
     image_ids: Vec<String>,
     state: State<'_, Arc<AppState>>,
-) -> Result<Vec<String>, String> {
+) -> Result<Response, String> {
     let state = Arc::clone(state.inner());
-    tauri::async_runtime::spawn_blocking(move || {
+    let packed = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
         let by_id = state
             .database
             .images_by_ids(&image_ids)
@@ -23,8 +24,8 @@ pub async fn prepare_ai_images(
             .into_iter()
             .map(|image| (image.id.clone(), image))
             .collect::<HashMap<_, _>>();
-
-        image_ids
+        let bytes_per_image = AI_IMAGE_EDGE as usize * AI_IMAGE_EDGE as usize * AI_IMAGE_CHANNELS;
+        let prepared = image_ids
             .par_iter()
             .map(|image_id| {
                 let image = by_id
@@ -32,14 +33,27 @@ pub async fn prepare_ai_images(
                     .ok_or_else(|| format!("Image inconnue: {image_id}"))?;
                 state
                     .thumbnails
-                    .get_or_create(&image.id, Path::new(&image.path), image.modified_at)
-                    .map(|path| path.to_string_lossy().into_owned())
+                    .prepare_ai_pixels(&image.id, Path::new(&image.path), image.modified_at)
                     .map_err(|error| error.to_string())
             })
-            .collect::<Result<Vec<String>, String>>()
+            .collect::<Result<Vec<Vec<u8>>, String>>()?;
+
+        let mut packed = Vec::with_capacity(prepared.len() * bytes_per_image);
+        for pixels in prepared {
+            if pixels.len() != bytes_per_image {
+                return Err(format!(
+                    "Taille de preview IA invalide: {} octets au lieu de {bytes_per_image}",
+                    pixels.len()
+                ));
+            }
+            packed.extend_from_slice(&pixels);
+        }
+        Ok(packed)
     })
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())??;
+
+    Ok(Response::new(packed))
 }
 
 #[tauri::command]
