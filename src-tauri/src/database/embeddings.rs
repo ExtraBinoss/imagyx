@@ -1,5 +1,5 @@
 use chrono::Utc;
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use crate::{
     AppError,
@@ -44,6 +44,18 @@ impl Database {
         insert_embeddings(&transaction, embeddings, Utc::now().timestamp_millis())?;
         transaction.commit()?;
         Ok(())
+    }
+
+    pub fn embedding_vector(&self, image_id: &str) -> Result<Option<Vec<f32>>, AppError> {
+        let connection = self.connect()?;
+        let blob = connection
+            .query_row(
+                "SELECT vector FROM embeddings WHERE image_id = ?1 AND model = ?2",
+                params![image_id, MODEL_ID],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .optional()?;
+        Ok(blob.map(|value| decode_vector(&value)))
     }
 
     pub fn vectors(&self) -> Result<Vec<VectorEntry>, AppError> {
