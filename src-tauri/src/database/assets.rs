@@ -3,36 +3,11 @@ use std::collections::{HashMap, HashSet};
 use chrono::Utc;
 use rusqlite::params;
 
-use crate::{
-    AppError,
-    models::{ImageAsset, ImageFingerprint},
-};
+use crate::{AppError, models::ImageAsset};
 
-use super::{
-    Database,
-    embeddings::insert_embeddings,
-    rows::{IMAGE_COLUMNS, map_image},
-};
+use super::{Database, embeddings::insert_embeddings};
 
 impl Database {
-    pub fn fingerprint(&self, path: &str) -> Result<Option<ImageFingerprint>, AppError> {
-        use rusqlite::OptionalExtension;
-
-        self.connect()?
-            .query_row(
-                "SELECT modified_at, size_bytes FROM images WHERE path = ?1",
-                params![path],
-                |row| {
-                    Ok(ImageFingerprint {
-                        modified_at: row.get(0)?,
-                        size_bytes: row.get::<_, i64>(1)?.try_into().unwrap_or_default(),
-                    })
-                },
-            )
-            .optional()
-            .map_err(AppError::from)
-    }
-
     pub fn fingerprints_for_folder(
         &self,
         folder_id: &str,
@@ -159,24 +134,5 @@ impl Database {
         drop(statement);
         transaction.commit()?;
         Ok(deleted)
-    }
-
-    pub fn images(&self, folder_id: Option<&str>) -> Result<Vec<ImageAsset>, AppError> {
-        let connection = self.connect()?;
-        let sql = if folder_id.is_some() {
-            format!(
-                "SELECT {IMAGE_COLUMNS} FROM images i
-                 WHERE i.folder_id = ?1 ORDER BY i.modified_at DESC"
-            )
-        } else {
-            format!("SELECT {IMAGE_COLUMNS} FROM images i ORDER BY i.modified_at DESC")
-        };
-        let mut statement = connection.prepare(&sql)?;
-        let rows = if let Some(folder_id) = folder_id {
-            statement.query_map(params![folder_id], map_image)?
-        } else {
-            statement.query_map([], map_image)?
-        };
-        rows.collect::<Result<Vec<_>, _>>().map_err(AppError::from)
     }
 }
