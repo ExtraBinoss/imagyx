@@ -3,6 +3,7 @@ mod db;
 mod indexer;
 mod ml;
 mod models;
+mod onboarding;
 mod paths;
 mod preferences;
 mod state;
@@ -125,6 +126,7 @@ pub fn run() {
             commands::open_in_file_manager,
             commands::copy_image_to_clipboard,
             commands::open_in_imagyx,
+            onboarding::open_onboarding,
             commands::set_spotlight_expanded,
             commands::hide_spotlight,
         ])
