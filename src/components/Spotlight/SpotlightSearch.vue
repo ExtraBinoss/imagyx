@@ -16,6 +16,7 @@ import SpotlightInput from './SpotlightInput.vue'
 import SpotlightResults from './SpotlightResults.vue'
 import SpotlightSettings from './SpotlightSettings.vue'
 import type { SpotlightIndexJob, SpotlightView } from './types'
+import { useSpotlightResultActions } from './useSpotlightResultActions'
 
 const platform = usePlatformStore()
 const shortcut = useShortcutStore()
@@ -29,7 +30,6 @@ const results = ref<ImageAsset[]>([])
 const selectedIndex = ref(0)
 const searching = ref(false)
 const error = ref<string | null>(null)
-const copiedImageId = ref<string | null>(null)
 const visible = ref(false)
 const resultsOpen = ref(false)
 const shellMerged = ref(false)
@@ -38,18 +38,23 @@ const jobs = ref<SpotlightIndexJob[]>([])
 const inputView = ref<InstanceType<typeof SpotlightInput> | null>(null)
 const resultsView = ref<InstanceType<typeof SpotlightResults> | null>(null)
 const resultCache = new Map<string, ImageAsset[]>()
+const {
+  copiedImageId,
+  copyingImageId,
+  revealingImageId,
+  openingImageId,
+  copyImage,
+  revealImage,
+  openImage,
+  resetActionFeedback,
+} = useSpotlightResultActions((reason) => { error.value = String(reason) })
 
 let searchSequence = 0
 let morphSequence = 0
 let expanded = false
 let expansionPromise: Promise<void> | null = null
-let copyTimer: number | undefined
-let typewriterTimer: number | undefined
 let collapseTimer: number | undefined
 let jobTimer: number | undefined
-let tagIndex = 0
-let characterIndex = typedTag.value.length
-let deleting = false
 let unlistenWillOpen: UnlistenFn | null = null
 let unlistenOpened: UnlistenFn | null = null
 let unlistenWillHide: UnlistenFn | null = null
@@ -130,7 +135,7 @@ async function ensureExpanded() {
 async function setCompact() {
   if (!expanded) return
   try { await imagyxApi.setSpotlightExpanded(false); expanded = false }
-  catch { /* le prochain lancement recalcule la fenêtre */ }
+  catch { /* the next launch recalculates the window */ }
 }
 
 async function openSettings() {
@@ -177,7 +182,7 @@ async function runSearch() {
   } catch (reason) {
     if (sequence === searchSequence) {
       error.value = String(reason)
-      try { results.value = await lexicalPromise } catch { /* erreur principale conservée */ }
+      try { results.value = await lexicalPromise } catch { /* the primary error remains visible */ }
     }
   } finally {
     if (sequence === searchSequence) searching.value = false
@@ -240,21 +245,6 @@ function scheduleJobCleanup(folderId: string) {
   jobTimer = window.setTimeout(() => { jobs.value = jobs.value.filter((job) => job.folderId !== folderId) }, 4200)
 }
 
-async function copyImage(image: ImageAsset) {
-  try {
-    await imagyxApi.copyImage(image.path)
-    copiedImageId.value = image.id
-    if (copyTimer) window.clearTimeout(copyTimer)
-    copyTimer = window.setTimeout(() => { copiedImageId.value = null }, 1800)
-  } catch (reason) { error.value = String(reason) }
-}
-async function revealImage(image: ImageAsset) {
-  try { await imagyxApi.openInFileManager(image.path, true) } catch (reason) { error.value = String(reason) }
-}
-async function openImage(image: ImageAsset) {
-  try { await imagyxApi.openInImagyx(image.id) } catch (reason) { error.value = String(reason) }
-}
-
 function moveSelection(delta: number) {
   if (!results.value.length) return
   selectedIndex.value = (selectedIndex.value + delta + results.value.length) % results.value.length
@@ -263,21 +253,20 @@ function moveSelection(delta: number) {
 
 function handleKeydown(event: KeyboardEvent) {
   if (view.value === 'search' && (event.ctrlKey || event.metaKey) && selectedImage.value) {
-    const keyLower = (event.key || '').toLocaleLowerCase()
-    const code = event.code || ''
-    if (keyLower === 'c' || code === 'KeyC') {
+    const key = event.key.toLocaleLowerCase()
+    if (key === 'c' || event.code === 'KeyC') {
       event.preventDefault()
       event.stopPropagation()
       void copyImage(selectedImage.value)
       return
     }
-    if (keyLower === 'e' || code === 'KeyE') {
+    if (key === 'e' || event.code === 'KeyE') {
       event.preventDefault()
       event.stopPropagation()
       void revealImage(selectedImage.value)
       return
     }
-    if (keyLower === 'i' || code === 'KeyI') {
+    if (key === 'i' || event.code === 'KeyI') {
       event.preventDefault()
       event.stopPropagation()
       void openImage(selectedImage.value)
@@ -292,10 +281,8 @@ function handleKeydown(event: KeyboardEvent) {
     return
   }
   if (view.value !== 'search') return
-
   if (event.key === 'ArrowDown') { event.preventDefault(); moveSelection(1); return }
   if (event.key === 'ArrowUp') { event.preventDefault(); moveSelection(-1); return }
-
   if (event.key === 'Enter' && selectedImage.value) {
     event.preventDefault()
     void openImage(selectedImage.value)
@@ -314,11 +301,14 @@ function prepareOpen() {
   shellMerged.value = false
   expanded = false
   expansionPromise = null
+  resetActionFeedback()
 }
+
 function animateOpen() {
   prepareOpen()
   void nextPaint(2).then(() => { visible.value = true; inputView.value?.focus() })
 }
+
 function prepareHide() {
   visible.value = false
   searchQuery.value = ''
@@ -328,6 +318,7 @@ function prepareHide() {
   shellMerged.value = false
   expanded = false
   expansionPromise = null
+  resetActionFeedback()
 }
 
 function nextPaint(count = 1): Promise<void> {
@@ -353,7 +344,6 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeydown, { capture: true })
   unlistenWillOpen?.(); unlistenOpened?.(); unlistenWillHide?.(); unlistenFocus?.(); unlistenIndex?.(); unlistenRuntime?.()
-  if (copyTimer) window.clearTimeout(copyTimer)
   if (collapseTimer) window.clearTimeout(collapseTimer)
   if (jobTimer) window.clearTimeout(jobTimer)
 })
@@ -399,6 +389,9 @@ onBeforeUnmount(() => {
                   :searching="searching"
                   :error="error"
                   :copied-image-id="copiedImageId"
+                  :copying-image-id="copyingImageId"
+                  :revealing-image-id="revealingImageId"
+                  :opening-image-id="openingImageId"
                   :show-add-action="showAddAction"
                   :jobs="jobs"
                   :file-manager-name="platform.fileManagerName"
