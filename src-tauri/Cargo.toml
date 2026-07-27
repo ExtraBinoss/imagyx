@@ -39,12 +39,12 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 tempfile = "3"
 
 [profile.dev]
-opt-level = 2
+opt-level = 1
 debug = 1
-incremental = true
+incremental = false
 
 [profile.dev.package."*"]
-opt-level = 3
+opt-level = 2
 
 [profile.release]
 lto = "thin"
