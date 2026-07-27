@@ -23,21 +23,22 @@ export async function requestSemanticEmbedding(
   const replyEvent = `semantic-query-response:${requestId}`
   let unlisten: UnlistenFn | null = null
   let timeout: number | undefined
-
+  let resolveResponse: (value: EmbeddedQuery | undefined) => void = () => undefined
+  let rejectResponse: (reason?: unknown) => void = () => undefined
   const response = new Promise<EmbeddedQuery | undefined>((resolve, reject) => {
-    void listen<SemanticQueryResponse>(replyEvent, (event) => {
-      if (event.payload.error) reject(new Error(event.payload.error))
-      else resolve(event.payload.result)
-    }).then((stop) => {
-      unlisten = stop
-      timeout = window.setTimeout(
-        () => reject(new Error('Le moteur de recherche sémantique ne répond pas')),
-        timeoutMs,
-      )
-    }).catch(reject)
+    resolveResponse = resolve
+    rejectResponse = reject
   })
 
   try {
+    unlisten = await listen<SemanticQueryResponse>(replyEvent, (event) => {
+      if (event.payload.error) rejectResponse(new Error(event.payload.error))
+      else resolveResponse(event.payload.result)
+    })
+    timeout = window.setTimeout(
+      () => rejectResponse(new Error('Le moteur de recherche sémantique ne répond pas')),
+      timeoutMs,
+    )
     await emitTo('main', SEMANTIC_QUERY_REQUEST_EVENT, {
       requestId,
       query,
