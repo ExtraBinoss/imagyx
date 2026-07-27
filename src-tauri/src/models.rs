@@ -90,16 +90,6 @@ pub struct IndexProgress {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelStatus {
-    pub ready: bool,
-    pub backend: String,
-    pub acceleration_active: bool,
-    pub acceleration_label: String,
-    pub fallback_reason: Option<String>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelDownloadProgress {
@@ -188,12 +178,6 @@ impl Default for RuntimeStats {
             updated_at: 0,
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct ImageFingerprint {
-    pub modified_at: i64,
-    pub size_bytes: u64,
 }
 
 #[derive(Debug, Clone)]
