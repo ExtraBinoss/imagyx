@@ -1,7 +1,13 @@
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{
+    collections::HashMap,
+    path::Path,
+    sync::Arc,
+    time::Instant,
+};
 
 use rayon::prelude::*;
-use tauri::{State, ipc::Response};
+use serde::Serialize;
+use tauri::{AppHandle, Emitter, State, ipc::Response};
 
 use crate::{
     indexer,
@@ -10,49 +16,157 @@ use crate::{
     thumbnails::{AI_IMAGE_CHANNELS, AI_IMAGE_EDGE},
 };
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AiImagePrepBatchProfile {
+    batch_id: String,
+    count: usize,
+    output_bytes: usize,
+    cache_hits: usize,
+    cache_misses: usize,
+    database_lookup_ms: f64,
+    rayon_wall_ms: f64,
+    pack_ms: f64,
+    command_wall_ms: f64,
+    cumulative_lock_wait_ms: f64,
+    cumulative_cache_lookup_ms: f64,
+    cumulative_thumbnail_read_decode_ms: f64,
+    cumulative_source_read_decode_ms: f64,
+    cumulative_thumbnail_resize_ms: f64,
+    cumulative_thumbnail_encode_write_ms: f64,
+    cumulative_ai_resize_ms: f64,
+    cumulative_image_total_ms: f64,
+    max_image_total_ms: f64,
+}
+
+fn elapsed_ms(started: Instant) -> f64 {
+    started.elapsed().as_secs_f64() * 1_000.0
+}
+
 #[tauri::command(rename_all = "camelCase")]
 pub async fn prepare_ai_images(
     image_ids: Vec<String>,
+    batch_id: String,
+    app: AppHandle,
     state: State<'_, Arc<AppState>>,
 ) -> Result<Response, String> {
+    let command_started = Instant::now();
     let state = Arc::clone(state.inner());
-    let packed = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
-        let by_id = state
-            .database
-            .images_by_ids(&image_ids)
-            .map_err(|error| error.to_string())?
-            .into_iter()
-            .map(|image| (image.id.clone(), image))
-            .collect::<HashMap<_, _>>();
-        let bytes_per_image = AI_IMAGE_EDGE as usize * AI_IMAGE_EDGE as usize * AI_IMAGE_CHANNELS;
-        let prepared = image_ids
-            .par_iter()
-            .map(|image_id| {
-                let image = by_id
-                    .get(image_id)
-                    .ok_or_else(|| format!("Image inconnue: {image_id}"))?;
-                state
-                    .thumbnails
-                    .prepare_ai_pixels(&image.id, Path::new(&image.path), image.modified_at)
-                    .map_err(|error| error.to_string())
-            })
-            .collect::<Result<Vec<Vec<u8>>, String>>()?;
+    let profile_batch_id = batch_id.clone();
+    let (packed, mut profile) =
+        tauri::async_runtime::spawn_blocking(move || -> Result<_, String> {
+            let database_started = Instant::now();
+            let by_id = state
+                .database
+                .images_by_ids(&image_ids)
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .map(|image| (image.id.clone(), image))
+                .collect::<HashMap<_, _>>();
+            let database_lookup_ms = elapsed_ms(database_started);
+            let bytes_per_image =
+                AI_IMAGE_EDGE as usize * AI_IMAGE_EDGE as usize * AI_IMAGE_CHANNELS;
 
-        let mut packed = Vec::with_capacity(prepared.len() * bytes_per_image);
-        for pixels in prepared {
-            if pixels.len() != bytes_per_image {
-                return Err(format!(
-                    "Taille de preview IA invalide: {} octets au lieu de {bytes_per_image}",
-                    pixels.len()
-                ));
+            let rayon_started = Instant::now();
+            let prepared = image_ids
+                .par_iter()
+                .map(|image_id| {
+                    let image = by_id
+                        .get(image_id)
+                        .ok_or_else(|| format!("Image inconnue: {image_id}"))?;
+                    state
+                        .thumbnails
+                        .prepare_ai_pixels_profiled(
+                            &image.id,
+                            Path::new(&image.path),
+                            image.modified_at,
+                        )
+                        .map_err(|error| error.to_string())
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            let rayon_wall_ms = elapsed_ms(rayon_started);
+
+            let cache_hits = prepared
+                .iter()
+                .filter(|item| item.profile.cache_hit)
+                .count();
+            let cache_misses = prepared.len().saturating_sub(cache_hits);
+            let cumulative_lock_wait_ms = prepared
+                .iter()
+                .map(|item| item.profile.lock_wait_ms)
+                .sum();
+            let cumulative_cache_lookup_ms = prepared
+                .iter()
+                .map(|item| item.profile.cache_lookup_ms)
+                .sum();
+            let cumulative_thumbnail_read_decode_ms = prepared
+                .iter()
+                .map(|item| item.profile.thumbnail_read_decode_ms)
+                .sum();
+            let cumulative_source_read_decode_ms = prepared
+                .iter()
+                .map(|item| item.profile.source_read_decode_ms)
+                .sum();
+            let cumulative_thumbnail_resize_ms = prepared
+                .iter()
+                .map(|item| item.profile.thumbnail_resize_ms)
+                .sum();
+            let cumulative_thumbnail_encode_write_ms = prepared
+                .iter()
+                .map(|item| item.profile.thumbnail_encode_write_ms)
+                .sum();
+            let cumulative_ai_resize_ms = prepared
+                .iter()
+                .map(|item| item.profile.ai_resize_ms)
+                .sum();
+            let cumulative_image_total_ms = prepared
+                .iter()
+                .map(|item| item.profile.total_ms)
+                .sum();
+            let max_image_total_ms = prepared
+                .iter()
+                .map(|item| item.profile.total_ms)
+                .fold(0.0_f64, f64::max);
+
+            let pack_started = Instant::now();
+            let mut packed = Vec::with_capacity(prepared.len() * bytes_per_image);
+            for prepared_image in prepared {
+                if prepared_image.pixels.len() != bytes_per_image {
+                    return Err(format!(
+                        "Taille de preview IA invalide: {} octets au lieu de {bytes_per_image}",
+                        prepared_image.pixels.len()
+                    ));
+                }
+                packed.extend_from_slice(&prepared_image.pixels);
             }
-            packed.extend_from_slice(&pixels);
-        }
-        Ok(packed)
-    })
-    .await
-    .map_err(|error| error.to_string())??;
+            let pack_ms = elapsed_ms(pack_started);
+            let profile = AiImagePrepBatchProfile {
+                batch_id: profile_batch_id,
+                count: image_ids.len(),
+                output_bytes: packed.len(),
+                cache_hits,
+                cache_misses,
+                database_lookup_ms,
+                rayon_wall_ms,
+                pack_ms,
+                command_wall_ms: 0.0,
+                cumulative_lock_wait_ms,
+                cumulative_cache_lookup_ms,
+                cumulative_thumbnail_read_decode_ms,
+                cumulative_source_read_decode_ms,
+                cumulative_thumbnail_resize_ms,
+                cumulative_thumbnail_encode_write_ms,
+                cumulative_ai_resize_ms,
+                cumulative_image_total_ms,
+                max_image_total_ms,
+            };
+            Ok((packed, profile))
+        })
+        .await
+        .map_err(|error| error.to_string())??;
 
+    profile.command_wall_ms = elapsed_ms(command_started);
+    let _ = app.emit("ai-image-prep-profile", &profile);
     Ok(Response::new(packed))
 }
 
