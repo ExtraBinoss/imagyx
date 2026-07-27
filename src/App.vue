@@ -13,6 +13,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { X } from "@lucide/vue";
 import Button from "./components/ui/Button/Button.vue";
 import type { ImageAsset } from "./types";
+import { imagyxApi } from "./api/tauri";
 import { useLibraryStore } from "./stores/library";
 import { useOnboardingStore } from "./stores/onboarding";
 import { usePlatformStore } from "./stores/platform";
@@ -51,6 +52,8 @@ const searchHeader = ref<{
 let unlistenOpenImage: UnlistenFn | null = null;
 let unlistenOpenOnboarding: UnlistenFn | null = null;
 let unlistenSemanticProvider: UnlistenFn | null = null;
+let unlistenPauseIndexing: UnlistenFn | null = null;
+let unlistenResumeIndexing: UnlistenFn | null = null;
 
 const folderPrefix = computed(() =>
   store.selectedFolder ? `${store.selectedFolder.name}: ` : "All images: ",
@@ -80,6 +83,16 @@ async function addFolder() {
 
 async function removeFolder(folderId: string) {
   await store.removeFolder(folderId);
+}
+
+function pauseIndexing() {
+  store.pauseIndexing();
+  void imagyxApi.setTrayPaused(true);
+}
+
+async function resumeIndexing() {
+  void imagyxApi.setTrayPaused(false);
+  await store.resumeIndexing();
 }
 
 function handleTypeToSearch(event: KeyboardEvent) {
@@ -145,16 +158,24 @@ onMounted(async () => {
   void shortcut.initialize();
   unlistenSemanticProvider = await registerSemanticQueryProvider();
   const initializePromise = store.initialize();
+  void imagyxApi.setTrayPaused(semanticRuntime.isPaused);
   scheduleEarlyTextWarmup();
   void initializePromise.then(() => {
     perfLog("App", "Full store initial load", performance.now() - start);
   });
   window.addEventListener("keydown", handleTypeToSearch);
-  [unlistenOpenImage, unlistenOpenOnboarding] = await Promise.all([
+  [
+    unlistenOpenImage,
+    unlistenOpenOnboarding,
+    unlistenPauseIndexing,
+    unlistenResumeIndexing,
+  ] = await Promise.all([
     listen<string>("open-image-requested", (event) => {
       void openImageFromSpotlight(event.payload);
     }),
     listen("open-onboarding-requested", () => onboarding.show()),
+    listen("pause-indexing-requested", pauseIndexing),
+    listen("resume-indexing-requested", () => { void resumeIndexing(); }),
   ]);
   perfLog("App", "onMounted shell setup", performance.now() - start);
 });
@@ -163,6 +184,8 @@ onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleTypeToSearch);
   unlistenOpenImage?.();
   unlistenOpenOnboarding?.();
+  unlistenPauseIndexing?.();
+  unlistenResumeIndexing?.();
   unlistenSemanticProvider?.();
   for (const unlisten of store.listeners) unlisten();
 });
@@ -181,8 +204,8 @@ onBeforeUnmount(() => {
       @add="addFolder"
       @remove="removeFolder"
       @reindex="store.reindexFolder"
-      @pause-indexing="store.pauseIndexing"
-      @resume-indexing="store.resumeIndexing"
+      @pause-indexing="pauseIndexing"
+      @resume-indexing="resumeIndexing"
     />
 
     <section class="workspace">
