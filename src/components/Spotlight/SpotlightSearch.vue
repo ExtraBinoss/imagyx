@@ -82,26 +82,27 @@ const activeQuery = computed({
 })
 const hasFolders = computed(() => folders.value.length > 0)
 const hasActiveJobs = computed(() => jobs.value.some((job) => !['complete', 'error'].includes(job.stage)))
+const hasSearchQuery = computed(() => searchQuery.value.trim().length > 0)
 const selectedImage = computed(() => results.value[selectedIndex.value] ?? null)
 const resultLabel = computed(() => {
-  if (!libraryReady.value) return 'Chargement…'
-  if (!hasFolders.value) return 'Configuration requise'
-  if (searching.value && results.value.length === 0) return 'Recherche…'
-  return `${results.value.length} résultat${results.value.length === 1 ? '' : 's'}`
+  if (!libraryReady.value) return 'Loading…'
+  if (!hasFolders.value) return 'Setup required'
+  if (searching.value && results.value.length === 0) return 'Searching…'
+  return `${results.value.length} result${results.value.length === 1 ? '' : 's'}`
 })
 const placeholder = computed(() => {
   if (view.value === 'settings') return 'Search settings…'
-  if (!libraryReady.value) return 'Chargement de la bibliothèque…'
-  if (!hasFolders.value) return 'Ajoute un dossier pour commencer…'
+  if (!libraryReady.value) return 'Loading library…'
+  if (!hasFolders.value) return 'Add a folder to get started…'
   return typedTag.value
     ? `All images: ${capitalize(typedTag.value)}…`
     : 'All images: name or description…'
 })
 const showAddAction = computed(() => {
   if (!libraryReady.value || !hasFolders.value) return true
-  const query = searchQuery.value.trim().toLocaleLowerCase('fr')
+  const query = searchQuery.value.trim().toLocaleLowerCase('en')
   if (!query) return false
-  return query.startsWith('add') || query.startsWith('ajout') || query.startsWith('folder') || query.startsWith('dossier')
+  return query.startsWith('add') || query.startsWith('folder') || query.startsWith('directory')
 })
 
 const searchLater = debounce(() => { void runSearch() }, SEARCH_DEBOUNCE_MS)
@@ -109,21 +110,22 @@ const searchLater = debounce(() => { void runSearch() }, SEARCH_DEBOUNCE_MS)
 watch(searchQuery, (value) => {
   selectedIndex.value = 0
   error.value = null
+  searchSequence += 1
   const request = ++morphSequence
   if (!hasFolders.value) {
-    searchSequence += 1
     results.value = []
     searching.value = false
     if (view.value === 'search') void openPanel(request)
     return
   }
   if (!value.trim()) {
-    searchSequence += 1
     results.value = []
     searching.value = false
     if (view.value === 'search' && !hasActiveJobs.value) void closePanel(request)
     return
   }
+  results.value = []
+  searching.value = true
   searchLater()
   void openPanel(request)
 })
@@ -209,8 +211,11 @@ async function backToSearch() {
 async function runSearch() {
   const sequence = ++searchSequence
   const text = searchQuery.value.trim()
-  const cacheKey = text.toLocaleLowerCase('fr')
-  if (!text || !hasFolders.value) return
+  const cacheKey = text.toLocaleLowerCase('en')
+  if (!text || !hasFolders.value) {
+    searching.value = false
+    return
+  }
   const cached = resultCache.get(cacheKey)
   if (cached && performance.now() - cached.storedAt <= CACHE_TTL_MS) {
     results.value = cached.images
@@ -261,7 +266,7 @@ function rememberResults(key: string, images: ImageAsset[]) {
 async function addFolder() {
   dialogOpen.value = true
   try {
-    const selected = await open({ directory: true, multiple: false, title: 'Choisir un dossier à indexer' })
+    const selected = await open({ directory: true, multiple: false, title: 'Choose a folder to index' })
     if (typeof selected !== 'string') return
     const folder = await imagyxApi.addFolder(selected)
     folders.value = [folder, ...folders.value.filter((item) => item.id !== folder.id)]
@@ -271,7 +276,7 @@ async function addFolder() {
       current: 0,
       total: 0,
       stage: 'discovering',
-      message: 'Analyse du dossier…',
+      message: 'Scanning folder…',
     })
     await openPanel(++morphSequence)
     void imagyxApi.indexFolder(folder.id, false).catch((reason) => {
@@ -283,6 +288,15 @@ async function addFolder() {
     dialogOpen.value = false
     void currentWindow.setFocus()
   }
+}
+
+function indexProgressMessage(progress: IndexProgress, stage: SpotlightIndexJob['stage']): string {
+  if (stage === 'complete') return 'Indexing complete'
+  if (stage === 'error') return progress.message
+  if (stage === 'queued') return `${progress.total} images ready · waiting for AI indexing`
+  if (stage === 'embedding') return `AI indexing · ${progress.current} of ${progress.total}`
+  if (stage === 'metadata') return `Reading metadata · ${progress.current} of ${progress.total}`
+  return 'Scanning folder…'
 }
 
 function handleIndexProgress(progress: IndexProgress) {
@@ -297,7 +311,7 @@ function handleIndexProgress(progress: IndexProgress) {
     current: progress.current,
     total: progress.total,
     stage,
-    message: progress.message,
+    message: indexProgressMessage(progress, stage),
   })
   if (stage === 'complete') {
     resultCache.clear()
@@ -310,11 +324,11 @@ function handleRuntimeStats(stats: RuntimeStats) {
   const job = [...jobs.value].reverse().find((item) => item.stage === 'queued' || item.stage === 'embedding')
   if (!job) return
   if (['indexing', 'decoding', 'inference', 'saving'].includes(stats.stage)) {
-    upsertJob({ ...job, stage: 'embedding', current: stats.current, total: stats.total, message: `Analyse IA · ${stats.current} sur ${stats.total}` })
+    upsertJob({ ...job, stage: 'embedding', current: stats.current, total: stats.total, message: `AI indexing · ${stats.current} of ${stats.total}` })
   } else if (stats.stage === 'paused') {
-    upsertJob({ ...job, stage: 'queued', current: stats.current, total: stats.total, message: `Indexation en pause · ${stats.current} sur ${stats.total}` })
+    upsertJob({ ...job, stage: 'queued', current: stats.current, total: stats.total, message: `Indexing paused · ${stats.current} of ${stats.total}` })
   } else if (stats.stage === 'ready' && job.stage === 'embedding') {
-    upsertJob({ ...job, stage: 'complete', current: job.total, message: 'Indexation terminée' })
+    upsertJob({ ...job, stage: 'complete', current: job.total, message: 'Indexing complete' })
     resultCache.clear()
     void syncFolders()
     scheduleJobCleanup(job.folderId)
@@ -374,6 +388,7 @@ function prepareOpen() {
   settingsQuery.value = ''
   results.value = []
   selectedIndex.value = 0
+  searching.value = false
   error.value = null
   resultsOpen.value = false
   shellMerged.value = false
@@ -393,6 +408,7 @@ function prepareHide() {
   searchQuery.value = ''
   settingsQuery.value = ''
   results.value = []
+  searching.value = false
   resultsOpen.value = false
   shellMerged.value = false
   expanded = false
@@ -453,7 +469,7 @@ onBeforeUnmount(() => {
     <section
       class="spotlight-stage"
       :class="{ 'spotlight-stage--visible': visible }"
-      aria-label="Recherche rapide Imagyx"
+      aria-label="Imagyx quick search"
     >
       <MovingBorder
         class="spotlight-border"
@@ -498,6 +514,7 @@ onBeforeUnmount(() => {
                   :results="results"
                   :selected-index="selectedIndex"
                   :searching="searching"
+                  :has-search-query="hasSearchQuery"
                   :error="error"
                   :copied-image-id="copiedImageId"
                   :copying-image-id="copyingImageId"
