@@ -38,6 +38,22 @@ export interface ImageAsset {
   semanticMatches?: SemanticMatch[]
 }
 
+export type ImageConversionFormat = 'avif' | 'webp' | 'png' | 'jpg' | 'ico'
+
+export type ImageConversionStage = 'decoding' | 'encoding' | 'indexing' | 'complete'
+
+export interface ImageConversionProgress {
+  sourceImageId: string
+  targetFormat: ImageConversionFormat
+  progress: number
+  stage: ImageConversionStage
+}
+
+export interface ImageConversionResult {
+  image: ImageAsset
+  inheritedSemanticIndex: boolean
+}
+
 export interface ImageEmbedding {
   imageId: string
   vector: number[]
