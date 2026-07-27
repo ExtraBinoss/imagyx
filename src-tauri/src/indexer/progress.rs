@@ -1,6 +1,9 @@
 use tauri::{AppHandle, Emitter};
 
-use crate::models::{FollowedFolder, IndexProgress};
+use crate::{
+    models::{FollowedFolder, IndexProgress},
+    tray,
+};
 
 pub(super) fn emit(
     app: &AppHandle,
@@ -10,17 +13,16 @@ pub(super) fn emit(
     stage: &str,
     message: &str,
 ) {
-    let _ = app.emit(
-        "index-progress",
-        IndexProgress {
-            folder_id: folder.id.clone(),
-            folder_name: folder.name.clone(),
-            current,
-            total,
-            batch_current: None,
-            batch_total: None,
-            stage: stage.to_owned(),
-            message: message.to_owned(),
-        },
-    );
+    let progress = IndexProgress {
+        folder_id: folder.id.clone(),
+        folder_name: folder.name.clone(),
+        current,
+        total,
+        batch_current: None,
+        batch_total: None,
+        stage: stage.to_owned(),
+        message: message.to_owned(),
+    };
+    tray::update_index_progress(app, &progress);
+    let _ = app.emit("index-progress", progress);
 }
