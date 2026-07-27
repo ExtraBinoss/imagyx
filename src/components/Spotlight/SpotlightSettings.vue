@@ -1,15 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { AlignLeft, AlignRight, BookOpen, Check, Copy, Info, Keyboard, Layout, Monitor, Moon, Palette, SearchX, Sun } from '@lucide/vue'
+import { imagyxApi } from '../../api/tauri'
 import type { ThemeMode } from '../../stores/theme'
 import { usePlatformStore } from '../../stores/platform'
 import { useLibraryStore } from '../../stores/library'
-import { formatBytes } from '../../utils'
 import ShortcutView from '../shortcuts/ShortcutView.vue'
 import Accordion from '../ui/Accordion/Accordion.vue'
 import Button from '../ui/Button/Button.vue'
 import ButtonGroup from '../ui/ButtonGroup/ButtonGroup.vue'
-
 import { copyDebugInfoToClipboard } from '../../utils/copy-information'
 
 const props = withDefaults(
@@ -30,7 +29,6 @@ const props = withDefaults(
 const emit = defineEmits<{
   shortcutChange: [value: string]
   themeChange: [value: ThemeMode]
-  onboarding: []
 }>()
 
 const platform = usePlatformStore()
@@ -52,6 +50,10 @@ const dbPath = computed(() => library.appInfo?.databasePath ?? 'Indisponible')
 function matches(keywords: string[]) {
   const query = normalizedQuery.value
   return !query || keywords.some((keyword) => keyword.includes(query) || query.includes(keyword))
+}
+
+async function openOnboarding() {
+  await imagyxApi.openOnboarding()
 }
 
 async function copyDebugInfo() {
@@ -129,7 +131,7 @@ async function copyDebugInfo() {
         <span class="settings-section__icon"><BookOpen :size="17" /></span>
         <div><strong>Guide de découverte</strong><p>Revois les fonctions principales et ajoute un dossier depuis le parcours.</p></div>
       </header>
-      <Button variant="secondary" size="md" block @click="emit('onboarding')">
+      <Button variant="secondary" size="md" block @click="openOnboarding">
         <template #leading><BookOpen :size="16" /></template>Relancer l’onboarding
       </Button>
     </section>
