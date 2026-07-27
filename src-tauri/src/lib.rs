@@ -78,14 +78,20 @@ pub fn run() {
                 let _trace = tracing::span("startup.state");
                 Arc::new(AppState::new(paths)?)
             };
+            let tray_snapshot = {
+                let library_folders = state.database.folders()?;
+                tray::LibrarySnapshot {
+                    folder_count: library_folders.len(),
+                    image_count: library_folders
+                        .into_iter()
+                        .filter_map(|folder| usize::try_from(folder.image_count).ok())
+                        .sum(),
+                }
+            };
             let folders = {
                 let _trace = tracing::span("startup.folders");
                 state.database.folders_for_watching()?
             };
-            let indexed_images = folders
-                .iter()
-                .filter_map(|folder| usize::try_from(folder.image_count).ok())
-                .sum();
             {
                 let _trace = tracing::span("startup.asset_scopes");
                 app.asset_protocol_scope()
@@ -113,7 +119,7 @@ pub fn run() {
             app.manage(shortcut_preferences);
             app.manage(folder_watcher);
             app.manage(Arc::clone(&state));
-            tray::setup(app.handle(), indexed_images)?;
+            tray::setup(app.handle(), tray_snapshot)?;
 
             #[cfg(all(target_os = "macos", not(debug_assertions)))]
             {
