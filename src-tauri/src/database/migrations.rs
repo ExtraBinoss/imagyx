@@ -69,7 +69,11 @@ pub(super) fn migrate(database: &Database) -> Result<(), AppError> {
         params![MODEL_ID],
     )?;
 
-    let schema_version = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    let schema_version: i64 = connection.query_row(
+        "PRAGMA user_version",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
     if schema_version < FTS_SCHEMA_VERSION {
         connection.execute("INSERT INTO images_fts(images_fts) VALUES('rebuild')", [])?;
         connection.pragma_update(None, "user_version", FTS_SCHEMA_VERSION)?;
