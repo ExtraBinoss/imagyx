@@ -26,7 +26,7 @@ import { useThemeStore } from "@/stores/theme";
 import { useShortcutStore } from "@/stores/shortcut";
 import { usePlatformStore } from "@/stores/platform";
 import TitleBar from "@/components/TitleBar.vue";
-import imagyxLogo from "../../src-tauri/icons/imagyx-bigger.png";
+import imagyxLogo from "../../src-tauri/icons/imagyx-bigger.avif";
 import { useTranslate } from "@/i18n";
 
 const props = defineProps<{
@@ -60,9 +60,9 @@ function isFolderReindexing(folderId: string): boolean {
   const progress = props.progress;
   return Boolean(
     progress &&
-      progress.folderId === folderId &&
-      progress.stage !== "complete" &&
-      progress.stage !== "error",
+    progress.folderId === folderId &&
+    progress.stage !== "complete" &&
+    progress.stage !== "error",
   );
 }
 
@@ -116,16 +116,18 @@ onBeforeUnmount(() => {
     </div>
     <div class="brand">
       <img :src="imagyxLogo" class="brand-mark-img" alt="Imagyx logo" />
-      <div><strong>Imagyx</strong><span>{{ t('app.tagline') }}</span></div>
+      <div>
+        <strong>Imagyx</strong><span>{{ t("app.tagline") }}</span>
+      </div>
     </div>
 
     <Button variant="primary" size="lg" block @click="emit('add')">
       <template #leading><Plus :size="17" :stroke-width="2.2" /></template>
-      {{ t('sidebar.add_folder') }}
+      {{ t("sidebar.add_folder") }}
     </Button>
 
     <nav class="folder-nav" :aria-label="t('sidebar.watched_folders')">
-      <p class="section-label">{{ t('sidebar.library') }}</p>
+      <p class="section-label">{{ t("sidebar.library") }}</p>
       <Button
         class="folder-row"
         :class="{ active: allSelected }"
@@ -134,13 +136,17 @@ onBeforeUnmount(() => {
         @click="emit('select', null)"
       >
         <Images :size="17" />
-        <span class="folder-name">{{ t('sidebar.all_images') }}</span>
+        <span class="folder-name">{{ t("sidebar.all_images") }}</span>
         <span class="folder-count">{{ totalImages }}</span>
       </Button>
 
-      <p class="section-label followed-label">{{ t('sidebar.watched_folders') }}</p>
+      <p class="section-label followed-label">
+        {{ t("sidebar.watched_folders") }}
+      </p>
       <div v-if="folders.length === 0" class="sidebar-empty">
-        <FolderOpen :size="19" /><span>{{ t('sidebar.no_watched_folders') }}</span>
+        <FolderOpen :size="19" /><span>{{
+          t("sidebar.no_watched_folders")
+        }}</span>
       </div>
 
       <div
@@ -168,7 +174,11 @@ onBeforeUnmount(() => {
         <div class="folder-actions" @click.stop @pointerdown.stop>
           <Popover align="end" width="224px">
             <template #trigger>
-              <Button variant="ghost" size="icon" :aria-label="t('sidebar.folder_actions')">
+              <Button
+                variant="ghost"
+                size="icon"
+                :aria-label="t('sidebar.folder_actions')"
+              >
                 <MoreHorizontal :size="16" />
               </Button>
             </template>
@@ -184,7 +194,11 @@ onBeforeUnmount(() => {
                   "
                 >
                   <template #leading><FolderOpen :size="15" /></template
-                  >{{ t('open_in_file_manager', { name: platform.fileManagerName }) }}
+                  >{{
+                    t("open_in_file_manager", {
+                      name: platform.fileManagerName,
+                    })
+                  }}
                 </Button>
                 <Button
                   variant="ghost"
@@ -197,7 +211,11 @@ onBeforeUnmount(() => {
                   "
                 >
                   <template #leading><RefreshCw :size="15" /></template>
-                  {{ isFolderReindexing(folder.id) ? t('sidebar.reindexing') : t('sidebar.reindex') }}
+                  {{
+                    isFolderReindexing(folder.id)
+                      ? t("sidebar.reindexing")
+                      : t("sidebar.reindex")
+                  }}
                 </Button>
                 <Button
                   variant="danger"
@@ -208,7 +226,8 @@ onBeforeUnmount(() => {
                     close();
                   "
                 >
-                  <template #leading><Trash2 :size="15" /></template>{{ t('sidebar.unfollow') }}
+                  <template #leading><Trash2 :size="15" /></template
+                  >{{ t("sidebar.unfollow") }}
                 </Button>
               </div>
             </template>
@@ -235,7 +254,7 @@ onBeforeUnmount(() => {
         <template #trigger>
           <Button variant="ghost" size="sm" block class="settings-trigger-btn">
             <template #leading><Settings :size="15" /></template>
-            {{ t('settings') }}
+            {{ t("settings") }}
             <template #trailing
               ><ChevronsUpDown :size="14" class="settings-chevron"
             /></template>
@@ -265,7 +284,7 @@ onBeforeUnmount(() => {
     >
       <Button variant="ghost" size="sm" block @click="runContextAction('open')">
         <template #leading><FolderOpen :size="15" /></template
-        >{{ t('open_in_file_manager', { name: platform.fileManagerName }) }}
+        >{{ t("open_in_file_manager", { name: platform.fileManagerName }) }}
       </Button>
       <Button
         variant="ghost"
@@ -275,7 +294,11 @@ onBeforeUnmount(() => {
         @click="runContextAction('reindex')"
       >
         <template #leading><RefreshCw :size="15" /></template>
-        {{ isFolderReindexing(contextMenu.folderId) ? t('sidebar.reindexing') : t('sidebar.reindex') }}
+        {{
+          isFolderReindexing(contextMenu.folderId)
+            ? t("sidebar.reindexing")
+            : t("sidebar.reindex")
+        }}
       </Button>
       <Button
         variant="danger"
@@ -283,7 +306,8 @@ onBeforeUnmount(() => {
         block
         @click="runContextAction('remove')"
       >
-        <template #leading><Trash2 :size="15" /></template>{{ t('sidebar.unfollow') }}
+        <template #leading><Trash2 :size="15" /></template
+        >{{ t("sidebar.unfollow") }}
       </Button>
     </div>
   </aside>
@@ -381,6 +405,8 @@ onBeforeUnmount(() => {
   opacity: 1;
 }
 @keyframes folder-index-spin {
-  to { transform: rotate(1turn); }
+  to {
+    transform: rotate(1turn);
+  }
 }
 </style>
