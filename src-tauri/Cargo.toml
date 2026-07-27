@@ -25,7 +25,7 @@ dirs = "6"
 walkdir = "2.5"
 notify = "8"
 rayon = "1.11"
-image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp", "tiff", "ico"] }
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp", "tiff", "ico", "rayon"] }
 arboard = "3"
 parking_lot = "0.12"
 chrono = { version = "0.4", features = ["serde"] }
