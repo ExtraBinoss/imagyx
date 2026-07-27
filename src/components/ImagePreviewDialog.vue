@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Check, Copy, FolderOpen, Info, Maximize2, Minimize2, Sparkles, X } from '@lucide/vue'
+import { Check, Copy, ExternalLink, FolderOpen, HardDrive, Info, Maximize, Sparkles, X } from '@lucide/vue'
 import type { ImageAsset } from '../types'
 import { imagyxApi } from '../api/tauri'
 import { usePlatformStore } from '../stores/platform'
@@ -16,6 +16,11 @@ const copied = ref(false)
 const showInfo = ref(false)
 const fitMode = ref<'contain' | 'cover'>('contain')
 
+const cleanPath = computed(() => {
+  if (!props.image?.path) return ''
+  return props.image.path.replace(/^\\\\\?\\/, '')
+})
+
 function handleKeydown(event: KeyboardEvent) {
   if (!props.image) return
   if (event.key === 'Escape' || event.code === 'Space' || event.key === ' ') {
@@ -28,12 +33,11 @@ function handleKeydown(event: KeyboardEvent) {
 async function copyImage() {
   if (!props.image) return
   try {
-    await imagyxApi.copyImage(props.image.path)
+    await imagyxApi.copyImage(cleanPath.value)
     copied.value = true
     setTimeout(() => { copied.value = false }, 1800)
   } catch {
-    /* fallback copy path */
-    await imagyxApi.copyImageToClipboard(props.image.path)
+    await imagyxApi.copyImageToClipboard(cleanPath.value)
     copied.value = true
     setTimeout(() => { copied.value = false }, 1800)
   }
@@ -41,7 +45,12 @@ async function copyImage() {
 
 async function revealInFolder() {
   if (!props.image) return
-  await imagyxApi.openInFileManager(props.image.path, true)
+  await imagyxApi.openInFileManager(cleanPath.value, true)
+}
+
+async function openFile() {
+  if (!props.image) return
+  await imagyxApi.openInFileManager(cleanPath.value, false)
 }
 
 onMounted(() => window.addEventListener('keydown', handleKeydown, true))
@@ -52,7 +61,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
   <Teleport to="body">
     <Transition name="preview-fade" appear>
       <div v-if="image" class="preview-overlay" role="presentation" @click.self="emit('close')">
-        <div class="preview-modal" role="dialog" aria-modal="true" :aria-label="`Aperçu de ${image.name}`">
+        <div class="preview-modal" role="dialog" aria-modal="true" :aria-label="`Preview of ${image.name}`">
           
           <!-- Header Bar -->
           <header class="preview-bar">
@@ -66,21 +75,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
                 class="spotlight-action-button"
                 variant="secondary"
                 size="sm"
-                aria-label="Copier l’image"
+                aria-label="Copy image"
                 @click="copyImage"
               >
                 <template #leading>
                   <Check v-if="copied" :size="14" />
                   <Copy v-else :size="14" />
                 </template>
-                {{ copied ? 'Copiée' : 'Copier' }}
+                {{ copied ? 'Copied' : 'Copy' }}
               </Button>
 
               <Button
                 class="spotlight-action-button"
                 variant="secondary"
                 size="sm"
-                :aria-label="`Ouvrir dans ${platform.fileManagerName}`"
+                :aria-label="`Open in ${platform.fileManagerName}`"
                 @click="revealInFolder"
               >
                 <template #leading><FolderOpen :size="14" /></template>
@@ -88,11 +97,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
               </Button>
 
               <Button
+                class="spotlight-action-button"
+                variant="primary"
+                size="sm"
+                aria-label="Open file"
+                @click="openFile"
+              >
+                <template #leading><ExternalLink :size="14" /></template>
+                Open File
+              </Button>
+
+              <Button
                 variant="ghost"
                 size="icon"
                 :class="{ 'btn-info--active': showInfo }"
                 class="btn-info"
-                title="Détails & Tags IA"
+                title="Details & AI Tags"
                 @click="showInfo = !showInfo"
               >
                 <Info :size="15" />
@@ -100,7 +120,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
 
               <div class="divider" />
 
-              <Button variant="ghost" size="icon" aria-label="Fermer" class="close-btn" @click="emit('close')">
+              <Button variant="ghost" size="icon" aria-label="Close" class="close-btn" @click="emit('close')">
                 <X :size="16" />
               </Button>
             </div>
@@ -121,44 +141,60 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
             <Transition name="drawer-slide">
               <aside v-if="showInfo" class="info-drawer">
                 <div class="info-drawer__header">
-                  <h3>Informations</h3>
+                  <h3>Information</h3>
                   <Badge variant="primary" class="ai-badge">
-                    <Sparkles :size="12" /> IA Local
+                    <Sparkles :size="12" /> Local AI
                   </Badge>
                 </div>
                 
                 <div class="info-drawer__body">
-                  <div class="info-item">
-                    <span class="info-item__label">Nom de fichier</span>
-                    <span class="info-item__value">{{ image.name }}</span>
+                  <!-- Grid stats cards -->
+                  <div class="stats-grid">
+                    <div class="stat-card">
+                      <span class="stat-card__icon"><Maximize :size="15" /></span>
+                      <div class="stat-card__content">
+                        <span class="stat-card__label">Resolution</span>
+                        <strong class="stat-card__value">{{ image.width }} × {{ image.height }}</strong>
+                      </div>
+                    </div>
+
+                    <div class="stat-card">
+                      <span class="stat-card__icon"><HardDrive :size="15" /></span>
+                      <div class="stat-card__content">
+                        <span class="stat-card__label">Size</span>
+                        <strong class="stat-card__value">{{ formatBytes(image.sizeBytes) }}</strong>
+                      </div>
+                    </div>
                   </div>
 
-                  <div class="info-item">
-                    <span class="info-item__label">Dimensions</span>
-                    <span class="info-item__value">{{ image.width }} × {{ image.height }} px</span>
+                  <!-- File Location Card -->
+                  <div class="location-card">
+                    <div class="location-card__header">
+                      <span class="info-item__label">Location</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="path-open-btn"
+                        title="Open file"
+                        @click="openFile"
+                      >
+                        <ExternalLink :size="13" />
+                      </Button>
+                    </div>
+                    <span class="location-card__path">{{ cleanPath }}</span>
                   </div>
 
-                  <div class="info-item">
-                    <span class="info-item__label">Taille sur le disque</span>
-                    <span class="info-item__value">{{ formatBytes(image.sizeBytes) }}</span>
-                  </div>
-
-                  <div class="info-item">
-                    <span class="info-item__label">Emplacement</span>
-                    <span class="info-item__path">{{ image.path }}</span>
-                  </div>
-
+                  <!-- Detected Concepts -->
                   <div v-if="image.semanticMatches?.length" class="info-item">
-                    <span class="info-item__label">Concepts détectés</span>
+                    <span class="info-item__label">Detected Concepts</span>
                     <div class="tags-cloud">
-                      <Badge
+                      <span
                         v-for="(match, idx) in image.semanticMatches"
                         :key="idx"
-                        variant="secondary"
-                        class="semantic-tag"
+                        class="semantic-tag-chip"
                       >
                         {{ match.label }} <small>{{ Math.round(match.score * 100) }}%</small>
-                      </Badge>
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -326,52 +362,107 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
   gap: 12px;
 }
 
-.info-item {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
 }
 
-.info-item__label {
-  font-size: 10px;
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-hover) 50%, var(--surface));
+}
+
+.stat-card__icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-hover);
+  color: var(--primary-text);
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+}
+
+.stat-card__content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stat-card__label {
+  font-size: 9px;
   font-weight: 500;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
 
-.info-item__value {
-  font-size: var(--text-xs);
+.stat-card__value {
+  font-size: 11px;
+  font-weight: 600;
   color: var(--text);
-  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.info-item__path {
+.location-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-hover) 50%, var(--surface));
+}
+
+.location-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.location-card__path {
   font-family: monospace;
   font-size: 10px;
   color: var(--text-muted);
-  background: var(--surface-hover);
-  padding: 6px 8px;
-  border-radius: var(--radius-sm);
   word-break: break-all;
-  border: 1px solid var(--border);
+  line-height: 1.4;
 }
 
 .tags-cloud {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 6px;
   margin-top: 4px;
 }
 
-.semantic-tag {
+.semantic-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: var(--radius-full);
   font-size: 11px;
-  padding: 3px 8px;
+  font-weight: 550;
+  background: color-mix(in srgb, var(--primary) 85%, #0284c7);
+  border: 1px solid var(--primary);
+  color: #ffffff;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--primary) 30%, transparent);
 }
 
-.semantic-tag small {
-  opacity: 0.7;
-  margin-left: 2px;
+.semantic-tag-chip small {
+  opacity: 0.85;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Animations */
