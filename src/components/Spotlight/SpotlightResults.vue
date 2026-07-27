@@ -4,7 +4,6 @@ import { Check, Copy, ExternalLink, FolderOpen, FolderPlus, Search } from '@luci
 import type { ImageAsset } from '../../types'
 import ThumbnailImage from '../ThumbnailImage.vue'
 import Button from '../ui/Button/Button.vue'
-import CopyButton from '../ui/Button/CopyButton.vue'
 import KbdChip from '../ui/KbdChip/KbdChip.vue'
 import SpotlightIndexProgress from './SpotlightIndexProgress.vue'
 import type { SpotlightIndexJob } from './types'
@@ -15,6 +14,9 @@ const props = defineProps<{
   searching: boolean
   error: string | null
   copiedImageId: string | null
+  copyingImageId: string | null
+  revealingImageId: string | null
+  openingImageId: string | null
   showAddAction: boolean
   jobs: SpotlightIndexJob[]
   fileManagerName: string
@@ -91,29 +93,51 @@ defineExpose({ scrollToIndex })
         @click="emit('select', index)"
         @dblclick="emit('open', image)"
       >
-        <span class="spotlight-thumb"><ThumbnailImage :image="image" /></span>
+        <span class="spotlight-thumb">
+          <ThumbnailImage class="spotlight-thumbnail-image" :image="image" />
+        </span>
         <span class="spotlight-copy">
           <strong>{{ image.name }}</strong>
           <small>{{ image.width }} × {{ image.height }} · {{ Math.max(1, Math.round(image.sizeBytes / 1024)) }} Ko</small>
         </span>
         <span v-if="image.semanticScore != null" class="spotlight-score">{{ Math.round(image.semanticScore * 100) }}%</span>
         <span class="spotlight-actions">
-          <CopyButton
-            :copied-text="copiedImageId === image.id ? 'Copied' : 'Copied'"
-            idle-text="Copy"
+          <Button
+            class="spotlight-action-button"
+            :class="{ 'spotlight-action-button--success': copiedImageId === image.id }"
+            :variant="copiedImageId === image.id ? 'primary' : 'secondary'"
+            size="sm"
+            :loading="copyingImageId === image.id"
+            aria-label="Copy image"
+            @click.stop="emit('copy', image)"
+          >
+            <template #leading>
+              <Check v-if="copiedImageId === image.id" :size="14" />
+              <Copy v-else :size="14" />
+            </template>
+            {{ copiedImageId === image.id ? 'Copied' : 'Copy' }}
+            <template #trailing><KbdChip shortcut="Ctrl+C" size="sm" /></template>
+          </Button>
+          <Button
+            class="spotlight-action-button"
             variant="secondary"
             size="sm"
-            class="spotlight-action-button"
-            @copy="emit('copy', image)"
+            :loading="revealingImageId === image.id"
+            :aria-label="`Open in ${fileManagerName}`"
+            @click.stop="emit('reveal', image)"
           >
-            <template #trailing><KbdChip shortcut="Ctrl+C" size="sm" /></template>
-          </CopyButton>
-          <Button class="spotlight-action-button" variant="secondary" size="sm" :aria-label="`Open in ${fileManagerName}`" @click.stop="emit('reveal', image)">
             <template #leading><FolderOpen :size="14" /></template>
             {{ fileManagerName }}
             <template #trailing><KbdChip shortcut="Ctrl+E" size="sm" /></template>
           </Button>
-          <Button class="spotlight-action-button" variant="primary" size="sm" aria-label="Open in Imagyx" @click.stop="emit('open', image)">
+          <Button
+            class="spotlight-action-button"
+            variant="primary"
+            size="sm"
+            :loading="openingImageId === image.id"
+            aria-label="Open in Imagyx"
+            @click.stop="emit('open', image)"
+          >
             <template #leading><ExternalLink :size="14" /></template>
             Imagyx
             <template #trailing><KbdChip shortcut="Ctrl+I" size="sm" /></template>
@@ -190,7 +214,7 @@ defineExpose({ scrollToIndex })
 }
 .spotlight-result:hover .spotlight-thumb,
 .spotlight-result--selected .spotlight-thumb { transform: scale(1.035) rotate(-0.35deg); }
-.spotlight-thumb :deep(img) { width: 100%; height: 100%; object-fit: cover; }
+.spotlight-thumbnail-image { width: 100%; height: 100%; object-fit: cover; }
 .spotlight-copy { min-width: 0; }
 .spotlight-copy strong,
 .spotlight-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -229,6 +253,7 @@ defineExpose({ scrollToIndex })
 .spotlight-result--selected .spotlight-actions,
 .spotlight-result:focus-within .spotlight-actions { opacity: 1; pointer-events: auto; }
 .spotlight-action-button { min-height: 31px; padding-inline: 9px; border-radius: 9px; font-size: 10px; }
+.spotlight-action-button--success { animation: action-success 280ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 .spotlight-loading-list { display: grid; gap: 8px; padding: 4px; }
 .spotlight-loading-list span {
   height: 70px;
@@ -254,5 +279,7 @@ defineExpose({ scrollToIndex })
   box-shadow: inset 0 -13px 17px -17px rgb(2 6 23 / 0.32);
 }
 @keyframes result-rise { from { opacity: 0; transform: translateY(7px) scale(0.992); } to { opacity: 1; transform: none; } }
+@keyframes action-success { 0% { transform: scale(0.94); } 55% { transform: scale(1.04); } 100% { transform: none; } }
 @keyframes skeleton-shimmer { to { background-position: -160% 0; } }
+@media (prefers-reduced-motion: reduce) { .spotlight-action-button--success { animation-duration: 0.01ms; } }
 </style>
