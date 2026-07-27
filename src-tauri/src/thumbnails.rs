@@ -4,7 +4,7 @@ use std::{
     io::{BufWriter, Write},
     path::{Path, PathBuf},
     sync::Arc,
-    time::UNIX_EPOCH,
+    time::{Instant, UNIX_EPOCH},
 };
 
 use image::{
@@ -13,6 +13,7 @@ use image::{
     imageops::FilterType,
 };
 use parking_lot::Mutex;
+use serde::Serialize;
 
 use crate::AppError;
 
@@ -22,6 +23,26 @@ pub const AI_IMAGE_EDGE: u32 = 224;
 pub const AI_IMAGE_CHANNELS: usize = 3;
 const JPEG_QUALITY: u8 = 55;
 const WRITE_BUFFER_BYTES: usize = 32 * 1024;
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiPixelProfile {
+    pub cache_hit: bool,
+    pub lock_wait_ms: f64,
+    pub cache_lookup_ms: f64,
+    pub thumbnail_read_decode_ms: f64,
+    pub source_read_decode_ms: f64,
+    pub thumbnail_resize_ms: f64,
+    pub thumbnail_encode_write_ms: f64,
+    pub ai_resize_ms: f64,
+    pub total_ms: f64,
+}
+
+#[derive(Debug)]
+pub struct PreparedAiPixels {
+    pub pixels: Vec<u8>,
+    pub profile: AiPixelProfile,
+}
 
 #[derive(Debug, Clone)]
 struct CacheEntry {
@@ -93,31 +114,76 @@ impl ThumbnailCache {
         source: &Path,
         modified_at: i64,
     ) -> Result<Vec<u8>, AppError> {
+        self.prepare_ai_pixels_profiled(image_id, source, modified_at)
+            .map(|prepared| prepared.pixels)
+    }
+
+    pub fn prepare_ai_pixels_profiled(
+        &self,
+        image_id: &str,
+        source: &Path,
+        modified_at: i64,
+    ) -> Result<PreparedAiPixels, AppError> {
+        let total_started = Instant::now();
         let cache_id = cache_id(image_id, modified_at);
+        let mut profile = AiPixelProfile::default();
+        let lock_started = Instant::now();
         let lock = self.lock_for(&cache_id);
         let result = {
             let _guard = lock.lock();
-            if let Some(path) = self.get_existing(&cache_id) {
-                match ai_pixels_from_path(&path) {
-                    Ok(pixels) => Ok(pixels),
+            profile.lock_wait_ms = elapsed_ms(lock_started);
+
+            let lookup_started = Instant::now();
+            let existing = self.get_existing(&cache_id);
+            profile.cache_lookup_ms = elapsed_ms(lookup_started);
+
+            if let Some(path) = existing {
+                let decode_started = Instant::now();
+                match read_thumbnail_rgb(&path) {
+                    Ok(thumbnail) => {
+                        profile.cache_hit = true;
+                        profile.thumbnail_read_decode_ms = elapsed_ms(decode_started);
+                        let resize_started = Instant::now();
+                        let pixels = ai_pixels_from_thumbnail(thumbnail);
+                        profile.ai_resize_ms = elapsed_ms(resize_started);
+                        Ok(pixels)
+                    }
                     Err(error) if !path.is_file() => {
-                        let thumbnail = create_thumbnail(source)?;
+                        profile.thumbnail_read_decode_ms = elapsed_ms(decode_started);
+                        let (thumbnail, source_decode_ms, thumbnail_resize_ms) =
+                            create_thumbnail_profiled(source)?;
+                        profile.source_read_decode_ms = source_decode_ms;
+                        profile.thumbnail_resize_ms = thumbnail_resize_ms;
+                        let write_started = Instant::now();
                         write_thumbnail(&thumbnail, &path)?;
+                        profile.thumbnail_encode_write_ms = elapsed_ms(write_started);
                         self.insert(cache_id.clone(), path);
-                        Ok(ai_pixels_from_thumbnail(thumbnail))
+                        let resize_started = Instant::now();
+                        let pixels = ai_pixels_from_thumbnail(thumbnail);
+                        profile.ai_resize_ms = elapsed_ms(resize_started);
+                        Ok(pixels)
                     }
                     Err(error) => Err(error),
                 }
             } else {
                 let path = self.cache_path(&cache_id);
-                let thumbnail = create_thumbnail(source)?;
+                let (thumbnail, source_decode_ms, thumbnail_resize_ms) =
+                    create_thumbnail_profiled(source)?;
+                profile.source_read_decode_ms = source_decode_ms;
+                profile.thumbnail_resize_ms = thumbnail_resize_ms;
+                let write_started = Instant::now();
                 write_thumbnail(&thumbnail, &path)?;
+                profile.thumbnail_encode_write_ms = elapsed_ms(write_started);
                 self.insert(cache_id.clone(), path);
-                Ok(ai_pixels_from_thumbnail(thumbnail))
+                let resize_started = Instant::now();
+                let pixels = ai_pixels_from_thumbnail(thumbnail);
+                profile.ai_resize_ms = elapsed_ms(resize_started);
+                Ok(pixels)
             }
         };
         self.release_lock(&cache_id, &lock);
-        result
+        profile.total_ms = elapsed_ms(total_started);
+        result.map(|pixels| PreparedAiPixels { pixels, profile })
     }
 
     pub fn cached_items(&self) -> usize {
@@ -240,9 +306,22 @@ fn remove_from_lru(lru: &mut VecDeque<String>, key: &str) {
     }
 }
 
+fn elapsed_ms(started: Instant) -> f64 {
+    started.elapsed().as_secs_f64() * 1_000.0
+}
+
 fn create_thumbnail(source: &Path) -> Result<RgbImage, AppError> {
+    create_thumbnail_profiled(source).map(|(thumbnail, _, _)| thumbnail)
+}
+
+fn create_thumbnail_profiled(source: &Path) -> Result<(RgbImage, f64, f64), AppError> {
+    let decode_started = Instant::now();
     let image = ImageReader::open(source)?.with_guessed_format()?.decode()?;
-    Ok(image.thumbnail(THUMBNAIL_EDGE, THUMBNAIL_EDGE).to_rgb8())
+    let source_read_decode_ms = elapsed_ms(decode_started);
+    let resize_started = Instant::now();
+    let thumbnail = image.thumbnail(THUMBNAIL_EDGE, THUMBNAIL_EDGE).to_rgb8();
+    let thumbnail_resize_ms = elapsed_ms(resize_started);
+    Ok((thumbnail, source_read_decode_ms, thumbnail_resize_ms))
 }
 
 fn write_thumbnail(thumbnail: &RgbImage, target: &Path) -> Result<(), AppError> {
@@ -274,9 +353,11 @@ fn write_thumbnail(thumbnail: &RgbImage, target: &Path) -> Result<(), AppError> 
     Ok(())
 }
 
-fn ai_pixels_from_path(path: &Path) -> Result<Vec<u8>, AppError> {
-    let thumbnail = ImageReader::open(path)?.with_guessed_format()?.decode()?.to_rgb8();
-    Ok(ai_pixels_from_thumbnail(thumbnail))
+fn read_thumbnail_rgb(path: &Path) -> Result<RgbImage, AppError> {
+    Ok(ImageReader::open(path)?
+        .with_guessed_format()?
+        .decode()?
+        .to_rgb8())
 }
 
 fn ai_pixels_from_thumbnail(thumbnail: RgbImage) -> Vec<u8> {
