@@ -20,6 +20,7 @@ const props = defineProps<{
   results: ImageAsset[]
   selectedIndex: number
   searching: boolean
+  hasSearchQuery: boolean
   error: string | null
   copiedImageId: string | null
   copyingImageId: string | null
@@ -52,6 +53,8 @@ watch(
     props.hasFolders,
     props.libraryReady,
     props.showBackgroundHint,
+    props.searching,
+    props.hasSearchQuery,
   ],
   () => { void nextTick(updateScrollShadow) },
 )
@@ -82,13 +85,13 @@ defineExpose({ scrollToIndex })
     <div ref="viewport" class="spotlight-results" role="listbox" @scroll.passive="updateScrollShadow">
       <div v-if="!libraryReady" class="spotlight-library-loading" aria-live="polite">
         <LoaderCircle class="spin" :size="22" />
-        <strong>Chargement de la bibliothèque…</strong>
+        <strong>Loading library…</strong>
       </div>
 
       <section v-else-if="!hasFolders" class="spotlight-library-empty" aria-labelledby="spotlight-library-empty-title">
         <span class="spotlight-library-empty__icon"><FolderPlus :size="24" /></span>
-        <strong id="spotlight-library-empty-title">Aucun dossier à analyser</strong>
-        <p>Ajoute un dossier d’images pour activer la recherche Imagyx.</p>
+        <strong id="spotlight-library-empty-title">No folders to scan</strong>
+        <p>Add an image folder to enable Imagyx search.</p>
         <Button
           class="spotlight-library-empty__button"
           variant="primary"
@@ -96,9 +99,9 @@ defineExpose({ scrollToIndex })
           @click="emit('addFolder')"
         >
           <template #leading><FolderPlus :size="17" /></template>
-          Ajouter un dossier
+          Add folder
         </Button>
-        <small>Les fichiers restent sur cet appareil et l’indexation s’exécute localement.</small>
+        <small>Your files stay on this device and indexing runs locally.</small>
       </section>
 
       <template v-else>
@@ -112,16 +115,16 @@ defineExpose({ scrollToIndex })
         >
           <template #leading><FolderPlus :size="18" /></template>
           <span class="spotlight-add-folder__copy">
-            <strong>Ajouter un dossier d’images</strong>
-            <small>Choisir un dossier et lancer l’indexation en arrière-plan</small>
+            <strong>Add an image folder</strong>
+            <small>Choose a folder and start background indexing</small>
           </span>
         </Button>
 
         <aside v-if="showBackgroundHint" class="spotlight-background-hint" aria-live="polite">
           <span class="spotlight-background-hint__icon"><LoaderCircle class="spin" :size="16" /></span>
           <span>
-            <strong>Indexation en arrière-plan</strong>
-            <small>Tu peux fermer cette fenêtre, Imagyx continue de travailler.</small>
+            <strong>Indexing in the background</strong>
+            <small>You can close this window. Imagyx will keep working.</small>
           </span>
         </aside>
 
@@ -147,7 +150,7 @@ defineExpose({ scrollToIndex })
           </span>
           <span class="spotlight-copy">
             <strong>{{ image.name }}</strong>
-            <small>{{ image.width }} × {{ image.height }} · {{ Math.max(1, Math.round(image.sizeBytes / 1024)) }} Ko</small>
+            <small>{{ image.width }} × {{ image.height }} · {{ Math.max(1, Math.round(image.sizeBytes / 1024)) }} KB</small>
           </span>
           <span v-if="image.semanticScore != null" class="spotlight-score">{{ Math.round(image.semanticScore * 100) }}%</span>
           <span class="spotlight-actions">
@@ -194,17 +197,21 @@ defineExpose({ scrollToIndex })
           </span>
         </div>
 
-        <div v-if="searching && results.length === 0" class="spotlight-loading-list" aria-label="Recherche en cours">
+        <div
+          v-if="searching && hasSearchQuery && results.length === 0"
+          class="spotlight-loading-list"
+          aria-label="Searching"
+        >
           <span v-for="item in 5" :key="item" :style="{ animationDelay: `${item * 45}ms` }" />
         </div>
 
         <div
-          v-else-if="!searching && !results.length && !error && !showAddAction && !showBackgroundHint && jobs.length === 0"
+          v-else-if="hasSearchQuery && !searching && !results.length && !error && !showAddAction && !showBackgroundHint && jobs.length === 0"
           class="spotlight-empty"
         >
           <Search :size="24" />
-          <strong>Aucun résultat convaincant</strong>
-          <span>Essaie une description plus courte ou un mot plus visuel.</span>
+          <strong>No convincing results</strong>
+          <span>Try a shorter description or a more visual keyword.</span>
         </div>
       </template>
 
