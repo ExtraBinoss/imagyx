@@ -1,8 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    path::Path,
-    sync::Arc,
-};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use rayon::prelude::*;
 use tauri::State;
@@ -84,28 +80,28 @@ pub fn explain_results(
     if image_ids.is_empty() || concepts.is_empty() {
         return Vec::new();
     }
-    let wanted = image_ids.iter().map(String::as_str).collect::<HashSet<_>>();
-    let vectors = state.vectors.read().snapshot_for_ids(&wanted);
-    vectors
-        .par_iter()
-        .map(|entry| {
+
+    let vectors = state.vectors.read();
+    image_ids
+        .iter()
+        .filter_map(|image_id| {
+            let vector = vectors.vector(image_id)?;
             let mut matches = concepts
                 .iter()
-                .filter(|concept| concept.vector.len() == entry.vector.len())
+                .filter(|concept| concept.vector.len() == vector.len())
                 .map(|concept| SemanticMatch {
                     label: concept.label.clone(),
-                    score: ((indexer::cosine_similarity(&concept.vector, &entry.vector) + 1.0)
-                        / 2.0)
+                    score: ((indexer::cosine_similarity(&concept.vector, vector) + 1.0) / 2.0)
                         .clamp(0.0, 1.0),
                     source: "semantic".into(),
                 })
                 .collect::<Vec<_>>();
             matches.sort_by(|left, right| right.score.total_cmp(&left.score));
             matches.truncate(8);
-            ImageExplanation {
-                image_id: entry.image_id.clone(),
+            Some(ImageExplanation {
+                image_id: image_id.clone(),
                 matches,
-            }
+            })
         })
         .collect()
 }
