@@ -41,6 +41,14 @@ pub(super) fn migrate(database: &Database) -> Result<(), AppError> {
             updated_at INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings(model);
+        CREATE TABLE IF NOT EXISTS image_derivatives (
+            image_id TEXT PRIMARY KEY REFERENCES images(id) ON DELETE CASCADE,
+            source_image_id TEXT NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+            conversion_format TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_image_derivatives_source
+            ON image_derivatives(source_image_id, created_at DESC);
         CREATE VIRTUAL TABLE IF NOT EXISTS images_fts USING fts5(
             name,
             path,
