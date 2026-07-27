@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import { Check, Copy, ExternalLink, FolderOpen, FolderPlus, Search } from '@lucide/vue'
+import {
+  Check,
+  Copy,
+  ExternalLink,
+  FolderOpen,
+  FolderPlus,
+  LoaderCircle,
+  Search,
+} from '@lucide/vue'
 import type { ImageAsset } from '../../types'
 import ThumbnailImage from '../ThumbnailImage.vue'
 import Button from '../ui/Button/Button.vue'
@@ -18,6 +26,9 @@ const props = defineProps<{
   revealingImageId: string | null
   openingImageId: string | null
   showAddAction: boolean
+  hasFolders: boolean
+  libraryReady: boolean
+  showBackgroundHint: boolean
   jobs: SpotlightIndexJob[]
   fileManagerName: string
 }>()
@@ -33,9 +44,17 @@ const emit = defineEmits<{
 const viewport = ref<HTMLElement | null>(null)
 const canScrollDown = ref(false)
 
-watch(() => [props.results.length, props.jobs.length, props.showAddAction], () => {
-  void nextTick(updateScrollShadow)
-})
+watch(
+  () => [
+    props.results.length,
+    props.jobs.length,
+    props.showAddAction,
+    props.hasFolders,
+    props.libraryReady,
+    props.showBackgroundHint,
+  ],
+  () => { void nextTick(updateScrollShadow) },
+)
 
 function updateScrollShadow() {
   const element = viewport.value
@@ -61,99 +80,133 @@ defineExpose({ scrollToIndex })
 <template>
   <div class="spotlight-results-shell">
     <div ref="viewport" class="spotlight-results" role="listbox" @scroll.passive="updateScrollShadow">
-      <Button
-        v-if="showAddAction"
-        class="spotlight-add-folder"
-        variant="secondary"
-        size="lg"
-        block
-        @click="emit('addFolder')"
-      >
-        <template #leading><FolderPlus :size="18" /></template>
-        <span class="spotlight-add-folder__copy">
-          <strong>Ajouter un dossier d’images</strong>
-          <small>Choisir un dossier et lancer l’indexation en arrière-plan</small>
-        </span>
-      </Button>
-
-      <SpotlightIndexProgress v-for="job in jobs" :key="job.folderId" :job="job" />
-
-      <div
-        v-for="(image, index) in results"
-        :key="image.id"
-        class="spotlight-result"
-        :class="{ 'spotlight-result--selected': index === selectedIndex }"
-        :data-result-index="index"
-        :aria-selected="index === selectedIndex"
-        role="option"
-        tabindex="-1"
-        :style="{ animationDelay: `${Math.min(index, 10) * 18}ms` }"
-        @mouseenter="emit('select', index)"
-        @focus="emit('select', index)"
-        @click="emit('select', index)"
-        @dblclick="emit('open', image)"
-      >
-        <span class="spotlight-thumb">
-          <ThumbnailImage class="spotlight-thumbnail-image" :image="image" />
-        </span>
-        <span class="spotlight-copy">
-          <strong>{{ image.name }}</strong>
-          <small>{{ image.width }} × {{ image.height }} · {{ Math.max(1, Math.round(image.sizeBytes / 1024)) }} Ko</small>
-        </span>
-        <span v-if="image.semanticScore != null" class="spotlight-score">{{ Math.round(image.semanticScore * 100) }}%</span>
-        <span class="spotlight-actions">
-          <Button
-            class="spotlight-action-button"
-            :class="{ 'spotlight-action-button--success': copiedImageId === image.id }"
-            :variant="copiedImageId === image.id ? 'primary' : 'secondary'"
-            size="sm"
-            :loading="copyingImageId === image.id"
-            aria-label="Copy image"
-            @click.stop="emit('copy', image)"
-          >
-            <template #leading>
-              <Check v-if="copiedImageId === image.id" :size="14" />
-              <Copy v-else :size="14" />
-            </template>
-            {{ copiedImageId === image.id ? 'Copied' : 'Copy' }}
-            <template #trailing><KbdChip shortcut="Ctrl+C" size="sm" /></template>
-          </Button>
-          <Button
-            class="spotlight-action-button"
-            variant="secondary"
-            size="sm"
-            :loading="revealingImageId === image.id"
-            :aria-label="`Open in ${fileManagerName}`"
-            @click.stop="emit('reveal', image)"
-          >
-            <template #leading><FolderOpen :size="14" /></template>
-            {{ fileManagerName }}
-            <template #trailing><KbdChip shortcut="Ctrl+E" size="sm" /></template>
-          </Button>
-          <Button
-            class="spotlight-action-button"
-            variant="primary"
-            size="sm"
-            :loading="openingImageId === image.id"
-            aria-label="Open in Imagyx"
-            @click.stop="emit('open', image)"
-          >
-            <template #leading><ExternalLink :size="14" /></template>
-            Imagyx
-            <template #trailing><KbdChip shortcut="Ctrl+I" size="sm" /></template>
-          </Button>
-        </span>
+      <div v-if="!libraryReady" class="spotlight-library-loading" aria-live="polite">
+        <LoaderCircle class="spin" :size="22" />
+        <strong>Chargement de la bibliothèque…</strong>
       </div>
 
-      <div v-if="searching && results.length === 0" class="spotlight-loading-list" aria-label="Recherche en cours">
-        <span v-for="item in 5" :key="item" :style="{ animationDelay: `${item * 45}ms` }" />
-      </div>
+      <section v-else-if="!hasFolders" class="spotlight-library-empty" aria-labelledby="spotlight-library-empty-title">
+        <span class="spotlight-library-empty__icon"><FolderPlus :size="24" /></span>
+        <strong id="spotlight-library-empty-title">Aucun dossier à analyser</strong>
+        <p>Ajoute un dossier d’images pour activer la recherche Imagyx.</p>
+        <Button
+          class="spotlight-library-empty__button"
+          variant="primary"
+          size="lg"
+          @click="emit('addFolder')"
+        >
+          <template #leading><FolderPlus :size="17" /></template>
+          Ajouter un dossier
+        </Button>
+        <small>Les fichiers restent sur cet appareil et l’indexation s’exécute localement.</small>
+      </section>
 
-      <div v-else-if="!searching && !results.length && !error && !showAddAction" class="spotlight-empty">
-        <Search :size="24" />
-        <strong>Aucun résultat convaincant</strong>
-        <span>Essaie une description plus courte ou un mot plus visuel.</span>
-      </div>
+      <template v-else>
+        <Button
+          v-if="showAddAction"
+          class="spotlight-add-folder"
+          variant="secondary"
+          size="lg"
+          block
+          @click="emit('addFolder')"
+        >
+          <template #leading><FolderPlus :size="18" /></template>
+          <span class="spotlight-add-folder__copy">
+            <strong>Ajouter un dossier d’images</strong>
+            <small>Choisir un dossier et lancer l’indexation en arrière-plan</small>
+          </span>
+        </Button>
+
+        <aside v-if="showBackgroundHint" class="spotlight-background-hint" aria-live="polite">
+          <span class="spotlight-background-hint__icon"><LoaderCircle class="spin" :size="16" /></span>
+          <span>
+            <strong>Indexation en arrière-plan</strong>
+            <small>Tu peux fermer cette fenêtre, Imagyx continue de travailler.</small>
+          </span>
+        </aside>
+
+        <SpotlightIndexProgress v-for="job in jobs" :key="job.folderId" :job="job" />
+
+        <div
+          v-for="(image, index) in results"
+          :key="image.id"
+          class="spotlight-result"
+          :class="{ 'spotlight-result--selected': index === selectedIndex }"
+          :data-result-index="index"
+          :aria-selected="index === selectedIndex"
+          role="option"
+          tabindex="-1"
+          :style="{ animationDelay: `${Math.min(index, 10) * 18}ms` }"
+          @mouseenter="emit('select', index)"
+          @focus="emit('select', index)"
+          @click="emit('select', index)"
+          @dblclick="emit('open', image)"
+        >
+          <span class="spotlight-thumb">
+            <ThumbnailImage class="spotlight-thumbnail-image" :image="image" />
+          </span>
+          <span class="spotlight-copy">
+            <strong>{{ image.name }}</strong>
+            <small>{{ image.width }} × {{ image.height }} · {{ Math.max(1, Math.round(image.sizeBytes / 1024)) }} Ko</small>
+          </span>
+          <span v-if="image.semanticScore != null" class="spotlight-score">{{ Math.round(image.semanticScore * 100) }}%</span>
+          <span class="spotlight-actions">
+            <Button
+              class="spotlight-action-button"
+              :class="{ 'spotlight-action-button--success': copiedImageId === image.id }"
+              :variant="copiedImageId === image.id ? 'primary' : 'secondary'"
+              size="sm"
+              :loading="copyingImageId === image.id"
+              aria-label="Copy image"
+              @click.stop="emit('copy', image)"
+            >
+              <template #leading>
+                <Check v-if="copiedImageId === image.id" :size="14" />
+                <Copy v-else :size="14" />
+              </template>
+              {{ copiedImageId === image.id ? 'Copied' : 'Copy' }}
+              <template #trailing><KbdChip shortcut="Ctrl+C" size="sm" /></template>
+            </Button>
+            <Button
+              class="spotlight-action-button"
+              variant="secondary"
+              size="sm"
+              :loading="revealingImageId === image.id"
+              :aria-label="`Open in ${fileManagerName}`"
+              @click.stop="emit('reveal', image)"
+            >
+              <template #leading><FolderOpen :size="14" /></template>
+              {{ fileManagerName }}
+              <template #trailing><KbdChip shortcut="Ctrl+E" size="sm" /></template>
+            </Button>
+            <Button
+              class="spotlight-action-button"
+              variant="primary"
+              size="sm"
+              :loading="openingImageId === image.id"
+              aria-label="Open in Imagyx"
+              @click.stop="emit('open', image)"
+            >
+              <template #leading><ExternalLink :size="14" /></template>
+              Imagyx
+              <template #trailing><KbdChip shortcut="Ctrl+I" size="sm" /></template>
+            </Button>
+          </span>
+        </div>
+
+        <div v-if="searching && results.length === 0" class="spotlight-loading-list" aria-label="Recherche en cours">
+          <span v-for="item in 5" :key="item" :style="{ animationDelay: `${item * 45}ms` }" />
+        </div>
+
+        <div
+          v-else-if="!searching && !results.length && !error && !showAddAction && !showBackgroundHint && jobs.length === 0"
+          class="spotlight-empty"
+        >
+          <Search :size="24" />
+          <strong>Aucun résultat convaincant</strong>
+          <span>Essaie une description plus courte ou un mot plus visuel.</span>
+        </div>
+      </template>
 
       <div v-if="error" class="spotlight-error">{{ error }}</div>
     </div>
@@ -170,12 +223,69 @@ defineExpose({ scrollToIndex })
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--border-strong) 78%, transparent) transparent;
 }
+.spotlight-library-loading {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  min-height: 300px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.spotlight-library-empty {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  min-height: 370px;
+  padding: 34px;
+  text-align: center;
+}
+.spotlight-library-empty__icon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin-bottom: 15px;
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--primary-soft) 72%, var(--surface));
+  color: var(--primary-text);
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.1), 0 14px 28px -24px rgb(15 23 42 / 0.5);
+}
+.spotlight-library-empty strong { color: var(--text); font-size: 16px; letter-spacing: -0.2px; }
+.spotlight-library-empty p { max-width: 330px; margin: 8px 0 18px; color: var(--text-muted); font-size: 11px; line-height: 1.55; }
+.spotlight-library-empty small { margin-top: 13px; color: var(--text-subtle); font-size: 9px; }
+.spotlight-library-empty__button { min-width: 178px; }
 .spotlight-add-folder { justify-content: flex-start; margin: 4px 4px 8px; min-height: 64px; text-align: left; }
 .spotlight-add-folder__copy { display: block; min-width: 0; text-align: left; }
 .spotlight-add-folder__copy strong,
 .spotlight-add-folder__copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spotlight-add-folder__copy strong { font-size: 11px; color: var(--text); }
 .spotlight-add-folder__copy small { margin-top: 3px; color: var(--text-secondary); font-size: 10px; font-weight: 500; }
+.spotlight-background-hint {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin: 4px 4px 8px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary-soft) 30%, var(--surface));
+}
+.spotlight-background-hint__icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--primary-soft) 68%, var(--surface));
+  color: var(--primary-text);
+}
+.spotlight-background-hint strong,
+.spotlight-background-hint small { display: block; }
+.spotlight-background-hint strong { color: var(--text); font-size: 10px; }
+.spotlight-background-hint small { margin-top: 3px; color: var(--text-muted); font-size: 9px; }
 .spotlight-result {
   position: relative;
   display: grid;
@@ -278,8 +388,13 @@ defineExpose({ scrollToIndex })
   background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--surface-elevated) 96%, transparent) 88%);
   box-shadow: inset 0 -13px 17px -17px rgb(2 6 23 / 0.32);
 }
+.spin { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(1turn); } }
 @keyframes result-rise { from { opacity: 0; transform: translateY(7px) scale(0.992); } to { opacity: 1; transform: none; } }
 @keyframes action-success { 0% { transform: scale(0.94); } 55% { transform: scale(1.04); } 100% { transform: none; } }
 @keyframes skeleton-shimmer { to { background-position: -160% 0; } }
-@media (prefers-reduced-motion: reduce) { .spotlight-action-button--success { animation-duration: 0.01ms; } }
+@media (prefers-reduced-motion: reduce) {
+  .spotlight-action-button--success,
+  .spin { animation-duration: 0.01ms; }
+}
 </style>
