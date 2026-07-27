@@ -8,6 +8,7 @@ import {
 } from '@huggingface/transformers'
 import { imagyxApi } from '../api/tauri'
 import type { ModelDownloadProgress, QueryConcept, RuntimeStats } from '../types'
+import { perfLog } from '../utils'
 
 const MODEL_ID = 'Xenova/mobileclip_s0'
 const MODEL_NAME = 'MobileCLIP-S0'
@@ -234,6 +235,7 @@ class SemanticRuntime {
   }
 
   private async loadVisionRuntime() {
+    const start = performance.now()
     this.publishProgress({ stage: 'checking', message: `Vérification de ${MODEL_NAME}…`, currentBytes: 0, totalBytes: 0, currentFile: 0, totalFiles: 0 })
     this.patchStats({ stage: 'loading', modelName: MODEL_NAME, backendRequested: 'WebGPU' })
     await this.ensureModelEnvironment()
@@ -247,6 +249,7 @@ class SemanticRuntime {
       this.patchStats({ stage: this.paused ? 'paused' : 'ready', backendEffective: 'Transformers.js · WASM', accelerationActive: false, accelerationLabel: 'CPU WASM', fallbackReason: `WebGPU indisponible: ${String(error)}` })
     }
     this.publishProgress({ stage: 'ready', message: `${MODEL_NAME} prêt hors connexion.`, currentBytes: 0, totalBytes: 0, currentFile: 6, totalFiles: 6 })
+    perfLog('SemanticIA', 'Vision Model Load', performance.now() - start, { device: this.device })
   }
 
   private async loadVisionForDevice(device: Device) {

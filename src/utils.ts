@@ -24,3 +24,16 @@ export function debounce<Args extends unknown[]>(
     timer = setTimeout(() => fn(...args), delay)
   }
 }
+
+export function perfLog(component: string, action: string, durationMs: number, details?: unknown) {
+  if (import.meta.env.DEV) {
+    const color = durationMs > 100 ? '#ef4444' : durationMs > 30 ? '#f59e0b' : '#10b981'
+    console.log(
+      `%c[Perf][${component}] %c${action}: %c${durationMs.toFixed(1)}ms`,
+      'color: #8b5cf6; font-weight: bold;',
+      'color: #94a3b8;',
+      `color: ${color}; font-weight: bold;`,
+      details !== undefined ? details : '',
+    )
+  }
+}

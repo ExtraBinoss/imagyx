@@ -16,9 +16,18 @@ function initialControlsPosition(): WindowControlsPosition {
   return saved === 'right' ? 'right' : 'left'
 }
 
+function detectInitialPlatform(): DesktopPlatform {
+  if (typeof navigator === 'undefined') return 'unknown'
+  const ua = navigator.userAgent.toLowerCase()
+  if (ua.includes('mac')) return 'macos'
+  if (ua.includes('win')) return 'windows'
+  if (ua.includes('linux')) return 'linux'
+  return 'unknown'
+}
+
 export const usePlatformStore = defineStore('platform', {
   state: () => ({
-    platform: 'unknown' as DesktopPlatform,
+    platform: detectInitialPlatform(),
     version: '0.1.0',
     isDevMode: Boolean(import.meta.env.DEV),
     controlsPosition: initialControlsPosition(),

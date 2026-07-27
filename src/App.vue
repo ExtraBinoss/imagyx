@@ -19,25 +19,16 @@ import { usePlatformStore } from "./stores/platform";
 import { useShortcutStore } from "./stores/shortcut";
 import { useThemeStore } from "./stores/theme";
 import { capitalize, useTagTypewriter } from "./useTagTypewriter";
-import { debounce } from "./utils";
+import { debounce, perfLog } from "./utils";
 
-const AppSidebar = defineAsyncComponent(
-  () => import("./components/AppSidebar.vue"),
-);
-const ImageGrid = defineAsyncComponent(
-  () => import("./components/ImageGrid.vue"),
-);
+import AppSidebar from "./components/AppSidebar.vue";
+import ImageGrid from "./components/ImageGrid.vue";
+import SearchHeader from "./components/SearchHeader.vue";
+import StatusBar from "./components/StatusBar.vue";
+import ToastViewport from "./components/ui/Toast/ToastViewport.vue";
+
 const ImagePreviewDialog = defineAsyncComponent(
   () => import("./components/ImagePreviewDialog.vue"),
-);
-const SearchHeader = defineAsyncComponent(
-  () => import("./components/SearchHeader.vue"),
-);
-const StatusBar = defineAsyncComponent(
-  () => import("./components/StatusBar.vue"),
-);
-const ToastViewport = defineAsyncComponent(
-  () => import("./components/ui/Toast/ToastViewport.vue"),
 );
 const OnboardingDialog = defineAsyncComponent(
   () => import("./components/Onboarding/OnboardingDialog.vue"),
@@ -126,11 +117,14 @@ async function openImageFromSpotlight(imageId: string) {
 }
 
 onMounted(async () => {
+  const start = performance.now();
   theme.initialize();
   onboarding.initialize();
   void platform.initialize();
   void shortcut.initialize();
-  void store.initialize();
+  void store.initialize().then(() => {
+    perfLog("App", "Full store initial load", performance.now() - start);
+  });
   window.addEventListener("keydown", handleTypeToSearch);
   unlistenOpenImage = await listen<string>("open-image-requested", (event) => {
     void openImageFromSpotlight(event.payload);
@@ -138,6 +132,7 @@ onMounted(async () => {
   unlistenOpenOnboarding = await listen("open-onboarding-requested", () =>
     onboarding.show(),
   );
+  perfLog("App", "onMounted shell setup", performance.now() - start);
 });
 
 onBeforeUnmount(() => {
@@ -194,6 +189,7 @@ onBeforeUnmount(() => {
         :view-key="viewKey"
         @explain="store.explainImage"
         @preview="previewImage = $event"
+        @load-more="store.loadMoreImages"
       />
       <StatusBar
         :progress="null"

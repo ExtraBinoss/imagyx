@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ExternalLink, FileImage, SearchX } from '@lucide/vue'
 import type { ImageAsset } from '../types'
 import { imagyxApi } from '../api/tauri'
-import { formatBytes } from '../utils'
+import { formatBytes, perfLog } from '../utils'
 import Badge from './ui/Badge/Badge.vue'
 import Skeleton from './ui/Skeleton/Skeleton.vue'
 import ThumbnailImage from './ThumbnailImage.vue'
@@ -11,7 +11,7 @@ import Button from './ui/Button/Button.vue'
 import CopyButton from './ui/Button/CopyButton.vue'
 
 const props = defineProps<{ images: ImageAsset[]; loading: boolean; hasFolders: boolean; viewKey: string }>()
-const emit = defineEmits<{ explain: [imageId: string]; preview: [image: ImageAsset] }>()
+const emit = defineEmits<{ explain: [imageId: string]; preview: [image: ImageAsset]; loadMore: [] }>()
 const GAP = 16
 const MIN_CARD_WIDTH = 180
 const META_HEIGHT = 66
@@ -27,6 +27,7 @@ const copyBtnRefs = ref<Map<string, InstanceType<typeof CopyButton>>>(new Map())
 let resizeObserver: ResizeObserver | null = null
 let scrollFrame = 0
 let scrollTimeout: number | undefined
+let lastLoadMore = 0
 
 const availableWidth = computed(() => Math.max(0, viewportWidth.value - 48))
 const columns = computed(() => Math.max(1, Math.floor((availableWidth.value + GAP) / (MIN_CARD_WIDTH + GAP))))
@@ -147,7 +148,18 @@ function handleScroll() {
   if (scrollFrame) return
   scrollFrame = requestAnimationFrame(() => {
     scrollFrame = 0
-    if (viewport.value) scrollTop.value = viewport.value.scrollTop
+    if (viewport.value) {
+      scrollTop.value = viewport.value.scrollTop
+      const distanceToBottom = spacerHeight.value - (scrollTop.value + viewportHeight.value)
+      if (distanceToBottom < 600) {
+        const now = performance.now()
+        if (now - lastLoadMore > 300) {
+          lastLoadMore = now
+          perfLog('ImageGrid', 'LoadMore triggered', 0, { displayed: props.images.length })
+          emit('loadMore')
+        }
+      }
+    }
   })
 }
 
