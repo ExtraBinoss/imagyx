@@ -4,12 +4,11 @@ use std::{
     time::Instant,
 };
 
-use super::helpers::MAX_SAMPLES_PER_SPAN;
-#[cfg(test)]
-use super::helpers::percentile;
+use super::helpers::{MAX_SAMPLES_PER_SPAN, percentile};
 
 static INIT: Once = Once::new();
 static METRICS: OnceLock<Mutex<HashMap<&'static str, VecDeque<u64>>>> = OnceLock::new();
+const SUMMARY_INTERVAL: usize = 32;
 
 #[derive(Debug)]
 pub struct TraceSpan {
@@ -20,8 +19,14 @@ pub struct TraceSpan {
 impl Drop for TraceSpan {
     fn drop(&mut self) {
         let elapsed_ms = self.started_at.elapsed().as_millis() as u64;
-        record(self.name, elapsed_ms);
+        let summary = record(self.name, elapsed_ms);
         eprintln!("[imagyx:trace] span={} elapsed_ms={elapsed_ms}", self.name);
+        if let Some((count, p50, p95)) = summary {
+            eprintln!(
+                "[imagyx:trace] summary={} samples={count} p50_ms={p50} p95_ms={p95}",
+                self.name
+            );
+        }
     }
 }
 
@@ -41,7 +46,7 @@ pub fn event(name: &'static str, detail: impl std::fmt::Display) {
 }
 
 #[cfg(test)]
-pub fn snapshot(name: &'static str) -> Option<(usize, u64, u64)> {
+fn snapshot(name: &'static str) -> Option<(usize, u64, u64)> {
     let metrics = METRICS.get()?.lock().ok()?;
     let samples = metrics.get(name)?;
     Some((
@@ -51,16 +56,26 @@ pub fn snapshot(name: &'static str) -> Option<(usize, u64, u64)> {
     ))
 }
 
-fn record(name: &'static str, elapsed_ms: u64) {
+fn record(name: &'static str, elapsed_ms: u64) -> Option<(usize, u64, u64)> {
     let metrics = METRICS.get_or_init(|| Mutex::new(HashMap::new()));
     let Ok(mut metrics) = metrics.lock() else {
-        return;
+        return None;
     };
     let samples = metrics.entry(name).or_default();
     if samples.len() == MAX_SAMPLES_PER_SPAN {
         samples.pop_front();
     }
     samples.push_back(elapsed_ms);
+
+    let count = samples.len();
+    if count < SUMMARY_INTERVAL || count % SUMMARY_INTERVAL != 0 {
+        return None;
+    }
+    Some((
+        count,
+        percentile(samples, 0.50)?,
+        percentile(samples, 0.95)?,
+    ))
 }
 
 #[cfg(test)]
