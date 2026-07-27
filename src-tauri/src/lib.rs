@@ -97,7 +97,7 @@ pub fn run() {
             };
             let folders = {
                 let _trace = tracing::span("startup.folders");
-                state.database.folders()?
+                state.database.folders_for_watching()?
             };
             {
                 let _trace = tracing::span("startup.asset_scopes");
