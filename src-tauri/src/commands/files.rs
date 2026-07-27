@@ -9,9 +9,7 @@ use std::{
 
 use arboard::{Clipboard, ImageData};
 use image::{
-    DynamicImage, GenericImageView, ImageFormat, Rgba, RgbaImage,
-    codecs::jpeg::JpegEncoder,
-    imageops,
+    codecs::jpeg::JpegEncoder, imageops, DynamicImage, ImageFormat, Rgba, RgbaImage,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -232,16 +230,18 @@ fn convert_image_blocking(
         }
     };
     let inherited_embedding = state
-        .vectors
-        .read()
-        .vector(&source.id)
-        .map(<[f32]>::to_vec);
+        .database
+        .embedding_vector(&source.id)
+        .map_err(|error| error.to_string())?;
     let embeddings = inherited_embedding
         .as_ref()
         .map(|vector| vec![(asset.id.clone(), vector.clone())])
         .unwrap_or_default();
 
-    if let Err(error) = state.database.save_assets(std::slice::from_ref(&asset), &embeddings) {
+    if let Err(error) = state
+        .database
+        .save_assets(std::slice::from_ref(&asset), &embeddings)
+    {
         let _ = fs::remove_file(&destination);
         return Err(error.to_string());
     }
@@ -296,8 +296,9 @@ fn encode_image(
             JpegEncoder::new_with_quality(&mut writer, 92)
                 .encode_image(&DynamicImage::ImageRgb8(flattened))
         }
-        ImageConversionFormat::Ico => prepare_icon(image)
-            .write_to(&mut writer, target_format.image_format()),
+        ImageConversionFormat::Ico => {
+            prepare_icon(image).write_to(&mut writer, target_format.image_format())
+        }
         _ => image.write_to(&mut writer, target_format.image_format()),
     };
     result.map_err(|error| format!("Impossible d’encoder l’image: {error}"))?;
@@ -407,7 +408,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        ImageConversionFormat, flatten_for_jpeg, prepare_icon, unique_destination,
+        flatten_for_jpeg, prepare_icon, unique_destination, ImageConversionFormat,
     };
 
     #[test]
@@ -418,8 +419,8 @@ mod tests {
         fs::write(temp.path().join("photo.webp"), []).expect("direct conversion");
         fs::write(temp.path().join("photo-converted.webp"), []).expect("named conversion");
 
-        let destination = unique_destination(&source, ImageConversionFormat::Webp)
-            .expect("unique destination");
+        let destination =
+            unique_destination(&source, ImageConversionFormat::Webp).expect("unique destination");
         assert!(destination.ends_with("photo-converted-2.webp"));
     }
 
