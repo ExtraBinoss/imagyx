@@ -1,7 +1,10 @@
 use std::{
     collections::{HashMap, VecDeque},
-    path::Path,
+    fs::{self, File},
+    io::{BufWriter, Write},
+    path::{Path, PathBuf},
     sync::Arc,
+    time::UNIX_EPOCH,
 };
 
 use image::{ImageReader, codecs::jpeg::JpegEncoder};
@@ -9,38 +12,45 @@ use parking_lot::Mutex;
 
 use crate::AppError;
 
-const DEFAULT_MAX_ITEMS: usize = 768;
-const DEFAULT_MAX_BYTES: usize = 64 * 1024 * 1024;
-const THUMBNAIL_EDGE: u32 = 384;
-const JPEG_QUALITY: u8 = 74;
+const DEFAULT_CAPACITY: usize = 64;
+const THUMBNAIL_EDGE: u32 = 256;
+const JPEG_QUALITY: u8 = 55;
+const WRITE_BUFFER_BYTES: usize = 32 * 1024;
+
+#[derive(Debug, Clone)]
+struct CacheEntry {
+    path: PathBuf,
+}
 
 #[derive(Debug, Default)]
 struct CacheState {
-    entries: HashMap<String, Arc<Vec<u8>>>,
+    entries: HashMap<String, CacheEntry>,
     lru: VecDeque<String>,
-    bytes: usize,
 }
 
 #[derive(Debug)]
 pub struct ThumbnailCache {
-    max_items: usize,
-    max_bytes: usize,
+    directory: PathBuf,
+    capacity: usize,
     state: Mutex<CacheState>,
     key_locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
 }
 
 impl ThumbnailCache {
-    pub fn new() -> Self {
-        Self::with_limits(DEFAULT_MAX_ITEMS, DEFAULT_MAX_BYTES)
+    pub fn new(directory: PathBuf) -> Result<Self, AppError> {
+        Self::with_capacity(directory, DEFAULT_CAPACITY)
     }
 
-    pub fn with_limits(max_items: usize, max_bytes: usize) -> Self {
-        Self {
-            max_items: max_items.max(1),
-            max_bytes: max_bytes.max(1),
+    pub fn with_capacity(directory: PathBuf, capacity: usize) -> Result<Self, AppError> {
+        fs::create_dir_all(&directory)?;
+        let cache = Self {
+            directory,
+            capacity: capacity.max(1),
             state: Mutex::new(CacheState::default()),
             key_locks: Mutex::new(HashMap::new()),
-        }
+        };
+        cache.load_existing()?;
+        Ok(cache)
     }
 
     pub fn get_or_create(
@@ -48,24 +58,25 @@ impl ThumbnailCache {
         image_id: &str,
         source: &Path,
         modified_at: i64,
-    ) -> Result<Arc<Vec<u8>>, AppError> {
-        let key = format!("{image_id}:{modified_at}");
-        if let Some(bytes) = self.get(&key) {
-            return Ok(bytes);
+    ) -> Result<PathBuf, AppError> {
+        let cache_id = cache_id(image_id, modified_at);
+        if let Some(path) = self.get_existing(&cache_id) {
+            return Ok(path);
         }
 
-        let lock = self.lock_for(&key);
+        let lock = self.lock_for(&cache_id);
         let result = {
             let _guard = lock.lock();
-            if let Some(bytes) = self.get(&key) {
-                Ok(bytes)
+            if let Some(path) = self.get_existing(&cache_id) {
+                Ok(path)
             } else {
-                let bytes = Arc::new(create_thumbnail(source)?);
-                self.insert(key.clone(), Arc::clone(&bytes));
-                Ok(bytes)
+                let path = self.cache_path(&cache_id);
+                create_thumbnail(source, &path)?;
+                self.insert(cache_id.clone(), path.clone());
+                Ok(path)
             }
         };
-        self.release_lock(&key, &lock);
+        self.release_lock(&cache_id, &lock);
         result
     }
 
@@ -73,34 +84,84 @@ impl ThumbnailCache {
         self.state.lock().entries.len()
     }
 
-    fn get(&self, key: &str) -> Option<Arc<Vec<u8>>> {
+    fn load_existing(&self) -> Result<(), AppError> {
+        let mut existing = Vec::new();
+        for entry in fs::read_dir(&self.directory)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().and_then(|value| value.to_str()) != Some("jpg") {
+                continue;
+            }
+            let Some(cache_id) = path.file_stem().and_then(|value| value.to_str()) else {
+                let _ = fs::remove_file(path);
+                continue;
+            };
+            if cache_id.len() != 64 || !cache_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                let _ = fs::remove_file(path);
+                continue;
+            }
+            let modified = entry
+                .metadata()?
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map_or(0, |duration| duration.as_millis());
+            existing.push((cache_id.to_owned(), path, modified));
+        }
+        existing.sort_unstable_by_key(|(_, _, modified)| *modified);
+
+        let overflow = existing.len().saturating_sub(self.capacity);
+        for (_, path, _) in existing.iter().take(overflow) {
+            let _ = fs::remove_file(path);
+        }
+
         let mut state = self.state.lock();
-        let bytes = state.entries.get(key).cloned()?;
-        touch(&mut state.lru, key);
-        Some(bytes)
+        for (cache_id, path, _) in existing.into_iter().skip(overflow) {
+            state.lru.push_back(cache_id.clone());
+            state.entries.insert(cache_id, CacheEntry { path });
+        }
+        Ok(())
     }
 
-    fn insert(&self, key: String, bytes: Arc<Vec<u8>>) {
-        if bytes.len() > self.max_bytes {
-            return;
+    fn get_existing(&self, cache_id: &str) -> Option<PathBuf> {
+        let path = self.cache_path(cache_id);
+        if !path.is_file() {
+            let mut state = self.state.lock();
+            state.entries.remove(cache_id);
+            remove_from_lru(&mut state.lru, cache_id);
+            return None;
         }
 
         let mut state = self.state.lock();
-        if let Some(previous) = state.entries.remove(&key) {
-            state.bytes = state.bytes.saturating_sub(previous.len());
-        }
-        state.bytes = state.bytes.saturating_add(bytes.len());
-        state.entries.insert(key.clone(), bytes);
-        touch(&mut state.lru, &key);
+        state.entries.insert(
+            cache_id.to_owned(),
+            CacheEntry {
+                path: path.clone(),
+            },
+        );
+        touch(&mut state.lru, cache_id);
+        Some(path)
+    }
 
-        while state.entries.len() > self.max_items || state.bytes > self.max_bytes {
+    fn insert(&self, cache_id: String, path: PathBuf) {
+        let mut state = self.state.lock();
+        state
+            .entries
+            .insert(cache_id.clone(), CacheEntry { path });
+        touch(&mut state.lru, &cache_id);
+
+        while state.entries.len() > self.capacity {
             let Some(oldest) = state.lru.pop_front() else {
                 break;
             };
-            if let Some(removed) = state.entries.remove(&oldest) {
-                state.bytes = state.bytes.saturating_sub(removed.len());
+            if let Some(entry) = state.entries.remove(&oldest) {
+                let _ = fs::remove_file(entry.path);
             }
         }
+    }
+
+    fn cache_path(&self, cache_id: &str) -> PathBuf {
+        self.directory.join(format!("{cache_id}.jpg"))
     }
 
     fn lock_for(&self, key: &str) -> Arc<Mutex<()>> {
@@ -122,43 +183,72 @@ impl ThumbnailCache {
     }
 }
 
+fn cache_id(image_id: &str, modified_at: i64) -> String {
+    blake3::hash(format!("{image_id}:{modified_at}").as_bytes())
+        .to_hex()
+        .to_string()
+}
+
 fn touch(lru: &mut VecDeque<String>, key: &str) {
-    if let Some(index) = lru.iter().position(|candidate| candidate == key) {
-        lru.remove(index);
-    }
+    remove_from_lru(lru, key);
     lru.push_back(key.to_owned());
 }
 
-fn create_thumbnail(source: &Path) -> Result<Vec<u8>, AppError> {
+fn remove_from_lru(lru: &mut VecDeque<String>, key: &str) {
+    if let Some(index) = lru.iter().position(|candidate| candidate == key) {
+        lru.remove(index);
+    }
+}
+
+fn create_thumbnail(source: &Path, target: &Path) -> Result<(), AppError> {
     let image = ImageReader::open(source)?.with_guessed_format()?.decode()?;
     let thumbnail = image.thumbnail(THUMBNAIL_EDGE, THUMBNAIL_EDGE).to_rgb8();
-    let mut encoded = Vec::new();
-    let mut encoder = JpegEncoder::new_with_quality(&mut encoded, JPEG_QUALITY);
-    encoder.encode(
-        thumbnail.as_raw(),
-        thumbnail.width(),
-        thumbnail.height(),
-        image::ExtendedColorType::Rgb8,
-    )?;
-    Ok(encoded)
+    let temporary = target.with_extension(format!("tmp-{}", std::process::id()));
+
+    let write_result = (|| -> Result<(), AppError> {
+        let file = File::create(&temporary)?;
+        let mut writer = BufWriter::with_capacity(WRITE_BUFFER_BYTES, file);
+        let mut encoder = JpegEncoder::new_with_quality(&mut writer, JPEG_QUALITY);
+        encoder.encode(
+            thumbnail.as_raw(),
+            thumbnail.width(),
+            thumbnail.height(),
+            image::ExtendedColorType::Rgb8,
+        )?;
+        writer.flush()?;
+        Ok(())
+    })();
+
+    if let Err(error) = write_result {
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
+
+    if target.is_file() {
+        let _ = fs::remove_file(&temporary);
+    } else {
+        fs::rename(&temporary, target)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use image::{Rgb, RgbImage};
     use tempfile::tempdir;
 
     use super::ThumbnailCache;
 
     #[test]
-    fn keeps_the_memory_cache_bounded() {
+    fn keeps_only_the_latest_files() {
         let temp = tempdir().expect("temporary directory");
-        let cache = ThumbnailCache::with_limits(2, usize::MAX);
+        let source_dir = temp.path().join("source");
+        let cache_dir = temp.path().join("cache");
+        std::fs::create_dir_all(&source_dir).expect("source directory");
+        let cache = ThumbnailCache::with_capacity(cache_dir.clone(), 2).expect("cache");
 
         for index in 0..3 {
-            let source = temp.path().join(format!("{index}.png"));
+            let source = source_dir.join(format!("{index}.png"));
             RgbImage::from_pixel(64, 64, Rgb([index as u8, 0, 0]))
                 .save(&source)
                 .expect("source image");
@@ -168,16 +258,22 @@ mod tests {
         }
 
         assert_eq!(cache.cached_items(), 2);
+        assert_eq!(
+            std::fs::read_dir(cache_dir)
+                .expect("cache directory")
+                .count(),
+            2
+        );
     }
 
     #[test]
-    fn reuses_encoded_bytes_without_writing_a_thumbnail_file() {
+    fn reuses_the_same_immutable_file() {
         let temp = tempdir().expect("temporary directory");
         let source = temp.path().join("source.png");
+        let cache = ThumbnailCache::with_capacity(temp.path().join("cache"), 4).expect("cache");
         RgbImage::from_pixel(64, 64, Rgb([12, 34, 56]))
             .save(&source)
             .expect("source image");
-        let cache = ThumbnailCache::with_limits(4, usize::MAX);
 
         let first = cache
             .get_or_create("image", &source, 7)
@@ -186,12 +282,7 @@ mod tests {
             .get_or_create("image", &source, 7)
             .expect("cached thumbnail");
 
-        assert!(Arc::ptr_eq(&first, &second));
-        assert_eq!(
-            std::fs::read_dir(temp.path())
-                .expect("temporary directory")
-                .count(),
-            1
-        );
+        assert_eq!(first, second);
+        assert!(first.is_file());
     }
 }
