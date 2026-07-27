@@ -1,8 +1,124 @@
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use tauri::{
+    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow,
+    WebviewWindowBuilder,
+    webview::PageLoadEvent,
+};
+
+use crate::tracing;
 
 const SPOTLIGHT_WIDTH: f64 = 780.0;
 const SPOTLIGHT_COMPACT_HEIGHT: f64 = 126.0;
 const SPOTLIGHT_EXPANDED_HEIGHT: f64 = 580.0;
+
+static SPOTLIGHT_CREATING: AtomicBool = AtomicBool::new(false);
+static SPOTLIGHT_READY: AtomicBool = AtomicBool::new(false);
+static SPOTLIGHT_SHOW_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn toggle_spotlight(app: AppHandle) {
+    if let Some(window) = app.get_webview_window("spotlight") {
+        if !SPOTLIGHT_READY.load(Ordering::Acquire) {
+            SPOTLIGHT_SHOW_REQUESTED.store(true, Ordering::Release);
+            return;
+        }
+        toggle_existing_window(&window);
+        return;
+    }
+
+    SPOTLIGHT_READY.store(false, Ordering::Release);
+    SPOTLIGHT_SHOW_REQUESTED.store(true, Ordering::Release);
+    if SPOTLIGHT_CREATING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+
+    let thread_app = app.clone();
+    let spawn_result = std::thread::Builder::new()
+        .name("imagyx-spotlight-window".into())
+        .spawn(move || create_spotlight_window(&thread_app));
+    if let Err(error) = spawn_result {
+        SPOTLIGHT_CREATING.store(false, Ordering::Release);
+        SPOTLIGHT_SHOW_REQUESTED.store(false, Ordering::Release);
+        tracing::event("spotlight.create_thread.failed", error);
+    }
+}
+
+fn create_spotlight_window(app: &AppHandle) {
+    let Some(config) = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|config| config.label == "spotlight")
+    else {
+        SPOTLIGHT_CREATING.store(false, Ordering::Release);
+        SPOTLIGHT_SHOW_REQUESTED.store(false, Ordering::Release);
+        tracing::event("spotlight.config.missing", "label=spotlight");
+        return;
+    };
+
+    let builder = match WebviewWindowBuilder::from_config(app, config) {
+        Ok(builder) => builder,
+        Err(error) => {
+            SPOTLIGHT_CREATING.store(false, Ordering::Release);
+            SPOTLIGHT_SHOW_REQUESTED.store(false, Ordering::Release);
+            tracing::event("spotlight.builder.failed", error);
+            return;
+        }
+    };
+
+    let builder = builder.on_page_load(|window, payload| {
+        if payload.event() != PageLoadEvent::Finished {
+            return;
+        }
+        SPOTLIGHT_READY.store(true, Ordering::Release);
+        SPOTLIGHT_CREATING.store(false, Ordering::Release);
+        if SPOTLIGHT_SHOW_REQUESTED.swap(false, Ordering::AcqRel) {
+            show_spotlight_window(&window);
+        }
+    });
+
+    match builder.build() {
+        Ok(window) => attach_close_handler(&window),
+        Err(error) => {
+            SPOTLIGHT_CREATING.store(false, Ordering::Release);
+            SPOTLIGHT_SHOW_REQUESTED.store(false, Ordering::Release);
+            tracing::event("spotlight.build.failed", error);
+        }
+    }
+}
+
+fn attach_close_handler(window: &WebviewWindow) {
+    let close_window = window.clone();
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            SPOTLIGHT_SHOW_REQUESTED.store(false, Ordering::Release);
+            let _ = close_window.emit("spotlight-will-hide", ());
+            let _ = close_window.hide();
+        }
+    });
+}
+
+fn toggle_existing_window(window: &WebviewWindow) {
+    if window.is_visible().unwrap_or(false) {
+        SPOTLIGHT_SHOW_REQUESTED.store(false, Ordering::Release);
+        let _ = window.emit("spotlight-will-hide", ());
+        let _ = window.hide();
+    } else {
+        show_spotlight_window(window);
+    }
+}
+
+fn show_spotlight_window(window: &WebviewWindow) {
+    let _ = window.emit("spotlight-will-open", ());
+    if let Err(error) = layout_spotlight_window(window, false) {
+        tracing::event("spotlight.layout.failed", error);
+    }
+    let _ = window.show();
+    let _ = window.set_focus();
+    let _ = window.emit("spotlight-opened", ());
+}
 
 pub(crate) fn layout_spotlight_window(
     window: &WebviewWindow,
@@ -49,6 +165,7 @@ pub fn set_spotlight_expanded(expanded: bool, app: AppHandle) -> Result<(), Stri
 
 #[tauri::command]
 pub fn hide_spotlight(app: AppHandle) -> Result<(), String> {
+    SPOTLIGHT_SHOW_REQUESTED.store(false, Ordering::Release);
     let window = app
         .get_webview_window("spotlight")
         .ok_or_else(|| "Fenêtre Spotlight indisponible".to_owned())?;
