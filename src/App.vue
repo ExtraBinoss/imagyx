@@ -11,11 +11,6 @@ import {
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { X } from "@lucide/vue";
-import AppSidebar from "./components/AppSidebar.vue";
-import ImageGrid from "./components/ImageGrid.vue";
-import ImagePreviewDialog from "./components/ImagePreviewDialog.vue";
-import SearchHeader from "./components/SearchHeader.vue";
-import StatusBar from "./components/StatusBar.vue";
 import Button from "./components/ui/Button/Button.vue";
 import type { ImageAsset } from "./types";
 import { useLibraryStore } from "./stores/library";
@@ -43,6 +38,9 @@ const StatusBar = defineAsyncComponent(
 );
 const ToastViewport = defineAsyncComponent(
   () => import("./components/ui/Toast/ToastViewport.vue"),
+);
+const OnboardingDialog = defineAsyncComponent(
+  () => import("./components/Onboarding/OnboardingDialog.vue"),
 );
 
 const store = useLibraryStore();

@@ -206,7 +206,7 @@ defineExpose({ scrollToIndex })
   transition: opacity 120ms ease, transform 160ms ease;
 }
 .spotlight-result:hover .spotlight-score,
-.spotlight-result--selected .spotlight-score { opacity: 0; transform: translateX(7px); }
+.spotlight-result--selected .spotlight-score { opacity: 0; transform: translateX(7px); pointer-events: none; }
 .spotlight-actions {
   position: absolute;
   right: 10px;
