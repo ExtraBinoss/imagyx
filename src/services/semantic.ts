@@ -1,11 +1,3 @@
-import {
-  AutoProcessor,
-  AutoTokenizer,
-  CLIPTextModelWithProjection,
-  CLIPVisionModelWithProjection,
-  RawImage,
-  env,
-} from '@huggingface/transformers'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { imagyxApi } from '../api/tauri'
 import type { ModelDownloadProgress, QueryConcept, RuntimeStats } from '../types'
@@ -30,9 +22,23 @@ const DEFAULT_IMAGE_LABELS = [
 ]
 
 type Device = 'webgpu' | 'wasm'
+type TransformersModule = typeof import('@huggingface/transformers')
 type RuntimeCallbacks = {
   progress: (progress: ModelDownloadProgress) => void
   stats: (stats: RuntimeStats) => void
+}
+
+let transformersLoading: Promise<TransformersModule> | null = null
+
+function loadTransformers(): Promise<TransformersModule> {
+  if (!transformersLoading) {
+    const started = performance.now()
+    transformersLoading = import('@huggingface/transformers').then((module) => {
+      perfLog('SemanticIA', 'Transformers.js module load', performance.now() - started)
+      return module
+    })
+  }
+  return transformersLoading
 }
 
 export interface EmbeddedQuery {
@@ -114,6 +120,7 @@ class SemanticRuntime {
     }
 
     await this.prepare()
+    const { RawImage } = await loadTransformers()
     const started = performance.now()
     let processed = 0
     let batchSize = INITIAL_BATCH_SIZE
@@ -237,13 +244,28 @@ class SemanticRuntime {
       this.patchStats({ stage: 'loading-text' })
       await this.ensureModelEnvironment()
       try {
+        this.device = 'webgpu'
         await this.loadTextForDevice('webgpu')
-      } catch {
+        this.patchStats({
+          stage: this.paused ? 'paused' : 'ready',
+          backendEffective: 'Transformers.js · WebGPU',
+          accelerationActive: true,
+          accelerationLabel: 'GPU WebGPU actif',
+          fallbackReason: undefined,
+        })
+      } catch (error) {
+        this.device = 'wasm'
         this.textModel = null
         this.tokenizer = null
         await this.loadTextForDevice('wasm')
+        this.patchStats({
+          stage: this.paused ? 'paused' : 'ready',
+          backendEffective: 'Transformers.js · WASM',
+          accelerationActive: false,
+          accelerationLabel: 'CPU WASM',
+          fallbackReason: `WebGPU indisponible: ${String(error)}`,
+        })
       }
-      this.patchStats({ stage: this.paused ? 'paused' : 'ready' })
     })()
     try { await this.textLoading } finally { this.textLoading = null }
   }
@@ -260,6 +282,7 @@ class SemanticRuntime {
   }
 
   private async loadTextForDevice(device: Device) {
+    const { AutoTokenizer, CLIPTextModelWithProjection } = await loadTransformers()
     const options = this.modelOptions(device)
     ;[this.tokenizer, this.textModel] = await Promise.all([
       AutoTokenizer.from_pretrained(MODEL_ID, options),
@@ -272,7 +295,10 @@ class SemanticRuntime {
     if (this.environmentReady) return
     if (this.environmentLoading) return this.environmentLoading
     this.environmentLoading = (async () => {
-      const modelRoot = await imagyxApi.prepareLocalModel('mobileclip-s0')
+      const [{ env }, modelRoot] = await Promise.all([
+        loadTransformers(),
+        imagyxApi.prepareLocalModel('mobileclip-s0'),
+      ])
       const modelsDir = modelRoot.replace(/[\\/]+Xenova[\\/]mobileclip_s0$/, '')
       env.allowLocalModels = true
       env.allowRemoteModels = false
@@ -293,7 +319,9 @@ class SemanticRuntime {
       await this.loadVisionForDevice('webgpu')
       this.patchStats({ stage: this.paused ? 'paused' : 'ready', backendEffective: 'Transformers.js · WebGPU', accelerationActive: true, accelerationLabel: 'GPU WebGPU actif', fallbackReason: undefined })
     } catch (error) {
-      this.device = 'wasm'; this.visionModel = null; this.processor = null
+      this.device = 'wasm'
+      this.visionModel = null
+      this.processor = null
       await this.loadVisionForDevice('wasm')
       this.patchStats({ stage: this.paused ? 'paused' : 'ready', backendEffective: 'Transformers.js · WASM', accelerationActive: false, accelerationLabel: 'CPU WASM', fallbackReason: `WebGPU indisponible: ${String(error)}` })
     }
@@ -302,6 +330,11 @@ class SemanticRuntime {
   }
 
   private async loadVisionForDevice(device: Device) {
+    const {
+      AutoProcessor,
+      CLIPVisionModelWithProjection,
+      RawImage,
+    } = await loadTransformers()
     const options = this.modelOptions(device)
     ;[this.processor, this.visionModel] = await Promise.all([
       AutoProcessor.from_pretrained(MODEL_ID, options),
@@ -311,12 +344,16 @@ class SemanticRuntime {
     await this.visionModel(await this.processor(blank))
   }
 
-  private modelOptions(device: Device = this.device) { return { device, dtype: 'fp32', local_files_only: true } as const }
+  private modelOptions(device: Device = this.device) {
+    return { device, dtype: 'fp32', local_files_only: true } as const
+  }
+
   private publishProgress(progress: ModelDownloadProgress) {
     if (!this.callbacks) return
     this.callbacks.progress(progress)
     void imagyxApi.updateModelProgress(progress)
   }
+
   private patchStats(patch: Partial<RuntimeStats>) {
     this.stats = { ...this.stats, ...patch, updatedAt: Date.now() }
     if (!this.callbacks) return
