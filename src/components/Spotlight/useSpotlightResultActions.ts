@@ -1,8 +1,8 @@
 import { onBeforeUnmount, ref } from 'vue'
 import { imagyxApi } from '../../api/tauri'
 import type { ImageAsset } from '../../types'
+import { perfLog } from '../../utils'
 
-const MINIMUM_FEEDBACK_MS = 320
 const OPEN_FEEDBACK_MS = 240
 const SUCCESS_DURATION_MS = 1800
 
@@ -16,8 +16,12 @@ export function useSpotlightResultActions(reportError: (error: unknown) => void)
   async function copyImage(image: ImageAsset) {
     if (copyingImageId.value === image.id) return
     copyingImageId.value = image.id
+    const startedAt = performance.now()
     try {
-      await withMinimumFeedback(imagyxApi.copyImage(image.path))
+      await imagyxApi.copyImage(image.path)
+      perfLog('Spotlight', 'copy image', performance.now() - startedAt, {
+        sizeBytes: image.sizeBytes,
+      })
       copiedImageId.value = image.id
       if (copiedTimer) window.clearTimeout(copiedTimer)
       copiedTimer = window.setTimeout(() => {
@@ -75,13 +79,6 @@ export function useSpotlightResultActions(reportError: (error: unknown) => void)
     openImage,
     resetActionFeedback,
   }
-}
-
-async function withMinimumFeedback(operation: Promise<void>) {
-  const startedAt = performance.now()
-  await operation
-  const remaining = MINIMUM_FEEDBACK_MS - (performance.now() - startedAt)
-  if (remaining > 0) await delay(remaining)
 }
 
 function delay(duration: number) {
