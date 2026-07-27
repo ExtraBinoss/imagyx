@@ -355,7 +355,17 @@ class SemanticRuntime {
   }
 
   private patchStats(patch: Partial<RuntimeStats>) {
-    this.stats = { ...this.stats, ...patch, updatedAt: Date.now() }
+    const stage = patch.stage === 'ready' && this.textLoading
+      ? 'text-ready'
+      : patch.stage === 'ready' && this.loading
+        ? 'vision-ready'
+        : patch.stage
+    this.stats = {
+      ...this.stats,
+      ...patch,
+      ...(stage ? { stage } : {}),
+      updatedAt: Date.now(),
+    }
     if (!this.callbacks) return
     this.callbacks.stats(this.stats)
     void imagyxApi.updateRuntimeStats(this.stats)
