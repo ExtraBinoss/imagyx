@@ -6,25 +6,31 @@ import { X } from '@lucide/vue'
 import AppSidebar from './components/AppSidebar.vue'
 import ImageGrid from './components/ImageGrid.vue'
 import ImagePreviewDialog from './components/ImagePreviewDialog.vue'
+import OnboardingDialog from './components/Onboarding/OnboardingDialog.vue'
 import SearchHeader from './components/SearchHeader.vue'
 import StatusBar from './components/StatusBar.vue'
 import Button from './components/ui/Button/Button.vue'
 import ToastViewport from './components/ui/Toast/ToastViewport.vue'
 import type { ImageAsset } from './types'
 import { useLibraryStore } from './stores/library'
+import { useOnboardingStore } from './stores/onboarding'
 import { usePlatformStore } from './stores/platform'
+import { useShortcutStore } from './stores/shortcut'
 import { useThemeStore } from './stores/theme'
 import { capitalize, useTagTypewriter } from './useTagTypewriter'
 import { debounce } from './utils'
 
 const store = useLibraryStore()
+const onboarding = useOnboardingStore()
 const platform = usePlatformStore()
+const shortcut = useShortcutStore()
 const theme = useThemeStore()
 const { typedTag } = useTagTypewriter()
 const localQuery = ref('')
 const previewImage = ref<ImageAsset | null>(null)
 const searchHeader = ref<{ focusSearch: () => void; selectSearch: () => void } | null>(null)
 let unlistenOpenImage: UnlistenFn | null = null
+let unlistenOpenOnboarding: UnlistenFn | null = null
 
 const folderPrefix = computed(() => store.selectedFolder ? `${store.selectedFolder.name}: ` : 'All images: ')
 const searchPlaceholder = computed(() => `${folderPrefix.value}${capitalize(typedTag.value)}…`)
@@ -47,7 +53,7 @@ async function removeFolder(folderId: string) {
 }
 
 function handleTypeToSearch(event: KeyboardEvent) {
-  if (previewImage.value) return
+  if (previewImage.value || onboarding.open) return
   const target = event.target as HTMLElement | null
   if (target?.matches('input, textarea, select, [contenteditable="true"]')) return
 
@@ -73,17 +79,21 @@ async function openImageFromSpotlight(imageId: string) {
 
 onMounted(async () => {
   theme.initialize()
+  onboarding.initialize()
   void platform.initialize()
+  void shortcut.initialize()
   void store.initialize()
   window.addEventListener('keydown', handleTypeToSearch)
   unlistenOpenImage = await listen<string>('open-image-requested', (event) => {
     void openImageFromSpotlight(event.payload)
   })
+  unlistenOpenOnboarding = await listen('open-onboarding-requested', () => onboarding.show())
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleTypeToSearch)
   unlistenOpenImage?.()
+  unlistenOpenOnboarding?.()
   for (const unlisten of store.listeners) unlisten()
 })
 </script>
@@ -134,4 +144,16 @@ onBeforeUnmount(() => {
   </main>
   <ToastViewport />
   <ImagePreviewDialog :image="previewImage" @close="previewImage = null" />
+  <OnboardingDialog
+    :open="onboarding.open"
+    :never-ask-again="onboarding.neverAskAgain"
+    :theme-mode="theme.mode"
+    :shortcut="shortcut.spotlight"
+    :has-folders="store.folders.length > 0"
+    @close="onboarding.close"
+    @finish="onboarding.finish"
+    @never-ask-again="onboarding.setNeverAskAgain"
+    @add-folder="addFolder"
+    @theme-change="theme.setMode"
+  />
 </template>
