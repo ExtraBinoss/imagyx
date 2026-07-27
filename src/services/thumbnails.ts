@@ -2,17 +2,22 @@ import type { ImageAsset } from '../types'
 import { imagyxApi } from '../api/tauri'
 import { perfSample } from '../utils'
 
-const MAX_CONCURRENT_REQUESTS = 4
-const MAX_QUEUED_REQUESTS = 128
-const MEMORY_CACHE_CAPACITY = 8_192
+const MAX_CONCURRENT_REQUESTS = 3
+const MAX_QUEUED_REQUESTS = 96
+const MEMORY_CACHE_MAX_ITEMS = 768
+const MEMORY_CACHE_MAX_BYTES = 64 * 1024 * 1024
 
 export interface ThumbnailRequestOptions {
   priority?: number
   signal?: AbortSignal
 }
 
-type ThumbnailAsset = Pick<ImageAsset, 'id' | 'path' | 'modifiedAt'> &
-  Partial<Pick<ImageAsset, 'thumbnailPath'>>
+type ThumbnailAsset = Pick<ImageAsset, 'id' | 'path' | 'modifiedAt'>
+
+interface CachedThumbnail {
+  url: string
+  size: number
+}
 
 interface Subscriber {
   active: boolean
@@ -30,12 +35,13 @@ interface QueueTask {
   subscribers: Set<Subscriber>
 }
 
-const urls = new Map<string, string>()
+const urls = new Map<string, CachedThumbnail>()
 const tasks = new Map<string, QueueTask>()
 const queue: QueueTask[] = []
+let cachedBytes = 0
 let activeRequests = 0
 
-function keyFor(image: Pick<ImageAsset, 'id' | 'modifiedAt'>): string {
+function keyFor(image: ThumbnailAsset): string {
   return `${image.id}:${image.modifiedAt}`
 }
 
@@ -43,32 +49,39 @@ function abortError(message = 'Thumbnail request cancelled'): DOMException {
   return new DOMException(message, 'AbortError')
 }
 
-function remember(key: string, url: string): void {
+function evict(key: string): void {
+  const cached = urls.get(key)
+  if (!cached) return
   urls.delete(key)
-  urls.set(key, url)
-  while (urls.size > MEMORY_CACHE_CAPACITY) {
+  cachedBytes = Math.max(0, cachedBytes - cached.size)
+  URL.revokeObjectURL(cached.url)
+}
+
+function remember(key: string, blob: Blob): string {
+  evict(key)
+  const url = URL.createObjectURL(blob)
+  urls.set(key, { url, size: blob.size })
+  cachedBytes += blob.size
+
+  while (urls.size > MEMORY_CACHE_MAX_ITEMS || cachedBytes > MEMORY_CACHE_MAX_BYTES) {
     const oldest = urls.keys().next().value as string | undefined
     if (!oldest) break
-    urls.delete(oldest)
+    evict(oldest)
   }
+  return url
 }
 
 export function peekThumbnail(image: ThumbnailAsset): string | null {
   const key = keyFor(image)
   const cached = urls.get(key)
-  if (cached) {
-    remember(key, cached)
-    return cached
-  }
-  if (!image.thumbnailPath) return null
-  const url = imagyxApi.fileUrl(image.thumbnailPath)
-  remember(key, url)
-  return url
+  if (!cached) return null
+  urls.delete(key)
+  urls.set(key, cached)
+  return cached.url
 }
 
 export function forgetThumbnail(image: ThumbnailAsset): void {
-  urls.delete(keyFor(image))
-  image.thumbnailPath = ''
+  evict(keyFor(image))
 }
 
 function removeQueuedTask(task: QueueTask): void {
@@ -95,8 +108,10 @@ function makeRoom(): void {
       const current = queue[index]
       const worst = queue[worstIndex]
       if (!current || !worst) continue
-      if (current.priority > worst.priority ||
-        (current.priority === worst.priority && current.queuedAt < worst.queuedAt)) {
+      if (
+        current.priority > worst.priority
+        || (current.priority === worst.priority && current.queuedAt < worst.queuedAt)
+      ) {
         worstIndex = index
       }
     }
@@ -113,8 +128,10 @@ function nextTask(): QueueTask | undefined {
     const current = queue[index]
     const best = queue[bestIndex]
     if (!current || !best) continue
-    if (current.priority < best.priority ||
-      (current.priority === best.priority && current.queuedAt < best.queuedAt)) {
+    if (
+      current.priority < best.priority
+      || (current.priority === best.priority && current.queuedAt < best.queuedAt)
+    ) {
       bestIndex = index
     }
   }
@@ -146,18 +163,18 @@ async function runTask(task: QueueTask): Promise<void> {
   const startedAt = performance.now()
   perfSample('Thumbnail', 'queue wait', startedAt - task.queuedAt)
   try {
-    const mockUrl = (task.image as unknown as { thumbnail_url?: string; preview_url?: string }).thumbnail_url ||
-      (task.image as unknown as { thumbnail_url?: string; preview_url?: string }).preview_url
+    const mockUrl = (task.image as unknown as { thumbnail_url?: string; preview_url?: string }).thumbnail_url
+      || (task.image as unknown as { thumbnail_url?: string; preview_url?: string }).preview_url
     if (mockUrl) {
-      remember(task.key, mockUrl)
       settle(task, mockUrl)
       return
     }
 
-    const path = await imagyxApi.thumbnail(task.image)
-    task.image.thumbnailPath = path
-    const url = imagyxApi.fileUrl(path)
-    remember(task.key, url)
+    const bytes = await imagyxApi.thumbnail(task.image)
+    if (task.subscribers.size === 0) return
+
+    const blob = new Blob([bytes], { type: 'image/jpeg' })
+    const url = remember(task.key, blob)
     perfSample('Thumbnail', 'IPC and generation', performance.now() - startedAt)
     settle(task, url)
   } catch (error) {
