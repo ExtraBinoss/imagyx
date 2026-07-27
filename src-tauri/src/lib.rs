@@ -169,6 +169,7 @@ pub fn run() {
             commands::search::search_images,
             commands::files::open_in_file_manager,
             commands::files::copy_image_to_clipboard,
+            commands::files::convert_image,
             commands::files::open_in_imagyx,
             onboarding::open_onboarding,
             commands::spotlight::set_spotlight_expanded,
