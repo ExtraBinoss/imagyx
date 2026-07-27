@@ -18,6 +18,7 @@ use crate::{
 };
 
 const TRAY_ID: &str = "imagyx-background";
+const ID_ADD_FOLDER: &str = "add-folder";
 const ID_OPEN_SPOTLIGHT: &str = "open-spotlight";
 const ID_OPEN_IMAGYX: &str = "open-imagyx";
 const ID_PAUSE_INDEXING: &str = "pause-indexing";
@@ -25,6 +26,12 @@ const ID_QUIT: &str = "quit-imagyx";
 
 const IDLE_ICON: Image<'static> = tauri::include_image!("./icons/imagyx.ico");
 const BUSY_ICON: Image<'static> = tauri::include_image!("./icons/imagyx-searching.ico");
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LibrarySnapshot {
+    pub folder_count: usize,
+    pub image_count: usize,
+}
 
 pub struct TrayController {
     status_item: MenuItem<Wry>,
@@ -35,36 +42,43 @@ pub struct TrayController {
     total: AtomicUsize,
 }
 
-pub fn setup(app: &AppHandle, indexed_images: usize) -> tauri::Result<()> {
+pub fn setup(app: &AppHandle, snapshot: LibrarySnapshot) -> tauri::Result<()> {
     let status_item = MenuItem::with_id(
         app,
         "index-status",
-        ready_label(indexed_images),
+        ready_label(snapshot),
         false,
+        None::<&str>,
+    )?;
+    let add_folder = MenuItem::with_id(
+        app,
+        ID_ADD_FOLDER,
+        "Add folder…",
+        true,
         None::<&str>,
     )?;
     let open_spotlight = MenuItem::with_id(
         app,
         ID_OPEN_SPOTLIGHT,
-        "Ouvrir Spotlight",
+        "Open Spotlight",
         true,
         None::<&str>,
     )?;
     let open_imagyx = MenuItem::with_id(
         app,
         ID_OPEN_IMAGYX,
-        "Ouvrir Imagyx",
+        "Open Imagyx",
         true,
         None::<&str>,
     )?;
     let pause_item = MenuItem::with_id(
         app,
         ID_PAUSE_INDEXING,
-        "Mettre l’indexation en pause",
+        "Pause indexing",
         false,
         None::<&str>,
     )?;
-    let quit = MenuItem::with_id(app, ID_QUIT, "Quitter Imagyx", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, ID_QUIT, "Quit Imagyx", true, None::<&str>)?;
     let separator_one = PredefinedMenuItem::separator(app)?;
     let separator_two = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
@@ -72,6 +86,7 @@ pub fn setup(app: &AppHandle, indexed_images: usize) -> tauri::Result<()> {
         &[
             &status_item,
             &separator_one,
+            &add_folder,
             &open_spotlight,
             &open_imagyx,
             &pause_item,
@@ -85,16 +100,17 @@ pub fn setup(app: &AppHandle, indexed_images: usize) -> tauri::Result<()> {
         pause_item,
         paused: AtomicBool::new(false),
         busy: AtomicBool::new(false),
-        current: AtomicUsize::new(indexed_images),
-        total: AtomicUsize::new(indexed_images),
+        current: AtomicUsize::new(snapshot.image_count),
+        total: AtomicUsize::new(snapshot.image_count),
     });
 
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(IDLE_ICON)
-        .tooltip(ready_tooltip(indexed_images))
+        .tooltip(ready_tooltip(snapshot))
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
+            ID_ADD_FOLDER => emit_add_folder(app),
             ID_OPEN_SPOTLIGHT => spotlight::show_spotlight(app.clone()),
             ID_OPEN_IMAGYX => show_main_window(app),
             ID_PAUSE_INDEXING => toggle_pause(app),
@@ -118,10 +134,23 @@ pub fn setup(app: &AppHandle, indexed_images: usize) -> tauri::Result<()> {
 
 pub fn update_index_progress(app: &AppHandle, progress: &IndexProgress) {
     match progress.stage.as_str() {
-        "complete" => set_ready(app, indexed_image_count(app)),
+        "complete" => set_ready(app, library_snapshot(app)),
         "error" => set_error(app, &progress.folder_name),
-        "queued" | "discovering" | "metadata" | "embedding" | "saving" => {
-            set_indexing(app, progress.current, progress.total, &progress.message);
+        "discovering" => set_indexing(app, progress.current, progress.total, "Scanning folder…"),
+        "metadata" => set_indexing(
+            app,
+            progress.current,
+            progress.total,
+            &format!("Reading metadata · {} of {}", progress.current, progress.total),
+        ),
+        "queued" => set_indexing(
+            app,
+            progress.current,
+            progress.total,
+            "Waiting for AI indexing",
+        ),
+        "embedding" | "saving" => {
+            set_indexing(app, progress.current, progress.total, "AI indexing");
         }
         _ => {}
     }
@@ -134,12 +163,12 @@ pub fn update_runtime_stats(app: &AppHandle, stats: &RuntimeStats) {
                 app,
                 stats.current,
                 stats.total,
-                &format!("Analyse IA · {} sur {}", stats.current, stats.total),
+                &format!("AI indexing · {} of {}", stats.current, stats.total),
             );
         }
         "paused" => set_paused(app, true),
         "ready" if stats.total > 0 && stats.current >= stats.total => {
-            set_ready(app, indexed_image_count(app));
+            set_ready(app, library_snapshot(app));
         }
         _ => {}
     }
@@ -148,6 +177,12 @@ pub fn update_runtime_stats(app: &AppHandle, stats: &RuntimeStats) {
 #[tauri::command(rename_all = "camelCase")]
 pub fn set_tray_paused(paused: bool, app: AppHandle) {
     set_paused(&app, paused);
+}
+
+fn emit_add_folder(app: &AppHandle) {
+    if let Err(error) = app.emit("add-folder-requested", ()) {
+        tracing::event("tray.add_folder.failed", error);
+    }
 }
 
 fn toggle_pause(app: &AppHandle) {
@@ -174,13 +209,13 @@ fn set_indexing(app: &AppHandle, current: usize, total: usize, message: &str) {
     controller.current.store(current, Ordering::Release);
     controller.total.store(total, Ordering::Release);
     controller.paused.store(false, Ordering::Release);
-    let _ = controller.pause_item.set_text("Mettre l’indexation en pause");
+    let _ = controller.pause_item.set_text("Pause indexing");
     let _ = controller.pause_item.set_enabled(true);
 
     let label = if total > 0 {
-        format!("Indexation · {current}/{total}")
+        format!("Indexing · {current}/{total}")
     } else {
-        "Préparation de l’indexation…".to_owned()
+        "Preparing indexing…".to_owned()
     };
     let tooltip = if total > 0 {
         format!("Imagyx — {message} ({current}/{total})")
@@ -201,44 +236,48 @@ fn set_paused(app: &AppHandle, paused: bool) {
 
     if paused {
         let label = if total > 0 {
-            format!("En pause · {current}/{total}")
+            format!("Paused · {current}/{total}")
         } else {
-            "Indexation en pause".to_owned()
+            "Indexing paused".to_owned()
         };
         let _ = controller.status_item.set_text(&label);
-        let _ = controller.pause_item.set_text("Reprendre l’indexation");
+        let _ = controller.pause_item.set_text("Resume indexing");
         let _ = controller.pause_item.set_enabled(true);
         update_tray_visual(app, &controller, false, format!("Imagyx — {label}"));
         return;
     }
 
-    let _ = controller.pause_item.set_text("Mettre l’indexation en pause");
+    let _ = controller.pause_item.set_text("Pause indexing");
     drop(controller);
     if total > current {
-        set_indexing(app, current, total, "Reprise de l’indexation");
+        set_indexing(app, current, total, "Resuming indexing");
     } else {
-        set_ready(app, indexed_image_count(app));
+        set_ready(app, library_snapshot(app));
     }
 }
 
-fn set_ready(app: &AppHandle, indexed_images: usize) {
+fn set_ready(app: &AppHandle, snapshot: LibrarySnapshot) {
     let Some(controller) = app.try_state::<TrayController>() else {
         return;
     };
-    controller.current.store(indexed_images, Ordering::Release);
-    controller.total.store(indexed_images, Ordering::Release);
+    controller
+        .current
+        .store(snapshot.image_count, Ordering::Release);
+    controller
+        .total
+        .store(snapshot.image_count, Ordering::Release);
     controller.paused.store(false, Ordering::Release);
-    let _ = controller.status_item.set_text(ready_label(indexed_images));
-    let _ = controller.pause_item.set_text("Mettre l’indexation en pause");
+    let _ = controller.status_item.set_text(ready_label(snapshot));
+    let _ = controller.pause_item.set_text("Pause indexing");
     let _ = controller.pause_item.set_enabled(false);
-    update_tray_visual(app, &controller, false, ready_tooltip(indexed_images));
+    update_tray_visual(app, &controller, false, ready_tooltip(snapshot));
 }
 
 fn set_error(app: &AppHandle, folder_name: &str) {
     let Some(controller) = app.try_state::<TrayController>() else {
         return;
     };
-    let label = format!("Erreur d’indexation · {folder_name}");
+    let label = format!("Indexing error · {folder_name}");
     let _ = controller.status_item.set_text(&label);
     let _ = controller.pause_item.set_enabled(false);
     update_tray_visual(app, &controller, false, format!("Imagyx — {label}"));
@@ -277,30 +316,34 @@ fn show_main_window(app: &AppHandle) {
     let _ = window.set_focus();
 }
 
-fn indexed_image_count(app: &AppHandle) -> usize {
+fn library_snapshot(app: &AppHandle) -> LibrarySnapshot {
     app.try_state::<Arc<AppState>>()
-        .and_then(|state| state.database.folders_for_watching().ok())
-        .map(|folders| {
-            folders
+        .and_then(|state| state.database.folders().ok())
+        .map(|folders| LibrarySnapshot {
+            folder_count: folders.len(),
+            image_count: folders
                 .into_iter()
                 .filter_map(|folder| usize::try_from(folder.image_count).ok())
-                .sum()
+                .sum(),
         })
         .unwrap_or_default()
 }
 
-fn ready_label(indexed_images: usize) -> String {
-    match indexed_images {
-        0 => "Aucun dossier à analyser".to_owned(),
-        1 => "À jour · 1 image indexée".to_owned(),
-        count => format!("À jour · {count} images indexées"),
+fn ready_label(snapshot: LibrarySnapshot) -> String {
+    if snapshot.folder_count == 0 {
+        "No folders added".to_owned()
+    } else {
+        "Imagyx — OK".to_owned()
     }
 }
 
-fn ready_tooltip(indexed_images: usize) -> String {
-    match indexed_images {
-        0 => "Imagyx — ajoute un dossier pour commencer".to_owned(),
-        1 => "Imagyx — 1 image indexée".to_owned(),
-        count => format!("Imagyx — {count} images indexées"),
+fn ready_tooltip(snapshot: LibrarySnapshot) -> String {
+    if snapshot.folder_count == 0 {
+        return "Imagyx — Add a folder to get started".to_owned();
+    }
+    match snapshot.image_count {
+        0 => "Imagyx — Folder ready, no images indexed".to_owned(),
+        1 => "Imagyx — 1 image indexed".to_owned(),
+        count => format!("Imagyx — {count} images indexed"),
     }
 }
