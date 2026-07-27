@@ -151,16 +151,43 @@ export const useLibraryStore = defineStore('library', {
     async refreshImages() {
       const sequence = ++this.searchSequence
       const query = this.query.trim()
+      const folderId = this.selectedFolderId ?? undefined
       this.error = null
+      this.activeConcepts = []
       this.semanticSearching = Boolean(query)
       if (!this.images.length) this.loading = true
       try {
-        const embedded = query ? await semanticRuntime.embedQuery(query) : undefined
+        if (!query) {
+          this.images = await imagyxApi.search({ query, folderId, limit: 20_000 })
+          return
+        }
+
+        const lexicalPromise = imagyxApi.search({ query, folderId, limit: 60 }).then((images) => {
+          if (sequence === this.searchSequence) {
+            this.images = images
+            this.loading = false
+          }
+          return images
+        })
+        const [lexicalResult, embeddingResult] = await Promise.allSettled([
+          lexicalPromise,
+          semanticRuntime.embedQuery(query),
+        ])
+        if (lexicalResult.status === 'rejected') throw lexicalResult.reason
         if (sequence !== this.searchSequence) return
-        const images = await imagyxApi.search({ query, queryVector: embedded?.queryVector, folderId: this.selectedFolderId ?? undefined, limit: 20_000 })
-        if (sequence !== this.searchSequence) return
+        if (embeddingResult.status === 'rejected') throw embeddingResult.reason
+
+        const embedded = embeddingResult.value
         this.activeConcepts = embedded?.concepts ?? []
-        this.images = images
+        if (!embedded?.queryVector) return
+        const hybrid = await imagyxApi.search({
+          query,
+          queryVector: embedded.queryVector,
+          folderId,
+          limit: 60,
+        })
+        if (sequence !== this.searchSequence) return
+        this.images = hybrid
       } catch (error) { if (sequence === this.searchSequence) this.reportError(error) }
       finally { if (sequence === this.searchSequence) { this.loading = false; this.semanticSearching = false } }
     },
