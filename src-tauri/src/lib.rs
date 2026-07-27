@@ -19,7 +19,7 @@ use std::{path::PathBuf, sync::Arc};
 use paths::AppPaths;
 use preferences::ShortcutPreferences;
 use state::AppState;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use tauri_plugin_global_shortcut::ShortcutState;
 use thiserror::Error;
 use watcher::FolderWatcher;
@@ -50,26 +50,8 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, _shortcut, event| {
-                    if event.state() != ShortcutState::Pressed {
-                        return;
-                    }
-                    let Some(window) = app.get_webview_window("spotlight") else {
-                        return;
-                    };
-                    let visible = window.is_visible().unwrap_or(false);
-                    if visible {
-                        let _ = window.emit("spotlight-will-hide", ());
-                        let _ = window.hide();
-                    } else {
-                        let _ = window.emit("spotlight-will-open", ());
-                        if let Err(error) =
-                            commands::spotlight::layout_spotlight_window(&window, false)
-                        {
-                            tracing::event("spotlight.layout.failed", error);
-                        }
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                        let _ = window.emit("spotlight-opened", ());
+                    if event.state() == ShortcutState::Pressed {
+                        commands::spotlight::toggle_spotlight(app.clone());
                     }
                 })
                 .build(),
@@ -132,16 +114,6 @@ pub fn run() {
                 main.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
-                        let _ = window.hide();
-                    }
-                });
-            }
-            if let Some(spotlight) = app.get_webview_window("spotlight") {
-                let window = spotlight.clone();
-                spotlight.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = window.emit("spotlight-will-hide", ());
                         let _ = window.hide();
                     }
                 });
