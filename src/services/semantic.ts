@@ -4,7 +4,11 @@ import type { ImageAsset, ModelDownloadProgress, QueryConcept, RuntimeStats } fr
 import { perfLog } from '../utils'
 import { requestSemanticEmbedding } from './semantic-channel'
 import { buildQueryPromptPlan, combinePromptVectors } from './query-prompts'
-import { VisionWorkerClient, type VisionDevice } from './vision-worker-client'
+import {
+  VisionWorkerClient,
+  type VisionDevice,
+  type VisionInferenceProfile,
+} from './vision-worker-client'
 
 const MODEL_ID = 'Xenova/mobileclip_s0'
 const MODEL_NAME = 'MobileCLIP-S0'
@@ -41,6 +45,13 @@ type PreparedBatch = {
   prepareMs: number
 }
 
+type UiResponsivenessProfile = {
+  samples: number
+  delayedFrames: number
+  maxEventLoopDelayMs: number
+  averageEventLoopDelayMs: number
+}
+
 let transformersLoading: Promise<TransformersModule> | null = null
 
 function loadTransformers(): Promise<TransformersModule> {
@@ -52,6 +63,108 @@ function loadTransformers(): Promise<TransformersModule> {
     })
   }
   return transformersLoading
+}
+
+function roundMs(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+function startUiResponsivenessProbe(intervalMs = 16): () => UiResponsivenessProfile {
+  let previous = performance.now()
+  let samples = 0
+  let delayedFrames = 0
+  let totalDelayMs = 0
+  let maxEventLoopDelayMs = 0
+  const handle = window.setInterval(() => {
+    const now = performance.now()
+    const delayMs = Math.max(0, now - previous - intervalMs)
+    previous = now
+    samples += 1
+    totalDelayMs += delayMs
+    maxEventLoopDelayMs = Math.max(maxEventLoopDelayMs, delayMs)
+    if (delayMs > 16.7) delayedFrames += 1
+  }, intervalMs)
+
+  return () => {
+    window.clearInterval(handle)
+    return {
+      samples,
+      delayedFrames,
+      maxEventLoopDelayMs,
+      averageEventLoopDelayMs: samples > 0 ? totalDelayMs / samples : 0,
+    }
+  }
+}
+
+async function profileUiWhile<T>(task: Promise<T>): Promise<{ value: T; ui: UiResponsivenessProfile }> {
+  const stopProbe = startUiResponsivenessProbe()
+  try {
+    const value = await task
+    return { value, ui: stopProbe() }
+  } catch (error) {
+    stopProbe()
+    throw error
+  }
+}
+
+function logIndexBatchProfile(
+  profile: VisionInferenceProfile,
+  rustPrepareMs: number,
+  sqliteMs: number,
+  batchTotalMs: number,
+  ui: UiResponsivenessProfile,
+) {
+  const workerStageSumMs = profile.queueWaitMs
+    + profile.rawImageWrapMs
+    + profile.preprocessMs
+    + profile.modelAwaitMs
+    + profile.normalizeMs
+    + profile.readbackToListMs
+    + profile.flattenMs
+  const unaccountedWorkerMs = Math.max(0, profile.workerTotalMs - workerStageSumMs)
+  const accountedMainMs = rustPrepareMs + profile.clientTotalMs + sqliteMs
+  const unaccountedMainMs = Math.max(0, batchTotalMs - accountedMainMs)
+  const perImageMs = batchTotalMs / Math.max(1, profile.count)
+
+  console.groupCollapsed(
+    `[Imagyx][AI Profile][${profile.batchId}] ${profile.count} img · ${roundMs(batchTotalMs)} ms · ${roundMs(perImageMs)} ms/img`,
+  )
+  console.table({
+    rust_thumbnail_rgb_ipc_ms: roundMs(rustPrepareMs),
+    transfer_main_to_worker_ms: roundMs(profile.transferToWorkerMs),
+    worker_queue_wait_ms: roundMs(profile.queueWaitMs),
+    raw_image_views_ms: roundMs(profile.rawImageWrapMs),
+    transformers_preprocess_ms: roundMs(profile.preprocessMs),
+    model_await_wall_ms: roundMs(profile.modelAwaitMs),
+    tensor_normalize_ms: roundMs(profile.normalizeMs),
+    gpu_readback_to_list_ms: roundMs(profile.readbackToListMs),
+    flatten_float32_worker_ms: roundMs(profile.flattenMs),
+    worker_unaccounted_ms: roundMs(unaccountedWorkerMs),
+    worker_total_ms: roundMs(profile.workerTotalMs),
+    return_worker_to_main_ms: roundMs(profile.returnToMainMs),
+    worker_round_trip_ms: roundMs(profile.roundTripMs),
+    vectors_deserialize_main_ms: roundMs(profile.deserializeMs),
+    sqlite_save_ms: roundMs(sqliteMs),
+    main_unaccounted_ms: roundMs(unaccountedMainMs),
+    batch_end_to_end_ms: roundMs(batchTotalMs),
+    main_event_loop_max_delay_ms: roundMs(ui.maxEventLoopDelayMs),
+    main_event_loop_average_delay_ms: roundMs(ui.averageEventLoopDelayMs),
+  })
+  console.log('Batch metadata', {
+    requestId: profile.requestId,
+    batchId: profile.batchId,
+    count: profile.count,
+    inputBytes: profile.inputBytes,
+    outputBytes: profile.outputBytes,
+    uiProbeSamples: ui.samples,
+    uiDelayedFrames: ui.delayedFrames,
+    interpretation: {
+      modelAwait: 'Temps mur de l’appel Transformers/ONNX. Il peut inclure soumission WebGPU et attente backend.',
+      gpuReadbackToList: 'Temps pour matérialiser le tenseur en tableaux JS; c’est un point de synchronisation GPU probable.',
+      rustThumbnailRgbIpc: 'Commande Tauri complète: cache/decode/resize Rust + assemblage RGB + transport IPC.',
+    },
+  })
+  console.groupEnd()
 }
 
 export interface EmbeddedQuery {
@@ -164,6 +277,7 @@ class SemanticRuntime {
 
     await this.prepare()
     const started = performance.now()
+    const runId = Date.now().toString(36)
     let processed = 0
     let batchSize = this.visionDevice === 'webgpu' ? INITIAL_WEBGPU_BATCH_SIZE : INITIAL_WASM_BATCH_SIZE
     let batchCurrent = 0
@@ -180,15 +294,20 @@ class SemanticRuntime {
         return
       }
 
+      const batchStarted = performance.now()
       const batch = pending.slice(processed, processed + batchSize)
       batchCurrent += 1
+      const batchId = `${runId}-${batchCurrent}`
       this.patchStats({ stage: 'decoding', batchCurrent, batchSize: batch.length })
       const prepared = await this.prepareImageBatch(batch)
 
       this.patchStats({ stage: 'inference' })
-      const result = await this.visionWorker.infer(prepared.pixels, prepared.batch.length)
-      decodeMs += prepared.prepareMs + result.preprocessMs
-      inferenceMs += result.inferenceMs
+      const measured = await profileUiWhile(
+        this.visionWorker.infer(prepared.pixels, prepared.batch.length, batchId),
+      )
+      const result = measured.value
+      decodeMs += prepared.prepareMs + result.profile.preprocessMs
+      inferenceMs += result.profile.modelAwaitMs
 
       this.patchStats({ stage: 'saving' })
       const saveStarted = performance.now()
@@ -196,9 +315,13 @@ class SemanticRuntime {
         imageId: asset.id,
         vector: result.vectors[index] ?? [],
       })))
-      saveMs += performance.now() - saveStarted
+      const currentSaveMs = performance.now() - saveStarted
+      saveMs += currentSaveMs
+      const batchTotalMs = performance.now() - batchStarted
+      logIndexBatchProfile(result.profile, prepared.prepareMs, currentSaveMs, batchTotalMs, measured.ui)
+
       processed += prepared.batch.length
-      batchSize = this.nextBatchSize(batchSize, result.inferenceMs, prepared.batch.length)
+      batchSize = this.nextBatchSize(batchSize, result.profile.modelAwaitMs, prepared.batch.length)
 
       const elapsedMs = performance.now() - started
       const imagesPerSecond = processed / Math.max(elapsedMs / 1000, 0.001)
@@ -365,6 +488,7 @@ class SemanticRuntime {
     perfLog('SemanticIA', 'Vision Worker Model Load', performance.now() - start, {
       device: this.visionDevice,
       worker: true,
+      initProfile: ready.initProfile,
     })
   }
 
