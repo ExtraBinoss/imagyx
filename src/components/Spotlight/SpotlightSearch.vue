@@ -91,7 +91,9 @@ const hasFolders = computed(() => folders.value.length > 0)
 const hasActiveJobs = computed(() => jobs.value.some((job) => !['complete', 'error'].includes(job.stage)))
 const parsedFolderQuery = computed(() => parseFolderQuery(searchQuery.value, folders.value))
 const folderSuggestions = computed(() => folderQuerySuggestions(searchQuery.value, folders.value))
-const hasSearchQuery = computed(() => parsedFolderQuery.value.query.length > 0)
+const hasSearchQuery = computed(() => Boolean(
+  parsedFolderQuery.value.folder || parsedFolderQuery.value.query.length,
+))
 const incompleteCoverage = computed(() => indexCoverage.value.filter((coverage) => {
   const job = jobs.value.find((item) => item.folderId === coverage.folderId)
   return coverage.embeddedCount < coverage.imageCount
@@ -148,6 +150,9 @@ watch(searchQuery, (value) => {
 function selectFolderSuggestion(folder: FollowedFolder) {
   searchQuery.value = formatFolderQuery(folder)
   folderSuggestionIndex.value = 0
+  // Folder browsing has no query to debounce: show its indexed images as soon
+  // as the selection is committed, just like the main Imagyx search.
+  void nextTick(() => { void runSearch() })
 }
 
 function navigateFolderSuggestions(delta: number) {
@@ -246,7 +251,8 @@ async function runSearch() {
   const text = parsed.query
   const folderId = parsed.folder?.id
   const cacheKey = `${folderId ?? 'all'}:${text.toLocaleLowerCase('en')}`
-  if (!text || !hasFolders.value) {
+  if (!hasFolders.value || (!text && !folderId)) {
+    results.value = []
     searching.value = false
     return
   }
@@ -261,6 +267,23 @@ async function runSearch() {
   searching.value = true
   const lexicalStartedAt = performance.now()
   const lexicalPromise = imagyxApi.search({ query: text, folderId, limit: 60 })
+  if (!text) {
+    try {
+      const images = await lexicalPromise
+      if (!matchesActiveSearch(sequence, text, folderId)) return
+      results.value = images
+      rememberResults(cacheKey, images)
+      perfLog('Spotlight', 'folder browse IPC', performance.now() - lexicalStartedAt, {
+        results: images.length,
+      })
+    } catch (reason) {
+      if (sequence === searchSequence) error.value = String(reason)
+    } finally {
+      if (sequence === searchSequence) searching.value = false
+    }
+    return
+  }
+
   const embeddingPromise = text.length >= 2
     ? semanticRuntime.embedQuery(text)
     : Promise.resolve(undefined)
