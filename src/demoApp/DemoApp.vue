@@ -248,7 +248,7 @@ function toggleTheme() {
               />
 
               <Transition name="panel-morph">
-                <div v-if="resultsOpen" class="spotlight-expandable">
+                <div v-if="resultsOpen" class="spotlight-panel">
                   <SpotlightResults
                     v-if="view === 'search'"
                     :results="results"
@@ -326,6 +326,7 @@ function toggleTheme() {
 
 .demo-tabs {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 
@@ -342,6 +343,23 @@ function toggleTheme() {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
+}
+
+.theme-toggle-btn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 10px;
+  background: var(--surface, #1e2330);
+  color: var(--text, #ffffff);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.theme-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .tab-btn:hover {
@@ -382,11 +400,34 @@ function toggleTheme() {
   background: color-mix(in srgb, var(--surface-elevated, #181c27) 96%, transparent);
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.12), 0 24px 60px -20px rgba(0, 0, 0, 0.7);
   overflow: hidden;
-  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: box-shadow 240ms ease, background-color 180ms ease;
 }
 
-.spotlight-expandable {
-  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+.spotlight-panel {
+  height: 462px;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+}
+
+.panel-morph-enter-active,
+.panel-morph-leave-active {
+  transition: max-height 340ms cubic-bezier(0.16, 1, 0.3, 1), opacity 240ms ease, clip-path 340ms cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+.panel-morph-enter-from,
+.panel-morph-leave-to {
+  max-height: 0;
+  opacity: 0;
+  clip-path: inset(0 0 100% 0 round 0 0 20px 20px);
+}
+
+.panel-morph-enter-to,
+.panel-morph-leave-from {
+  max-height: 462px;
+  opacity: 1;
+  clip-path: inset(0 round 0 0 20px 20px);
 }
 
 .components-demo-viewport {
