@@ -150,6 +150,14 @@ function scheduleEarlyTextWarmup() {
   );
 }
 
+function ensureHiddenWindowIndexing() {
+  if (document.visibilityState !== "hidden") return;
+  void semanticRuntime
+    .indexPending()
+    .then(() => store.scheduleRefresh())
+    .catch((error) => store.reportError(error));
+}
+
 onMounted(async () => {
   const start = performance.now();
   theme.initialize();
@@ -162,6 +170,7 @@ onMounted(async () => {
   scheduleEarlyTextWarmup();
   void initializePromise.then(() => {
     perfLog("App", "Full store initial load", performance.now() - start);
+    ensureHiddenWindowIndexing();
   });
   window.addEventListener("keydown", handleTypeToSearch);
   [
