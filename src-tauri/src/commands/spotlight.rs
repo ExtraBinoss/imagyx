@@ -1,4 +1,7 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{
+    sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
+};
 
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow,
@@ -11,6 +14,7 @@ use crate::tracing;
 const SPOTLIGHT_WIDTH: f64 = 780.0;
 const SPOTLIGHT_COMPACT_HEIGHT: f64 = 126.0;
 const SPOTLIGHT_EXPANDED_HEIGHT: f64 = 580.0;
+const SPOTLIGHT_LISTENER_GRACE: Duration = Duration::from_millis(80);
 
 static SPOTLIGHT_CREATING: AtomicBool = AtomicBool::new(false);
 static SPOTLIGHT_READY: AtomicBool = AtomicBool::new(false);
@@ -71,10 +75,23 @@ fn create_spotlight_window(app: &AppHandle) {
         if payload.event() != PageLoadEvent::Finished {
             return;
         }
-        SPOTLIGHT_READY.store(true, Ordering::Release);
-        SPOTLIGHT_CREATING.store(false, Ordering::Release);
-        if SPOTLIGHT_SHOW_REQUESTED.swap(false, Ordering::AcqRel) {
-            show_spotlight_window(&window);
+        let ready_window = window.clone();
+        let spawn_result = std::thread::Builder::new()
+            .name("imagyx-spotlight-ready".into())
+            .spawn(move || {
+                std::thread::sleep(SPOTLIGHT_LISTENER_GRACE);
+                if SPOTLIGHT_READY.swap(true, Ordering::AcqRel) {
+                    return;
+                }
+                SPOTLIGHT_CREATING.store(false, Ordering::Release);
+                if SPOTLIGHT_SHOW_REQUESTED.swap(false, Ordering::AcqRel) {
+                    show_spotlight_window(&ready_window);
+                }
+            });
+        if let Err(error) = spawn_result {
+            SPOTLIGHT_CREATING.store(false, Ordering::Release);
+            SPOTLIGHT_SHOW_REQUESTED.store(false, Ordering::Release);
+            tracing::event("spotlight.ready_thread.failed", error);
         }
     });
 
