@@ -66,6 +66,16 @@ pub(super) fn migrate(database: &Database) -> Result<(), AppError> {
         END;",
     )?;
 
+    // Older builds installed this trigger and consequently relabelled every new
+    // embedding as `mobileclip2-s0`. Keep the embeddings (they were produced by
+    // the current runtime), but repair their label before removing genuinely
+    // incompatible model data. Without this, valid indexes appear as 0/N and
+    // are discarded again at every launch.
+    connection.execute_batch("DROP TRIGGER IF EXISTS normalize_embedding_model;")?;
+    connection.execute(
+        "UPDATE embeddings SET model = ?1 WHERE model = 'mobileclip2-s0'",
+        params![MODEL_ID],
+    )?;
     connection.execute(
         "DELETE FROM embeddings WHERE model <> ?1",
         params![MODEL_ID],
