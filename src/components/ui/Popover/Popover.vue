@@ -15,37 +15,30 @@ const props = withDefaults(
   },
 )
 
+const emit = defineEmits<{
+  'update:open': [value: boolean]
+}>()
+
 const open = ref(false)
 const trigger = ref<HTMLElement | null>(null)
 const content = ref<HTMLElement | null>(null)
 const positioned = ref(false)
 const floatingStyle = ref<Record<string, string>>({})
 let resizeObserver: ResizeObserver | null = null
-let contentResizeObserver: ResizeObserver | null = null
 
 function close() {
   open.value = false
   positioned.value = false
-  contentResizeObserver?.disconnect()
+  emit('update:open', false)
 }
 
 async function toggle() {
   open.value = !open.value
   positioned.value = false
+  emit('update:open', open.value)
   if (open.value) {
     await nextTick()
-    setupContentObserver()
     updatePosition()
-  } else {
-    contentResizeObserver?.disconnect()
-  }
-}
-
-function setupContentObserver() {
-  contentResizeObserver?.disconnect()
-  if (content.value) {
-    contentResizeObserver = new ResizeObserver(() => updatePosition())
-    contentResizeObserver.observe(content.value)
   }
 }
 
@@ -110,7 +103,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleViewportChange)
   window.removeEventListener('scroll', handleViewportChange, true)
   resizeObserver?.disconnect()
-  contentResizeObserver?.disconnect()
 })
 </script>
 
@@ -129,6 +121,7 @@ onBeforeUnmount(() => {
           :class="{ 'ui-popover__content--positioned': positioned }"
           :style="floatingStyle"
           @click.stop
+          @pointerdown.stop
         >
           <slot name="content" :close="close" />
         </span>

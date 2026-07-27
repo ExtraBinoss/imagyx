@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { AlignLeft, AlignRight, BookOpen, Check, Copy, Info, Keyboard, Layout, Monitor, Moon, Palette, SearchX, Sun } from '@lucide/vue'
+import { AlignLeft, AlignRight, BookOpen, Check, Copy, Globe, Info, Keyboard, Layout, Monitor, Moon, Palette, SearchX, Sun } from '@lucide/vue'
 import { imagyxApi } from '../../api/tauri'
 import type { ThemeMode } from '../../stores/theme'
 import { usePlatformStore } from '../../stores/platform'
@@ -9,8 +9,10 @@ import ShortcutView from '../shortcuts/ShortcutView.vue'
 import Accordion from '../ui/Accordion/Accordion.vue'
 import Button from '../ui/Button/Button.vue'
 import ButtonGroup from '../ui/ButtonGroup/ButtonGroup.vue'
+import SearchSelect from '../ui/Select/SearchSelect.vue'
 import { copyDebugInfoToClipboard } from '../../utils/copy-information'
-import { useTranslate } from '../../i18n'
+import { useTranslate, setLocale, getI18n } from '../../i18n'
+import { languages } from '../../i18n/languages'
 
 const props = withDefaults(
   defineProps<{
@@ -36,15 +38,38 @@ const { t } = useTranslate()
 const platform = usePlatformStore()
 const library = useLibraryStore()
 const copied = ref(false)
+const currentLocale = ref(getCurrentLocale())
+
+const languageOptions = computed(() =>
+  languages.map((lang) => ({
+    label: `${lang.nativeName} (${lang.name})`,
+    value: lang.code,
+    searchText: `${lang.nativeName} ${lang.name} ${lang.code}`,
+  })),
+)
 
 const isPopover = computed(() => props.variant === 'popover')
 const normalizedQuery = computed(() => (props.query ?? '').trim().toLocaleLowerCase('en'))
 const showShortcut = computed(() => isPopover.value || matches(['shortcut', 'keyboard', 'keybind', 'spotlight', 'open']))
 const showTheme = computed(() => isPopover.value || matches(['theme', 'appearance', 'light', 'dark', 'system', 'color']))
 const showControls = computed(() => isPopover.value || matches(['buttons', 'controls', 'close', 'minimize', 'window', 'position', 'left', 'right', 'titlebar']))
+const showLanguage = computed(() => isPopover.value || matches(['language', 'langue', 'lang', 'locale', 'region', 'translate', 'traduire', 'français', 'english', '日本語', '简体中文', 'العربية', 'русский', 'deutsch', 'español', 'italiano', 'português']))
 const showOnboarding = computed(() => isPopover.value || matches(['onboarding', 'guide', 'tutorial', 'discover', 'welcome', 'help']))
 const showInfo = computed(() => isPopover.value || matches(['info', 'information', 'version', 'debug', 'system', 'imagyx', 'stats', 'indexing', 'database', 'sqlite']))
-const hasResults = computed(() => showShortcut.value || showTheme.value || showControls.value || showOnboarding.value || showInfo.value)
+const hasResults = computed(() => showShortcut.value || showTheme.value || showControls.value || showLanguage.value || showOnboarding.value || showInfo.value)
+
+function getCurrentLocale(): string {
+  try {
+    return (getI18n().global.locale as unknown as string) || localStorage.getItem('imagyx-locale') || 'en'
+  } catch {
+    return localStorage.getItem('imagyx-locale') || 'en'
+  }
+}
+
+function onLocaleChange(code: string) {
+  setLocale(code)
+  currentLocale.value = code
+}
 
 const stats = computed(() => library.runtimeStats)
 const dbPath = computed(() => library.appInfo?.databasePath ?? 'Unavailable')
@@ -126,6 +151,21 @@ async function copyDebugInfo() {
           <template #leading><AlignRight :size="16" /></template>{{ t('settings.controls_right') }}
         </Button>
       </ButtonGroup>
+    </section>
+
+    <section v-if="showLanguage" class="settings-section">
+      <header>
+        <span class="settings-section__icon"><Globe :size="17" /></span>
+        <div><strong>{{ t('settings.language_title') }}</strong><p>{{ t('settings.language_desc') }}</p></div>
+      </header>
+      <SearchSelect
+        :model-value="currentLocale"
+        :options="languageOptions"
+        :placeholder="t('settings.language_placeholder')"
+        :search-placeholder="t('settings.language_search')"
+        popover-width="220px"
+        @update:model-value="onLocaleChange"
+      />
     </section>
 
     <section v-if="showOnboarding" class="settings-section">

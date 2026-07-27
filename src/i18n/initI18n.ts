@@ -6,11 +6,13 @@ import fr from './fr'
 type AppI18n = I18n<any, any, any, any, false>
 let _i18n: AppI18n | null = null
 
-function detectLocale(): 'en' | 'fr' {
+const SUPPORTED_LOCALES = ['en', 'fr'] as const
+
+function detectLocale(): string {
   const stored = localStorage.getItem('imagyx-locale')
-  if (stored === 'en' || stored === 'fr') return stored
+  if (stored && SUPPORTED_LOCALES.includes(stored as typeof SUPPORTED_LOCALES[number])) return stored
   const navLang = navigator.language?.slice(0, 2)
-  if (navLang === 'fr') return 'fr'
+  if (SUPPORTED_LOCALES.includes(navLang as typeof SUPPORTED_LOCALES[number])) return navLang
   return 'en'
 }
 
@@ -37,7 +39,7 @@ export function getI18n(): AppI18n {
   return _i18n
 }
 
-export function setLocale(locale: 'en' | 'fr') {
+export function setLocale(locale: string) {
   const i18n = getI18n()
   ;(i18n.global.locale as { value: string }).value = locale
   document.documentElement.lang = locale

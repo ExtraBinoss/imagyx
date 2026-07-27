@@ -21,6 +21,11 @@ export default {
 
   'settings.info_title': 'Informations Imagyx',
   'settings.info_version': 'Version',
+  'settings.language_title': 'Langue',
+  'settings.language_desc': 'Choisissez la langue d\'affichage de l\'application.',
+  'settings.language_placeholder': 'Sélectionner une langue',
+  'settings.language_search': 'Rechercher une langue…',
+
   'settings.info_platform': 'Plateforme',
   'settings.info_ai_model': 'Modèle IA',
   'settings.info_library': 'Bibliothèque',
