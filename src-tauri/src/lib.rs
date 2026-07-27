@@ -84,6 +84,8 @@ pub fn run() {
             {
                 let _trace = tracing::span("startup.asset_scopes");
                 app.asset_protocol_scope()
+                    .allow_directory(&state.paths.thumbnails, true)?;
+                app.asset_protocol_scope()
                     .allow_directory(&state.paths.models, true)?;
                 for folder in &folders {
                     app.asset_protocol_scope()
