@@ -9,6 +9,7 @@ import {
 import { imagyxApi } from '../api/tauri'
 import type { ModelDownloadProgress, QueryConcept, RuntimeStats } from '../types'
 import { perfLog } from '../utils'
+import { buildQueryPromptPlan, combinePromptVectors } from './query-prompts'
 
 const MODEL_ID = 'Xenova/mobileclip_s0'
 const MODEL_NAME = 'MobileCLIP-S0'
@@ -157,14 +158,34 @@ class SemanticRuntime {
     const trimmed = query.trim()
     if (!trimmed) return undefined
     await this.prewarmText()
-    const labels = queryConceptLabels(trimmed)
-    const texts = [trimmed, ...labels]
-    const inputs = this.tokenizer(texts, { padding: 'max_length', truncation: true, max_length: 77 })
+
+    const plan = buildQueryPromptPlan(trimmed)
+    const texts = [
+      ...plan.positivePrompts,
+      ...plan.negativePrompts,
+      ...plan.conceptPrompts,
+    ]
+    const inputs = this.tokenizer(texts, {
+      padding: 'max_length',
+      truncation: true,
+      max_length: 77,
+    })
     const output = await this.textModel(inputs)
     const vectors = tensorRows(output.text_embeds)
-    const queryVector = vectors[0]
-    if (!queryVector) throw new Error('Embedding de recherche vide')
-    return { queryVector, concepts: labels.flatMap((label, index) => vectors[index + 1] ? [{ label, vector: vectors[index + 1] }] : []) }
+    const positiveEnd = plan.positivePrompts.length
+    const negativeEnd = positiveEnd + plan.negativePrompts.length
+    const queryVector = combinePromptVectors(
+      vectors.slice(0, positiveEnd),
+      vectors.slice(positiveEnd, negativeEnd),
+      plan.negativeWeight,
+    )
+    if (!queryVector.length) throw new Error('Embedding de recherche vide')
+
+    const concepts = plan.conceptLabels.flatMap((label, index) => {
+      const vector = vectors[negativeEnd + index]
+      return vector ? [{ label, vector }] : []
+    })
+    return { queryVector, concepts }
   }
 
   async genericImageConcepts(): Promise<QueryConcept[]> {
@@ -274,12 +295,6 @@ class SemanticRuntime {
     this.callbacks.stats(this.stats)
     void imagyxApi.updateRuntimeStats(this.stats)
   }
-}
-
-function queryConceptLabels(query: string): string[] {
-  const seen = new Set<string>()
-  return query.toLocaleLowerCase('fr').split(/[^\p{L}\p{N}-]+/u).map((word) => word.trim())
-    .filter((word) => word.length >= 2).filter((word) => !seen.has(word) && Boolean(seen.add(word))).slice(0, 6)
 }
 
 function tensorRows(tensor: any): number[][] {
