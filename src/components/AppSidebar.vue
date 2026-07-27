@@ -292,13 +292,14 @@ onBeforeUnmount(() => {
       </Popover>
     </div>
 
-    <div
-      v-if="contextMenu"
-      class="folder-context-menu"
-      :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
-      @pointerdown.stop
-      @click.stop
-    >
+    <Transition name="folder-context-menu">
+      <div
+        v-if="contextMenu"
+        class="folder-context-menu"
+        :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+        @pointerdown.stop
+        @click.stop
+      >
       <Button variant="ghost" size="sm" block @click="runContextAction('open')">
         <template #leading><FolderOpen :size="15" /></template
         >{{ t("open_in_file_manager", { name: platform.fileManagerName }) }}
@@ -326,7 +327,8 @@ onBeforeUnmount(() => {
         <template #leading><Trash2 :size="15" /></template
         >{{ t("sidebar.unfollow") }}
       </Button>
-    </div>
+      </div>
+    </Transition>
   </aside>
 </template>
 
@@ -406,6 +408,15 @@ onBeforeUnmount(() => {
   background: var(--surface-elevated);
   box-shadow: var(--shadow-popover);
 }
+.folder-context-menu-enter-active,
+.folder-context-menu-leave-active {
+  transition: opacity 140ms ease, transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.folder-context-menu-enter-from,
+.folder-context-menu-leave-to {
+  opacity: 0;
+  transform: translate3d(0, -4px, 0) scale(0.985);
+}
 
 .settings-trigger-btn {
   justify-content: flex-start !important;
@@ -428,5 +439,9 @@ onBeforeUnmount(() => {
   to {
     transform: rotate(1turn);
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .folder-context-menu-enter-active,
+  .folder-context-menu-leave-active { transition-duration: 0.01ms; }
 }
 </style>
