@@ -24,8 +24,8 @@ const ID_OPEN_IMAGYX: &str = "open-imagyx";
 const ID_PAUSE_INDEXING: &str = "pause-indexing";
 const ID_QUIT: &str = "quit-imagyx";
 
-const IDLE_ICON: Image<'static> = tauri::include_image!("./icons/imagyx.ico");
-const BUSY_ICON: Image<'static> = tauri::include_image!("./icons/imagyx-searching.ico");
+const IDLE_ICON: Image<'static> = tauri::include_image!("./icons/Square310x310Logo.png");
+const BUSY_ICON: Image<'static> = tauri::include_image!("./icons/imagyx-bigger-searching.ico");
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LibrarySnapshot {

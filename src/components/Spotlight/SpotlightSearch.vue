@@ -9,7 +9,7 @@ import { semanticRuntime } from '../../services/semantic'
 import { usePlatformStore } from '../../stores/platform'
 import { useShortcutStore } from '../../stores/shortcut'
 import { useThemeStore } from '../../stores/theme'
-import { debounce } from '../../utils'
+import { debounce, perfLog } from '../../utils'
 import { capitalize, useTagTypewriter } from '../../useTagTypewriter'
 import MovingBorder from '../ui/MovingBorder/MovingBorder.vue'
 import SpotlightInput from './SpotlightInput.vue'
@@ -62,11 +62,13 @@ const {
 } = useSpotlightResultActions((reason) => { error.value = String(reason) })
 
 let searchSequence = 0
+let lastSearchInputAt = 0
 let morphSequence = 0
 let expanded = false
 let expansionPromise: Promise<void> | null = null
 let collapseTimer: number | undefined
 let jobTimer: number | undefined
+const paintFrames = new Set<number>()
 let unlistenWillOpen: UnlistenFn | null = null
 let unlistenOpened: UnlistenFn | null = null
 let unlistenWillHide: UnlistenFn | null = null
@@ -126,7 +128,7 @@ watch(searchQuery, (value) => {
     if (view.value === 'search' && !hasActiveJobs.value) void closePanel(request)
     return
   }
-  results.value = []
+  lastSearchInputAt = performance.now()
   searching.value = true
   searchLater()
   void openPanel(request)
@@ -212,6 +214,7 @@ async function backToSearch() {
 
 async function runSearch() {
   const sequence = ++searchSequence
+  const startedAt = performance.now()
   const text = searchQuery.value.trim()
   const cacheKey = text.toLocaleLowerCase('en')
   if (!text || !hasFolders.value) {
@@ -227,20 +230,27 @@ async function runSearch() {
   if (cached) resultCache.delete(cacheKey)
 
   searching.value = true
+  const lexicalStartedAt = performance.now()
   const lexicalPromise = imagyxApi.search({ query: text, limit: 60 })
   const embeddingPromise = text.length >= 2
     ? semanticRuntime.embedQuery(text)
     : Promise.resolve(undefined)
   void lexicalPromise.then((images) => {
-    if (
-      sequence === searchSequence &&
-      searchQuery.value.trim() === text &&
-      (images.length || !results.value.length)
-    ) results.value = images
+    perfLog('Spotlight', 'lexical IPC', performance.now() - lexicalStartedAt, { results: images.length })
+    if (sequence !== searchSequence || searchQuery.value.trim() !== text) return
+    results.value = images
+    void nextPaint().then(() => {
+      perfLog('Spotlight', 'input to lexical paint', performance.now() - lastSearchInputAt, {
+        results: images.length,
+      })
+    })
   }).catch(() => undefined)
 
   try {
     const embedded = await embeddingPromise
+    perfLog('Spotlight', 'semantic embedding', performance.now() - lexicalStartedAt, {
+      vectorReady: Boolean(embedded?.queryVector),
+    })
     if (sequence !== searchSequence || searchQuery.value.trim() !== text) return
     const images = embedded?.queryVector
       ? await imagyxApi.search({ query: text, queryVector: embedded.queryVector, limit: 60 })
@@ -248,6 +258,7 @@ async function runSearch() {
     if (sequence !== searchSequence || searchQuery.value.trim() !== text) return
     results.value = images
     rememberResults(cacheKey, images)
+    perfLog('Spotlight', 'semantic search total', performance.now() - startedAt, { results: images.length })
   } catch (reason) {
     if (sequence === searchSequence) {
       error.value = String(reason)
@@ -420,7 +431,14 @@ function prepareHide() {
 
 function nextPaint(count = 1): Promise<void> {
   return new Promise((resolve) => {
-    const step = (remaining: number) => window.requestAnimationFrame(() => remaining <= 1 ? resolve() : step(remaining - 1))
+    const step = (remaining: number) => {
+      const frame = window.requestAnimationFrame(() => {
+        paintFrames.delete(frame)
+        if (remaining <= 1) resolve()
+        else step(remaining - 1)
+      })
+      paintFrames.add(frame)
+    }
     step(count)
   })
 }
@@ -463,6 +481,8 @@ onBeforeUnmount(() => {
   unlistenLibrary?.()
   if (collapseTimer) window.clearTimeout(collapseTimer)
   if (jobTimer) window.clearTimeout(jobTimer)
+  for (const frame of paintFrames) window.cancelAnimationFrame(frame)
+  paintFrames.clear()
 })
 </script>
 

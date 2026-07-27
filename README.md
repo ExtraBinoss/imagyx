@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./src-tauri/icons/imagyx-bigger.png" alt="Imagyx logo" width="112" height="112" />
+  <img src="./src-tauri/icons/imagyx-bigger.avif" alt="Imagyx logo" width="112" height="112" />
 </p>
 
 <h1 align="center">Imagyx</h1>

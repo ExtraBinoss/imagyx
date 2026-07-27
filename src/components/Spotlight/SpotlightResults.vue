@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   Check,
   Copy,
@@ -44,8 +44,29 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useTranslate()
+const RESULT_ROW_HEIGHT = 72
+const RESULT_OVERSCAN = 4
 const viewport = ref<HTMLElement | null>(null)
+const resultList = ref<HTMLElement | null>(null)
 const canScrollDown = ref(false)
+const scrollTop = ref(0)
+const viewportHeight = ref(0)
+const resultsOffset = ref(0)
+let scrollFrame: number | undefined
+let resizeObserver: ResizeObserver | null = null
+
+const visibleResults = computed(() => {
+  const firstVisible = Math.floor(
+    Math.max(0, scrollTop.value - resultsOffset.value) / RESULT_ROW_HEIGHT,
+  )
+  const visibleCount = Math.ceil(viewportHeight.value / RESULT_ROW_HEIGHT)
+  const start = Math.max(0, firstVisible - RESULT_OVERSCAN)
+  const end = Math.min(props.results.length, firstVisible + visibleCount + RESULT_OVERSCAN)
+  return props.results.slice(start, end).map((image, offset) => ({
+    image,
+    index: start + offset,
+  }))
+})
 
 watch(
   () => [
@@ -58,33 +79,62 @@ watch(
     props.searching,
     props.hasSearchQuery,
   ],
-  () => { void nextTick(updateScrollShadow) },
+  () => { void nextTick(scheduleScrollState) },
 )
 
-function updateScrollShadow() {
+function updateScrollState() {
   const element = viewport.value
   if (!element) {
     canScrollDown.value = false
     return
   }
+  scrollTop.value = element.scrollTop
+  viewportHeight.value = element.clientHeight
+  resultsOffset.value = resultList.value?.offsetTop ?? 0
   canScrollDown.value = element.scrollHeight > element.clientHeight + 2
     && element.scrollTop + element.clientHeight < element.scrollHeight - 2
 }
 
-function scrollToIndex(index: number) {
-  void nextTick(() => {
-    viewport.value?.querySelector<HTMLElement>(`[data-result-index="${index}"]`)
-      ?.scrollIntoView({ block: 'nearest' })
-    updateScrollShadow()
+function scheduleScrollState() {
+  if (scrollFrame) return
+  scrollFrame = window.requestAnimationFrame(() => {
+    scrollFrame = undefined
+    updateScrollState()
   })
 }
+
+function scrollToIndex(index: number) {
+  void nextTick(() => {
+    const element = viewport.value
+    const list = resultList.value
+    if (!element || !list) return
+    const rowTop = list.offsetTop + index * RESULT_ROW_HEIGHT
+    const rowBottom = rowTop + RESULT_ROW_HEIGHT
+    if (rowTop < element.scrollTop) element.scrollTop = rowTop
+    else if (rowBottom > element.scrollTop + element.clientHeight) {
+      element.scrollTop = rowBottom - element.clientHeight
+    }
+    scheduleScrollState()
+  })
+}
+
+onMounted(() => {
+  resizeObserver = new ResizeObserver(scheduleScrollState)
+  if (viewport.value) resizeObserver.observe(viewport.value)
+  scheduleScrollState()
+})
+
+onBeforeUnmount(() => {
+  if (scrollFrame) window.cancelAnimationFrame(scrollFrame)
+  resizeObserver?.disconnect()
+})
 
 defineExpose({ scrollToIndex })
 </script>
 
 <template>
   <div class="spotlight-results-shell">
-    <div ref="viewport" class="spotlight-results" role="listbox" @scroll.passive="updateScrollShadow">
+    <div ref="viewport" class="spotlight-results" role="listbox" @scroll.passive="scheduleScrollState">
       <div v-if="!libraryReady" class="spotlight-library-loading" aria-live="polite">
         <LoaderCircle class="spin" :size="22" />
         <strong>{{ t('spotlight.loading_library') }}</strong>
@@ -133,15 +183,26 @@ defineExpose({ scrollToIndex })
         <SpotlightIndexProgress v-for="job in jobs" :key="job.folderId" :job="job" />
 
         <div
-          v-for="(image, index) in results"
+          v-if="results.length"
+          ref="resultList"
+          class="spotlight-result-list"
+          :style="{ height: `${results.length * RESULT_ROW_HEIGHT}px` }"
+        >
+          <div
+            class="spotlight-result-list__items"
+            :style="{ transform: `translateY(${visibleResults[0]?.index * RESULT_ROW_HEIGHT ?? 0}px)` }"
+          >
+        <div
+          v-for="{ image, index } in visibleResults"
           :key="image.id"
           class="spotlight-result"
           :class="{ 'spotlight-result--selected': index === selectedIndex }"
           :data-result-index="index"
+          :aria-posinset="index + 1"
+          :aria-setsize="results.length"
           :aria-selected="index === selectedIndex"
           role="option"
           tabindex="-1"
-          :style="{ animationDelay: `${Math.min(index, 10) * 18}ms` }"
           @mouseenter="emit('select', index)"
           @focus="emit('select', index)"
           @click="emit('select', index)"
@@ -197,6 +258,8 @@ defineExpose({ scrollToIndex })
               <template #trailing><KbdChip shortcut="Ctrl+I" size="sm" /></template>
             </Button>
           </span>
+        </div>
+          </div>
         </div>
 
         <div
@@ -295,6 +358,8 @@ defineExpose({ scrollToIndex })
 .spotlight-background-hint small { display: block; }
 .spotlight-background-hint strong { color: var(--text); font-size: 10px; }
 .spotlight-background-hint small { margin-top: 3px; color: var(--text-muted); font-size: 9px; }
+.spotlight-result-list { position: relative; animation: result-list-reveal 180ms ease both; }
+.spotlight-result-list__items { will-change: transform; }
 .spotlight-result {
   position: relative;
   display: grid;
@@ -310,8 +375,6 @@ defineExpose({ scrollToIndex })
   background: transparent;
   color: inherit;
   cursor: default;
-  opacity: 0;
-  animation: result-rise 235ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
   transition: background-color 150ms ease, border-color 150ms ease, transform 180ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 180ms ease;
 }
 .spotlight-result:hover,
@@ -320,6 +383,7 @@ defineExpose({ scrollToIndex })
   background: color-mix(in srgb, var(--primary-soft) 70%, var(--surface));
   box-shadow: inset 0 1px rgb(255 255 255 / 0.05);
   transform: translateX(2px) scale(0.998);
+  will-change: transform;
 }
 .spotlight-thumb {
   width: 54px;
@@ -365,12 +429,11 @@ defineExpose({ scrollToIndex })
   pointer-events: none;
   background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary-soft) 85%, var(--surface)) 28%);
   border-radius: var(--radius-md);
-  will-change: opacity;
   transition: opacity 80ms ease;
 }
 .spotlight-result:hover .spotlight-actions,
 .spotlight-result--selected .spotlight-actions,
-.spotlight-result:focus-within .spotlight-actions { opacity: 1; pointer-events: auto; }
+.spotlight-result:focus-within .spotlight-actions { opacity: 1; pointer-events: auto; will-change: opacity; }
 .spotlight-action-button { min-height: 31px; padding-inline: 9px; border-radius: 9px; font-size: 10px; }
 .spotlight-action-button--success { animation: action-success 280ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 .spotlight-loading-list { display: grid; gap: 8px; padding: 4px; }
@@ -399,7 +462,7 @@ defineExpose({ scrollToIndex })
 }
 .spin { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(1turn); } }
-@keyframes result-rise { from { opacity: 0; transform: translateY(7px) scale(0.992); } to { opacity: 1; transform: none; } }
+@keyframes result-list-reveal { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
 @keyframes action-success { 0% { transform: scale(0.94); } 55% { transform: scale(1.04); } 100% { transform: none; } }
 @keyframes skeleton-shimmer { to { background-position: -160% 0; } }
 @media (prefers-reduced-motion: reduce) {
