@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
-use tauri::{State, ipc::Response};
+use tauri::State;
 
 use crate::{
     indexer,
@@ -14,10 +14,16 @@ pub async fn get_thumbnail(
     path: String,
     modified_at: i64,
     state: State<'_, Arc<AppState>>,
-) -> Result<Response, String> {
+) -> Result<String, String> {
     let source = PathBuf::from(&path);
     let state = Arc::clone(state.inner());
-    let bytes = tauri::async_runtime::spawn_blocking(move || {
+    let permit = Arc::clone(&state.thumbnail_workers)
+        .acquire_owned()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let _permit = permit;
         let known = state
             .database
             .image_path_is_known(&image_id, &path)
@@ -29,13 +35,11 @@ pub async fn get_thumbnail(
         state
             .thumbnails
             .get_or_create(&image_id, &source, modified_at)
-            .map(|bytes| bytes.as_ref().clone())
+            .map(|thumbnail| thumbnail.to_string_lossy().into_owned())
             .map_err(|error| error.to_string())
     })
     .await
-    .map_err(|error| error.to_string())??;
-
-    Ok(Response::new(bytes))
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
