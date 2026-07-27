@@ -23,9 +23,7 @@ pub fn search(
     let _trace = tracing::span("search.hybrid");
     let tokens = normalize_query(query);
     if tokens.is_empty() {
-        let mut assets = state.database.images(folder_id)?;
-        assets.truncate(requested_limit);
-        return Ok(assets);
+        return state.database.recent_images(folder_id, requested_limit);
     }
 
     let limit = requested_limit.clamp(1, MAX_SEARCH_RESULTS);
