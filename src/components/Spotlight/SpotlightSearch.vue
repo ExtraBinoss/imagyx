@@ -269,8 +269,37 @@ function handleKeydown(event: KeyboardEvent) {
     return
   }
   if (view.value !== 'search') return
+
+  if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 'c') {
+    if (selectedImage.value) {
+      event.preventDefault()
+      void copyImage(selectedImage.value)
+    }
+    return
+  }
+
   if (event.key === 'ArrowDown') { event.preventDefault(); moveSelection(1); return }
   if (event.key === 'ArrowUp') { event.preventDefault(); moveSelection(-1); return }
+
+  const keyLower = event.key.toLocaleLowerCase()
+  if (keyLower === 'e' && selectedImage.value && !event.ctrlKey && !event.metaKey) {
+    const target = event.target as HTMLElement | null
+    if (!target?.matches('input, textarea')) {
+      event.preventDefault()
+      void revealImage(selectedImage.value)
+      return
+    }
+  }
+
+  if (keyLower === 'i' && selectedImage.value && !event.ctrlKey && !event.metaKey) {
+    const target = event.target as HTMLElement | null
+    if (!target?.matches('input, textarea')) {
+      event.preventDefault()
+      void openImage(selectedImage.value)
+      return
+    }
+  }
+
   if (event.key === 'Enter' && selectedImage.value) { event.preventDefault(); void openImage(selectedImage.value) }
 }
 

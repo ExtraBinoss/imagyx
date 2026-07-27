@@ -49,9 +49,29 @@ function selectImage(image: ImageAsset) {
   emit('explain', image.id)
 }
 
+async function copySelectedImage(image: ImageAsset) {
+  try {
+    await imagyxApi.copyImage(image.path)
+  } catch {
+    await imagyxApi.copyImageToClipboard(image.path)
+  }
+}
+
 function handleGlobalKeydown(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null
   if (target?.matches('input, textarea, select, [contenteditable="true"]')) return
+
+  if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 'c') {
+    const imageId = selectedImageId.value ?? activeImageId.value
+    if (!imageId) return
+    const image = props.images.find((item) => item.id === imageId)
+    if (!image) return
+    event.preventDefault()
+    event.stopPropagation()
+    void copySelectedImage(image)
+    return
+  }
+
   if (event.code !== 'Space' && event.key !== ' ') return
 
   // Prevent browser window scrolling on Space

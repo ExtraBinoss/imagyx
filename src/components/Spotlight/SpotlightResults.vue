@@ -4,6 +4,7 @@ import { Check, Copy, ExternalLink, FolderOpen, FolderPlus, Search } from '@luci
 import type { ImageAsset } from '../../types'
 import ThumbnailImage from '../ThumbnailImage.vue'
 import Button from '../ui/Button/Button.vue'
+import CopyButton from '../ui/Button/CopyButton.vue'
 import SpotlightIndexProgress from './SpotlightIndexProgress.vue'
 import type { SpotlightIndexJob } from './types'
 
@@ -96,18 +97,23 @@ defineExpose({ scrollToIndex })
         </span>
         <span v-if="image.semanticScore != null" class="spotlight-score">{{ Math.round(image.semanticScore * 100) }}%</span>
         <span class="spotlight-actions">
-          <Button class="spotlight-action-button" variant="secondary" size="sm" aria-label="Copier l’image" @click.stop="emit('copy', image)">
-            <template #leading>
-              <Check v-if="copiedImageId === image.id" :size="14" />
-              <Copy v-else :size="14" />
-            </template>
-            {{ copiedImageId === image.id ? 'Copiée' : 'Copier' }}
+          <CopyButton
+            :copied-text="copiedImageId === image.id ? 'Copied' : 'Copied'"
+            idle-text="Copy"
+            variant="secondary"
+            size="sm"
+            class="spotlight-action-button"
+            @copy="emit('copy', image)"
+          />
+          <Button class="spotlight-action-button" variant="secondary" size="sm" :aria-label="`Open in ${fileManagerName}`" @click.stop="emit('reveal', image)">
+            <template #leading><FolderOpen :size="14" /></template>
+            {{ fileManagerName }}
+            <template #trailing><kbd class="shortcut-kbd">E</kbd></template>
           </Button>
-          <Button class="spotlight-action-button" variant="secondary" size="sm" :aria-label="`Ouvrir dans ${fileManagerName}`" @click.stop="emit('reveal', image)">
-            <template #leading><FolderOpen :size="14" /></template>{{ fileManagerName }}
-          </Button>
-          <Button class="spotlight-action-button" variant="primary" size="sm" aria-label="Ouvrir dans Imagyx" @click.stop="emit('open', image)">
-            <template #leading><ExternalLink :size="14" /></template>Imagyx
+          <Button class="spotlight-action-button" variant="primary" size="sm" aria-label="Open in Imagyx" @click.stop="emit('open', image)">
+            <template #leading><ExternalLink :size="14" /></template>
+            Imagyx
+            <template #trailing><kbd class="shortcut-kbd">I</kbd></template>
           </Button>
         </span>
       </div>
@@ -218,6 +224,23 @@ defineExpose({ scrollToIndex })
 .spotlight-result--selected .spotlight-actions,
 .spotlight-result:focus-within .spotlight-actions { opacity: 1; transform: translate(0, -50%) scale(1); pointer-events: auto; }
 .spotlight-action-button { min-height: 31px; padding-inline: 9px; border-radius: 9px; font-size: 10px; }
+.shortcut-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  margin-left: 3px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  background: color-mix(in srgb, var(--surface) 80%, black 20%);
+  color: var(--text-muted);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
 .spotlight-loading-list { display: grid; gap: 8px; padding: 4px; }
 .spotlight-loading-list span {
   height: 70px;

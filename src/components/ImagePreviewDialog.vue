@@ -6,13 +6,14 @@ import { imagyxApi } from '../api/tauri'
 import { usePlatformStore } from '../stores/platform'
 import { formatBytes } from '../utils'
 import Button from './ui/Button/Button.vue'
+import CopyButton from './ui/Button/CopyButton.vue'
 import Badge from './ui/Badge/Badge.vue'
 
 const props = defineProps<{ image: ImageAsset | null }>()
 const emit = defineEmits<{ close: [] }>()
 
 const platform = usePlatformStore()
-const copied = ref(false)
+const copyBtnRef = ref<InstanceType<typeof CopyButton> | null>(null)
 const showInfo = ref(false)
 const fitMode = ref<'contain' | 'cover'>('contain')
 
@@ -23,6 +24,14 @@ const cleanPath = computed(() => {
 
 function handleKeydown(event: KeyboardEvent) {
   if (!props.image) return
+  if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 'c') {
+    event.preventDefault()
+    event.stopPropagation()
+    copyBtnRef.value?.triggerCopied()
+    void copyImage()
+    return
+  }
+
   if (event.key === 'Escape' || event.code === 'Space' || event.key === ' ') {
     event.preventDefault()
     event.stopPropagation()
@@ -34,12 +43,8 @@ async function copyImage() {
   if (!props.image) return
   try {
     await imagyxApi.copyImage(cleanPath.value)
-    copied.value = true
-    setTimeout(() => { copied.value = false }, 1800)
   } catch {
     await imagyxApi.copyImageToClipboard(cleanPath.value)
-    copied.value = true
-    setTimeout(() => { copied.value = false }, 1800)
   }
 }
 
@@ -71,19 +76,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true)
             </div>
 
             <div class="bar-actions">
-              <Button
-                class="spotlight-action-button"
+              <CopyButton
+                ref="copyBtnRef"
+                idle-text="Copy"
+                copied-text="Copied"
                 variant="secondary"
                 size="sm"
-                aria-label="Copy image"
-                @click="copyImage"
-              >
-                <template #leading>
-                  <Check v-if="copied" :size="14" />
-                  <Copy v-else :size="14" />
-                </template>
-                {{ copied ? 'Copied' : 'Copy' }}
-              </Button>
+                @copy="copyImage"
+              />
 
               <Button
                 class="spotlight-action-button"
