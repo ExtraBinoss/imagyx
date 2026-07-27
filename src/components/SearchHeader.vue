@@ -21,7 +21,6 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
 }>()
 
-const appWindow = getCurrentWindow()
 const platform = usePlatformStore()
 const searchInput = ref<{ focus: () => void; select: () => void } | null>(null)
 const isFocused = ref(false)
@@ -34,16 +33,6 @@ function selectSearch() {
   searchInput.value?.select()
 }
 
-function startDrag(event: MouseEvent) {
-  if (event.button === 0) {
-    const target = event.target as HTMLElement | null
-    if (target?.closest('button, input, textarea, a, select, [contenteditable="true"], .mac-btn')) {
-      return
-    }
-    void appWindow.startDragging()
-  }
-}
-
 defineExpose({ focusSearch, selectSearch })
 </script>
 
@@ -51,7 +40,6 @@ defineExpose({ focusSearch, selectSearch })
   <header
     class="search-header"
     data-tauri-drag-region
-    @mousedown="startDrag"
   >
     <div v-if="platform.controlsPosition === 'right'" class="search-header-controls">
       <TitleBar />
@@ -124,6 +112,7 @@ defineExpose({ focusSearch, selectSearch })
   );
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+  -webkit-app-region: drag;
 }
 
 .search-header-controls {
@@ -135,11 +124,13 @@ defineExpose({ focusSearch, selectSearch })
   align-items: center;
   z-index: 10;
   pointer-events: auto;
+  -webkit-app-region: no-drag;
 }
 .search-field {
   width: 100%;
   max-width: 640px;
   pointer-events: auto;
+  -webkit-app-region: no-drag;
 }
 
 .floating-search-input {

@@ -17,19 +17,7 @@ import type {
   ModelDownloadProgress,
   RuntimeStats,
 } from "@/types";
-import { imagyxApi } from "@/api/tauri";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import SpotlightSettings from "@/components/Spotlight/SpotlightSettings.vue";
-
-const appWindow = getCurrentWindow();
-
-function startDrag(event: MouseEvent) {
-  if (event.button === 0) {
-    const target = event.target as HTMLElement | null;
-    if (target?.closest("button, input, a, .mac-btn")) return;
-    void appWindow.startDragging();
-  }
-}
 import LocalAiStatus from "@/components/LocalAiStatus.vue";
 import Button from "@/components/ui/Button/Button.vue";
 import Popover from "@/components/ui/Popover/Popover.vue";
@@ -113,7 +101,6 @@ onBeforeUnmount(() => {
     <div
       class="sidebar-header-bar"
       data-tauri-drag-region
-      @mousedown="startDrag"
     >
       <TitleBar v-if="platform.controlsPosition === 'left'" />
     </div>
@@ -291,6 +278,7 @@ onBeforeUnmount(() => {
   min-height: 38px;
   display: flex;
   align-items: center;
+  -webkit-app-region: drag;
 }
 .brand-mark-img {
   width: 34px;

@@ -26,14 +26,6 @@ async function close(event: MouseEvent) {
   event.preventDefault()
   await appWindow.close()
 }
-
-function startDrag(event: MouseEvent) {
-  if (event.button === 0) {
-    const target = event.target as HTMLElement | null
-    if (target?.closest('button, .mac-btn')) return
-    void appWindow.startDragging()
-  }
-}
 </script>
 
 <template>
@@ -41,7 +33,6 @@ function startDrag(event: MouseEvent) {
     class="titlebar"
     :class="`titlebar--${platform.controlsPosition}`"
     data-tauri-drag-region
-    @mousedown="startDrag"
   >
     <div v-if="platform.controlsPosition === 'right'" class="titlebar-traffic-lights" @click.stop @pointerdown.stop>
       <button class="mac-btn mac-minimize" title="Minimize" @click="minimize" @pointerdown.stop>
@@ -78,6 +69,7 @@ function startDrag(event: MouseEvent) {
   user-select: none;
   background: transparent;
   cursor: default;
+  -webkit-app-region: drag;
 }
 
 .titlebar--left {
@@ -92,6 +84,7 @@ function startDrag(event: MouseEvent) {
   display: flex;
   align-items: center;
   gap: 8px;
+  -webkit-app-region: no-drag;
 }
 
 .mac-btn {
