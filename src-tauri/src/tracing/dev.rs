@@ -4,7 +4,9 @@ use std::{
     time::Instant,
 };
 
-use super::helpers::{MAX_SAMPLES_PER_SPAN, percentile};
+use super::helpers::MAX_SAMPLES_PER_SPAN;
+#[cfg(test)]
+use super::helpers::percentile;
 
 static INIT: Once = Once::new();
 static METRICS: OnceLock<Mutex<HashMap<&'static str, VecDeque<u64>>>> = OnceLock::new();
@@ -38,6 +40,7 @@ pub fn event(name: &'static str, detail: impl std::fmt::Display) {
     eprintln!("[imagyx:trace] event={name} detail={detail}");
 }
 
+#[cfg(test)]
 pub fn snapshot(name: &'static str) -> Option<(usize, u64, u64)> {
     let metrics = METRICS.get()?.lock().ok()?;
     let samples = metrics.get(name)?;
