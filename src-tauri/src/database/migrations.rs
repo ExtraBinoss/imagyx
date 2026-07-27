@@ -31,6 +31,8 @@ pub(super) fn migrate(database: &Database) -> Result<(), AppError> {
         );
         CREATE INDEX IF NOT EXISTS idx_images_folder ON images(folder_id);
         CREATE INDEX IF NOT EXISTS idx_images_modified ON images(modified_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_images_folder_modified
+            ON images(folder_id, modified_at DESC);
         CREATE TABLE IF NOT EXISTS embeddings (
             image_id TEXT PRIMARY KEY REFERENCES images(id) ON DELETE CASCADE,
             model TEXT NOT NULL,
