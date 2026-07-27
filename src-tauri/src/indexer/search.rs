@@ -19,13 +19,21 @@ pub fn search(
     query_vector: Option<&[f32]>,
     folder_id: Option<&str>,
     requested_limit: usize,
+    requested_offset: usize,
 ) -> Result<Vec<ImageAsset>, AppError> {
-    let _trace = tracing::span("search.hybrid");
     let tokens = normalize_query(query);
     if tokens.is_empty() {
-        return state.database.recent_images(folder_id, requested_limit);
+        let _trace = tracing::span("search.browse");
+        return state
+            .database
+            .recent_images(folder_id, requested_limit, requested_offset);
     }
 
+    let _trace = if query_vector.is_some() {
+        tracing::span("search.hybrid")
+    } else {
+        tracing::span("search.lexical")
+    };
     let limit = requested_limit.clamp(1, MAX_SEARCH_RESULTS);
     let lexical_limit = (limit * 4)
         .max(MIN_LEXICAL_CANDIDATES)
