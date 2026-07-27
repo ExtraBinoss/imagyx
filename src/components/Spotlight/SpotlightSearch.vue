@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { ImageAsset, IndexProgress, RuntimeStats } from '../../types'
+import type { FollowedFolder, ImageAsset, IndexProgress, RuntimeStats } from '../../types'
 import { imagyxApi } from '../../api/tauri'
 import { semanticRuntime } from '../../services/semantic'
 import { usePlatformStore } from '../../stores/platform'
@@ -35,6 +35,8 @@ const view = ref<SpotlightView>('search')
 const searchQuery = ref('')
 const settingsQuery = ref('')
 const results = ref<ImageAsset[]>([])
+const folders = ref<FollowedFolder[]>([])
+const libraryReady = ref(false)
 const selectedIndex = ref(0)
 const searching = ref(false)
 const error = ref<string | null>(null)
@@ -78,14 +80,25 @@ const activeQuery = computed({
     else searchQuery.value = value
   },
 })
+const hasFolders = computed(() => folders.value.length > 0)
+const hasActiveJobs = computed(() => jobs.value.some((job) => !['complete', 'error'].includes(job.stage)))
 const selectedImage = computed(() => results.value[selectedIndex.value] ?? null)
-const resultLabel = computed(() => searching.value && results.value.length === 0
-  ? 'Recherche…'
-  : `${results.value.length} résultat${results.value.length === 1 ? '' : 's'}`)
-const placeholder = computed(() => view.value === 'settings'
-  ? 'Search settings…'
-  : typedTag.value ? `All images: ${capitalize(typedTag.value)}…` : 'All images: name or description…')
+const resultLabel = computed(() => {
+  if (!libraryReady.value) return 'Chargement…'
+  if (!hasFolders.value) return 'Configuration requise'
+  if (searching.value && results.value.length === 0) return 'Recherche…'
+  return `${results.value.length} résultat${results.value.length === 1 ? '' : 's'}`
+})
+const placeholder = computed(() => {
+  if (view.value === 'settings') return 'Search settings…'
+  if (!libraryReady.value) return 'Chargement de la bibliothèque…'
+  if (!hasFolders.value) return 'Ajoute un dossier pour commencer…'
+  return typedTag.value
+    ? `All images: ${capitalize(typedTag.value)}…`
+    : 'All images: name or description…'
+})
 const showAddAction = computed(() => {
+  if (!libraryReady.value || !hasFolders.value) return true
   const query = searchQuery.value.trim().toLocaleLowerCase('fr')
   if (!query) return false
   return query.startsWith('add') || query.startsWith('ajout') || query.startsWith('folder') || query.startsWith('dossier')
@@ -97,16 +110,43 @@ watch(searchQuery, (value) => {
   selectedIndex.value = 0
   error.value = null
   const request = ++morphSequence
+  if (!hasFolders.value) {
+    searchSequence += 1
+    results.value = []
+    searching.value = false
+    if (view.value === 'search') void openPanel(request)
+    return
+  }
   if (!value.trim()) {
     searchSequence += 1
     results.value = []
     searching.value = false
-    if (view.value === 'search') void closePanel(request)
+    if (view.value === 'search' && !hasActiveJobs.value) void closePanel(request)
     return
   }
   searchLater()
   void openPanel(request)
 })
+
+watch(hasActiveJobs, (active) => {
+  if (view.value !== 'search') return
+  if (active) void openPanel(++morphSequence)
+  else if (!searchQuery.value.trim() && hasFolders.value) void closePanel(++morphSequence)
+})
+
+async function syncFolders(openWhenEmpty = false) {
+  try {
+    folders.value = await imagyxApi.folders()
+    libraryReady.value = true
+    if (openWhenEmpty && (!hasFolders.value || hasActiveJobs.value)) {
+      await openPanel(++morphSequence)
+    }
+  } catch (reason) {
+    libraryReady.value = true
+    error.value = String(reason)
+    if (openWhenEmpty) await openPanel(++morphSequence)
+  }
+}
 
 async function openPanel(request = ++morphSequence) {
   if (collapseTimer) window.clearTimeout(collapseTimer)
@@ -120,13 +160,14 @@ async function openPanel(request = ++morphSequence) {
 }
 
 async function closePanel(request = ++morphSequence) {
+  if (!hasFolders.value || hasActiveJobs.value) return
   resultsOpen.value = false
   await nextPaint()
   if (request !== morphSequence || view.value === 'settings' || searchQuery.value.trim()) return
   shellMerged.value = false
   if (collapseTimer) window.clearTimeout(collapseTimer)
   collapseTimer = window.setTimeout(() => {
-    if (request !== morphSequence || view.value === 'settings' || searchQuery.value.trim()) return
+    if (request !== morphSequence || view.value === 'settings' || searchQuery.value.trim() || !hasFolders.value || hasActiveJobs.value) return
     void setCompact()
   }, 220)
 }
@@ -161,14 +202,15 @@ async function backToSearch() {
   settingsQuery.value = ''
   await nextTick()
   inputView.value?.focus()
-  if (!searchQuery.value.trim()) await closePanel(++morphSequence)
+  if (!searchQuery.value.trim() && hasFolders.value && !hasActiveJobs.value) await closePanel(++morphSequence)
+  else await openPanel(++morphSequence)
 }
 
 async function runSearch() {
   const sequence = ++searchSequence
   const text = searchQuery.value.trim()
   const cacheKey = text.toLocaleLowerCase('fr')
-  if (!text) return
+  if (!text || !hasFolders.value) return
   const cached = resultCache.get(cacheKey)
   if (cached && performance.now() - cached.storedAt <= CACHE_TTL_MS) {
     results.value = cached.images
@@ -187,9 +229,7 @@ async function runSearch() {
       sequence === searchSequence &&
       searchQuery.value.trim() === text &&
       (images.length || !results.value.length)
-    ) {
-      results.value = images
-    }
+    ) results.value = images
   }).catch(() => undefined)
 
   try {
@@ -224,7 +264,16 @@ async function addFolder() {
     const selected = await open({ directory: true, multiple: false, title: 'Choisir un dossier à indexer' })
     if (typeof selected !== 'string') return
     const folder = await imagyxApi.addFolder(selected)
-    upsertJob({ folderId: folder.id, folderName: folder.name, current: 0, total: 0, stage: 'discovering', message: 'Analyse du dossier…' })
+    folders.value = [folder, ...folders.value.filter((item) => item.id !== folder.id)]
+    upsertJob({
+      folderId: folder.id,
+      folderName: folder.name,
+      current: 0,
+      total: 0,
+      stage: 'discovering',
+      message: 'Analyse du dossier…',
+    })
+    await openPanel(++morphSequence)
     void imagyxApi.indexFolder(folder.id, false).catch((reason) => {
       upsertJob({ folderId: folder.id, folderName: folder.name, current: 0, total: 0, stage: 'error', message: String(reason) })
     })
@@ -237,13 +286,22 @@ async function addFolder() {
 }
 
 function handleIndexProgress(progress: IndexProgress) {
-  const stage = progress.stage === 'complete' ? 'complete'
+  const stage: SpotlightIndexJob['stage'] = progress.stage === 'complete' ? 'complete'
     : progress.stage === 'queued' ? 'queued'
       : progress.stage === 'error' ? 'error'
-        : progress.stage === 'metadata' ? 'metadata' : 'discovering'
-  upsertJob({ folderId: progress.folderId, folderName: progress.folderName, current: progress.current, total: progress.total, stage, message: progress.message })
+        : progress.stage === 'embedding' ? 'embedding'
+          : progress.stage === 'metadata' ? 'metadata' : 'discovering'
+  upsertJob({
+    folderId: progress.folderId,
+    folderName: progress.folderName,
+    current: progress.current,
+    total: progress.total,
+    stage,
+    message: progress.message,
+  })
   if (stage === 'complete') {
     resultCache.clear()
+    void syncFolders()
     scheduleJobCleanup(progress.folderId)
   }
 }
@@ -253,9 +311,12 @@ function handleRuntimeStats(stats: RuntimeStats) {
   if (!job) return
   if (['indexing', 'decoding', 'inference', 'saving'].includes(stats.stage)) {
     upsertJob({ ...job, stage: 'embedding', current: stats.current, total: stats.total, message: `Analyse IA · ${stats.current} sur ${stats.total}` })
+  } else if (stats.stage === 'paused') {
+    upsertJob({ ...job, stage: 'queued', current: stats.current, total: stats.total, message: `Indexation en pause · ${stats.current} sur ${stats.total}` })
   } else if (stats.stage === 'ready' && job.stage === 'embedding') {
     upsertJob({ ...job, stage: 'complete', current: job.total, message: 'Indexation terminée' })
     resultCache.clear()
+    void syncFolders()
     scheduleJobCleanup(job.folderId)
   }
 }
@@ -281,22 +342,13 @@ function handleKeydown(event: KeyboardEvent) {
   if (view.value === 'search' && (event.ctrlKey || event.metaKey) && selectedImage.value) {
     const key = event.key.toLocaleLowerCase()
     if (key === 'c' || event.code === 'KeyC') {
-      event.preventDefault()
-      event.stopPropagation()
-      void copyImage(selectedImage.value)
-      return
+      event.preventDefault(); event.stopPropagation(); void copyImage(selectedImage.value); return
     }
     if (key === 'e' || event.code === 'KeyE') {
-      event.preventDefault()
-      event.stopPropagation()
-      void revealImage(selectedImage.value)
-      return
+      event.preventDefault(); event.stopPropagation(); void revealImage(selectedImage.value); return
     }
     if (key === 'i' || event.code === 'KeyI') {
-      event.preventDefault()
-      event.stopPropagation()
-      void openImage(selectedImage.value)
-      return
+      event.preventDefault(); event.stopPropagation(); void openImage(selectedImage.value); return
     }
   }
 
@@ -328,6 +380,7 @@ function prepareOpen() {
   expanded = false
   expansionPromise = null
   resetActionFeedback()
+  void syncFolders(true)
 }
 
 function animateOpen() {
@@ -358,6 +411,7 @@ onMounted(async () => {
   theme.initialize()
   void platform.initialize()
   void shortcut.initialize()
+  void syncFolders()
   window.addEventListener('keydown', handleKeydown, { capture: true })
   const unlisteners = await Promise.all([
     listen('spotlight-will-open', prepareOpen),
@@ -365,7 +419,7 @@ onMounted(async () => {
     listen('spotlight-will-hide', prepareHide),
     listen<IndexProgress>('index-progress', (event) => handleIndexProgress(event.payload)),
     listen<RuntimeStats>('runtime-stats', (event) => handleRuntimeStats(event.payload)),
-    listen('library-updated', () => resultCache.clear()),
+    listen('library-updated', () => { resultCache.clear(); void syncFolders() }),
   ]);
   [
     unlistenWillOpen,
@@ -404,7 +458,7 @@ onBeforeUnmount(() => {
       <MovingBorder
         class="spotlight-border"
         border-radius="22px"
-        :duration="searching ? 2600 : 4400"
+        :duration="searching || hasActiveJobs ? 2600 : 4400"
         :active="visible"
       >
         <div
@@ -450,6 +504,9 @@ onBeforeUnmount(() => {
                   :revealing-image-id="revealingImageId"
                   :opening-image-id="openingImageId"
                   :show-add-action="showAddAction"
+                  :has-folders="hasFolders"
+                  :library-ready="libraryReady"
+                  :show-background-hint="hasActiveJobs"
                   :jobs="jobs"
                   :file-manager-name="platform.fileManagerName"
                   @select="selectedIndex = $event"
@@ -490,26 +547,18 @@ onBeforeUnmount(() => {
   pointer-events: auto;
   animation: spotlight-pop 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.spotlight-border {
-  width: 100%;
-}
+.spotlight-border { width: 100%; }
 .spotlight-surface {
   width: 100%;
   overflow: hidden;
   border-radius: 21px;
   background: color-mix(in srgb, var(--surface-elevated) 95%, transparent);
-  box-shadow:
-    inset 0 1px rgb(255 255 255 / 0.1),
-    0 8px 24px -20px rgb(15 23 42 / 0.32);
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.1), 0 8px 24px -20px rgb(15 23 42 / 0.32);
   backdrop-filter: blur(28px) saturate(1.18);
-  transition:
-    box-shadow 240ms ease,
-    background-color 180ms ease;
+  transition: box-shadow 240ms ease, background-color 180ms ease;
 }
 .spotlight-surface--expanded {
-  box-shadow:
-    inset 0 1px rgb(255 255 255 / 0.1),
-    0 18px 38px -28px rgb(15 23 42 / 0.42);
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.1), 0 18px 38px -28px rgb(15 23 42 / 0.42);
 }
 .spotlight-panel {
   height: 472px;
@@ -519,10 +568,7 @@ onBeforeUnmount(() => {
 }
 .panel-morph-enter-active,
 .panel-morph-leave-active {
-  transition:
-    max-height 260ms cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 180ms ease,
-    clip-path 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: max-height 260ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease, clip-path 260ms cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
 }
 .panel-morph-enter-from,
@@ -539,57 +585,26 @@ onBeforeUnmount(() => {
 }
 .view-swap-enter-active,
 .view-swap-leave-active {
-  transition:
-    opacity 120ms ease,
-    transform 170ms cubic-bezier(0.16, 1, 0.3, 1),
-    filter 120ms ease;
+  transition: opacity 120ms ease, transform 170ms cubic-bezier(0.16, 1, 0.3, 1), filter 120ms ease;
 }
-.view-swap-enter-from {
-  opacity: 0;
-  transform: translateX(9px);
-  filter: blur(3px);
-}
-.view-swap-leave-to {
-  opacity: 0;
-  transform: translateX(-7px);
-  filter: blur(3px);
-}
+.view-swap-enter-from { opacity: 0; transform: translateX(9px); filter: blur(3px); }
+.view-swap-leave-to { opacity: 0; transform: translateX(-7px); filter: blur(3px); }
 :global(:root[data-theme="dark"]) .spotlight-surface {
-  box-shadow:
-    inset 0 1px rgb(255 255 255 / 0.055),
-    0 9px 26px -20px rgb(0 0 0 / 0.58);
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.055), 0 9px 26px -20px rgb(0 0 0 / 0.58);
 }
 :global(:root[data-theme="dark"]) .spotlight-surface--expanded {
-  box-shadow:
-    inset 0 1px rgb(255 255 255 / 0.055),
-    0 20px 42px -28px rgb(0 0 0 / 0.72);
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.055), 0 20px 42px -28px rgb(0 0 0 / 0.72);
 }
 @keyframes spotlight-pop {
-  0% {
-    opacity: 0;
-    transform: translateY(-12px) scale(0.94);
-    filter: blur(8px);
-  }
-  68% {
-    opacity: 1;
-    transform: translateY(1px) scale(1.006);
-    filter: blur(0);
-  }
-  100% {
-    opacity: 1;
-    transform: none;
-    filter: none;
-  }
+  0% { opacity: 0; transform: translateY(-12px) scale(0.94); filter: blur(8px); }
+  68% { opacity: 1; transform: translateY(1px) scale(1.006); filter: blur(0); }
+  100% { opacity: 1; transform: none; filter: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .spotlight-stage--visible {
-    animation-duration: 0.01ms;
-  }
+  .spotlight-stage--visible { animation-duration: 0.01ms; }
   .panel-morph-enter-active,
   .panel-morph-leave-active,
   .view-swap-enter-active,
-  .view-swap-leave-active {
-    transition-duration: 0.01ms;
-  }
+  .view-swap-leave-active { transition-duration: 0.01ms; }
 }
 </style>
