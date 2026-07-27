@@ -5,6 +5,7 @@ import {
   Folder,
   FolderOpen,
   Images,
+  LoaderCircle,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -53,6 +54,16 @@ const contextMenu = ref<{ folderId: string; x: number; y: number } | null>(
   null,
 );
 
+function isFolderReindexing(folderId: string): boolean {
+  const progress = props.progress;
+  return Boolean(
+    progress &&
+      progress.folderId === folderId &&
+      progress.stage !== "complete" &&
+      progress.stage !== "error",
+  );
+}
+
 function openContextMenu(event: MouseEvent, folderId: string) {
   event.preventDefault();
   event.stopPropagation();
@@ -98,10 +109,7 @@ onBeforeUnmount(() => {
 
 <template>
   <aside class="sidebar">
-    <div
-      class="sidebar-header-bar"
-      data-tauri-drag-region
-    >
+    <div class="sidebar-header-bar" data-tauri-drag-region>
       <TitleBar v-if="platform.controlsPosition === 'left'" />
     </div>
     <div class="brand">
@@ -146,7 +154,12 @@ onBeforeUnmount(() => {
           block
           @click="emit('select', folder.id)"
         >
-          <Folder :size="17" />
+          <LoaderCircle
+            v-if="isFolderReindexing(folder.id)"
+            class="folder-index-spinner"
+            :size="17"
+          />
+          <Folder v-else :size="17" />
           <span class="folder-name">{{ folder.name }}</span>
           <span class="folder-count">{{ folder.imageCount }}</span>
         </Button>
@@ -175,12 +188,14 @@ onBeforeUnmount(() => {
                   variant="ghost"
                   size="sm"
                   block
+                  :loading="isFolderReindexing(folder.id)"
                   @click="
                     emit('reindex', folder.id);
                     close();
                   "
                 >
-                  <template #leading><RefreshCw :size="15" /></template>Reindex
+                  <template #leading><RefreshCw :size="15" /></template>
+                  {{ isFolderReindexing(folder.id) ? "Reindexing…" : "Reindex" }}
                 </Button>
                 <Button
                   variant="danger"
@@ -254,9 +269,11 @@ onBeforeUnmount(() => {
         variant="ghost"
         size="sm"
         block
+        :loading="isFolderReindexing(contextMenu.folderId)"
         @click="runContextAction('reindex')"
       >
-        <template #leading><RefreshCw :size="15" /></template>Reindex
+        <template #leading><RefreshCw :size="15" /></template>
+        {{ isFolderReindexing(contextMenu.folderId) ? "Reindexing…" : "Reindex" }}
       </Button>
       <Button
         variant="danger"
@@ -301,6 +318,9 @@ onBeforeUnmount(() => {
 }
 .folder-entry .folder-row {
   width: 100%;
+}
+.folder-index-spinner {
+  animation: folder-index-spin 0.8s linear infinite;
 }
 .folder-actions {
   position: absolute;
@@ -357,5 +377,8 @@ onBeforeUnmount(() => {
 }
 .settings-trigger-btn:hover .settings-chevron {
   opacity: 1;
+}
+@keyframes folder-index-spin {
+  to { transform: rotate(1turn); }
 }
 </style>
