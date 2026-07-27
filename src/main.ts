@@ -28,6 +28,5 @@ async function loadRootComponent(): Promise<Component> {
   return (await import('./App.vue')).default
 }
 
-void loadRootComponent().then((RootComponent) => {
-  createApp(RootComponent).use(createPinia()).mount('#app')
-})
+const RootComponent = await loadRootComponent()
+createApp(RootComponent).use(createPinia()).mount('#app')
