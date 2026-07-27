@@ -85,6 +85,7 @@ onBeforeUnmount(() => {
       :alt="image.name"
       loading="eager"
       decoding="async"
+      :fetchpriority="priority <= 1 ? 'high' : 'low'"
       draggable="false"
       @error="handleImageError"
     />
@@ -112,7 +113,5 @@ onBeforeUnmount(() => {
 }
 .thumbnail-loader > img {
   object-fit: cover;
-  backface-visibility: hidden;
-  transform: translateZ(0);
 }
 </style>
