@@ -6,6 +6,6 @@ mod dev;
 mod release;
 
 #[cfg(debug_assertions)]
-pub use dev::{TraceSpan, event, init, snapshot, span};
+pub use dev::{event, init, span};
 #[cfg(not(debug_assertions))]
-pub use release::{TraceSpan, event, init, snapshot, span};
+pub use release::{event, init, span};
