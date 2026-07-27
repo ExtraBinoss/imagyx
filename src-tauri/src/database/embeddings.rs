@@ -48,6 +48,16 @@ impl Database {
         self.connect()?.execute("DELETE FROM embeddings", [])?;
         Ok(())
     }
+
+    pub fn reset_embeddings_for_folder(&self, folder_id: &str) -> Result<usize, AppError> {
+        self.connect()?
+            .execute(
+                "DELETE FROM embeddings
+                 WHERE image_id IN (SELECT id FROM images WHERE folder_id = ?1)",
+                params![folder_id],
+            )
+            .map_err(AppError::from)
+    }
 }
 
 pub(super) fn insert_embeddings(
