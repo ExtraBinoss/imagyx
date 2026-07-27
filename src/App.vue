@@ -54,6 +54,7 @@ let unlistenOpenOnboarding: UnlistenFn | null = null;
 let unlistenSemanticProvider: UnlistenFn | null = null;
 let unlistenPauseIndexing: UnlistenFn | null = null;
 let unlistenResumeIndexing: UnlistenFn | null = null;
+let unlistenAddFolder: UnlistenFn | null = null;
 
 const folderPrefix = computed(() =>
   store.selectedFolder ? `${store.selectedFolder.name}: ` : "All images: ",
@@ -76,7 +77,7 @@ async function addFolder() {
   const selected = await open({
     directory: true,
     multiple: false,
-    title: "Choisir un dossier à suivre",
+    title: "Choose a folder to index",
   });
   if (typeof selected === "string") await store.addFolder(selected);
 }
@@ -178,6 +179,7 @@ onMounted(async () => {
     unlistenOpenOnboarding,
     unlistenPauseIndexing,
     unlistenResumeIndexing,
+    unlistenAddFolder,
   ] = await Promise.all([
     listen<string>("open-image-requested", (event) => {
       void openImageFromSpotlight(event.payload);
@@ -185,6 +187,7 @@ onMounted(async () => {
     listen("open-onboarding-requested", () => onboarding.show()),
     listen("pause-indexing-requested", () => pauseIndexing()),
     listen("resume-indexing-requested", () => { void resumeIndexing(); }),
+    listen("add-folder-requested", () => { void addFolder(); }),
   ]);
   perfLog("App", "onMounted shell setup", performance.now() - start);
 });
@@ -195,6 +198,7 @@ onBeforeUnmount(() => {
   unlistenOpenOnboarding?.();
   unlistenPauseIndexing?.();
   unlistenResumeIndexing?.();
+  unlistenAddFolder?.();
   unlistenSemanticProvider?.();
   for (const unlisten of store.listeners) unlisten();
 });
@@ -223,7 +227,7 @@ onBeforeUnmount(() => {
         v-model="localQuery"
         :placeholder="searchPlaceholder"
         :model-ready="store.appInfo?.aiReady ?? false"
-        :model-backend="store.appInfo?.aiBackend ?? 'Automatique'"
+        :model-backend="store.appInfo?.aiBackend ?? 'Automatic'"
         :searching="store.semanticSearching"
         :result-count="store.images.length"
       />
@@ -233,7 +237,7 @@ onBeforeUnmount(() => {
         <Button
           variant="ghost"
           size="icon"
-          aria-label="Masquer l’erreur"
+          aria-label="Dismiss error"
           @click="store.error = null"
           ><X :size="15"
         /></Button>
