@@ -174,7 +174,7 @@ onMounted(async () => {
       void openImageFromSpotlight(event.payload);
     }),
     listen("open-onboarding-requested", () => onboarding.show()),
-    listen("pause-indexing-requested", pauseIndexing),
+    listen("pause-indexing-requested", () => pauseIndexing()),
     listen("resume-indexing-requested", () => { void resumeIndexing(); }),
   ]);
   perfLog("App", "onMounted shell setup", performance.now() - start);
