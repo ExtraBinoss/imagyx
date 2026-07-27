@@ -66,6 +66,11 @@ export function peekThumbnail(image: ThumbnailAsset): string | null {
   return url
 }
 
+export function forgetThumbnail(image: ThumbnailAsset): void {
+  urls.delete(keyFor(image))
+  image.thumbnailPath = ''
+}
+
 function removeQueuedTask(task: QueueTask): void {
   const index = queue.indexOf(task)
   if (index >= 0) queue.splice(index, 1)
