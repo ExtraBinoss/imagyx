@@ -20,7 +20,7 @@ import Button from '../ui/Button/Button.vue'
 import ButtonGroup from '../ui/ButtonGroup/ButtonGroup.vue'
 import MovingBorder from '../ui/MovingBorder/MovingBorder.vue'
 
-const props = defineProps<{
+defineProps<{
   kind: 'welcome' | 'sidebar' | 'search' | 'preview' | 'spotlight' | 'settings' | 'indexing'
   themeMode: ThemeMode
   shortcut: string
@@ -42,151 +42,137 @@ const demoImages = [
 
 <template>
   <div class="feature-preview" :class="`feature-preview--${kind}`">
-    <template v-if="kind === 'welcome'">
-      <div class="mini-app">
-        <aside class="mini-sidebar">
-          <div class="mini-brand"><span><Sparkles :size="15" /></span><strong>Imagyx</strong></div>
-          <Button variant="primary" size="sm" block @click="emit('addFolder')">
-            <template #leading><FolderOpen :size="14" /></template>
-            {{ hasFolders ? 'Ajouter un autre dossier' : 'Ajouter un dossier' }}
+    <div v-if="kind === 'welcome'" class="mini-app">
+      <aside class="mini-sidebar">
+        <div class="mini-brand"><span><Sparkles :size="15" /></span><strong>Imagyx</strong></div>
+        <Button class="preview-row-button" variant="primary" size="sm" block @click="emit('addFolder')">
+          <template #leading><FolderOpen :size="14" /></template>
+          {{ hasFolders ? 'Ajouter un autre dossier' : 'Ajouter un dossier' }}
+        </Button>
+        <div class="mini-sidebar__rows">
+          <Button class="preview-row-button" variant="ghost" size="sm" block pressed>
+            <template #leading><Images :size="14" /></template>Toutes les images
           </Button>
-          <div class="mini-sidebar__rows">
-            <Button variant="ghost" size="sm" block pressed>
-              <template #leading><Images :size="14" /></template>Toutes les images
-            </Button>
-            <Button variant="ghost" size="sm" block>
-              <template #leading><Folder :size="14" /></template>Photos
-            </Button>
+          <Button class="preview-row-button" variant="ghost" size="sm" block>
+            <template #leading><Folder :size="14" /></template>Photos
+          </Button>
+        </div>
+      </aside>
+      <section class="mini-workspace">
+        <div class="mini-search"><Search :size="15" /><span>sunset beach…</span><kbd>12</kbd></div>
+        <div class="mini-grid">
+          <div v-for="image in demoImages" :key="image.label" class="mini-card">
+            <span class="demo-image" :class="image.className" />
+            <strong>{{ image.label }}</strong>
           </div>
-        </aside>
-        <section class="mini-workspace">
-          <div class="mini-search"><Search :size="15" /><span>sunset beach…</span><kbd>12</kbd></div>
-          <div class="mini-grid">
-            <div v-for="image in demoImages" :key="image.label" class="mini-card">
+        </div>
+      </section>
+    </div>
+
+    <div v-else-if="kind === 'sidebar'" class="sidebar-demo">
+      <div class="sidebar-demo__brand"><span><Sparkles :size="16" /></span><div><strong>Imagyx</strong><small>Intelligence locale</small></div></div>
+      <Button class="preview-row-button" variant="primary" size="md" block @click="emit('addFolder')">
+        <template #leading><FolderOpen :size="15" /></template>Ajouter un dossier
+      </Button>
+      <div class="sidebar-demo__list">
+        <Button class="preview-row-button" variant="ghost" size="md" block pressed>
+          <template #leading><Images :size="16" /></template>
+          <span class="row-copy">Toutes les images</span><span class="row-count">1 248</span>
+        </Button>
+        <div class="folder-row-demo">
+          <Button class="preview-row-button" variant="ghost" size="md" block>
+            <template #leading><Folder :size="16" /></template>
+            <span class="row-copy">Vacances</span><span class="row-count">438</span>
+          </Button>
+          <Button variant="ghost" size="icon" aria-label="Actions"><MoreHorizontal :size="15" /></Button>
+        </div>
+      </div>
+      <div class="ai-demo"><WandSparkles :size="16" /><div><strong>IA locale prête</strong><small>MobileCLIP-S0 · WebGPU</small></div><span class="status-dot" /></div>
+    </div>
+
+    <div v-else-if="kind === 'search'" class="search-demo">
+      <MovingBorder border-radius="16px" :duration="4200">
+        <div class="search-demo__input"><Search :size="18" /><span>femme en robe rouge dans une ville</span><kbd>36</kbd></div>
+      </MovingBorder>
+      <div class="search-demo__grid">
+        <article v-for="(image, index) in demoImages" :key="image.label" class="search-card" :class="{ 'search-card--selected': index === 0 }">
+          <span class="demo-image" :class="image.className">
+            <span class="tag-strip"><i>{{ image.label }}</i><i>{{ index % 2 ? 'extérieur' : 'portrait' }}</i><i>{{ index % 2 ? 'lumineux' : 'rouge' }}</i></span>
+          </span>
+          <strong>{{ image.label }}.jpg</strong><small>{{ 1600 + index * 320 }} × {{ 1100 + index * 180 }}</small>
+        </article>
+      </div>
+    </div>
+
+    <div v-else-if="kind === 'preview'" class="preview-demo">
+      <div class="preview-demo__backdrop" />
+      <div class="preview-demo__dialog">
+        <span class="preview-demo__image demo-image--city" />
+        <div class="preview-demo__meta"><strong>city-night.jpg</strong><span>Appuie sur Espace depuis la grille</span></div>
+        <Button variant="ghost" size="icon" aria-label="Informations"><Info :size="16" /></Button>
+      </div>
+      <div class="preview-demo__hint"><kbd>Espace</kbd><span>Preview native dans l’app</span></div>
+    </div>
+
+    <div v-else-if="kind === 'spotlight'" class="spotlight-demo">
+      <MovingBorder border-radius="20px" :duration="3600">
+        <div class="spotlight-demo__surface">
+          <SpotlightInput
+            model-value="blue car at night"
+            view="search"
+            placeholder="All images: name or description…"
+            :searching="false"
+            result-label="8 résultats"
+          />
+          <div class="spotlight-demo__results">
+            <article v-for="(image, index) in demoImages.slice(0, 3)" :key="image.label" :class="{ active: index === 0 }">
               <span class="demo-image" :class="image.className" />
-              <strong>{{ image.label }}</strong>
-            </div>
+              <div><strong>{{ image.label }}.jpg</strong><small>{{ 92 - index * 6 }} % de correspondance</small></div>
+              <div class="spotlight-demo__actions">
+                <Button variant="secondary" size="sm">Copier</Button>
+                <Button variant="primary" size="sm">Imagyx</Button>
+              </div>
+            </article>
           </div>
-        </section>
-      </div>
-    </template>
+        </div>
+      </MovingBorder>
+    </div>
 
-    <template v-else-if="kind === 'sidebar'">
-      <div class="sidebar-demo">
-        <div class="sidebar-demo__brand"><span><Sparkles :size="16" /></span><div><strong>Imagyx</strong><small>Intelligence locale</small></div></div>
-        <Button variant="primary" size="md" block @click="emit('addFolder')">
-          <template #leading><FolderOpen :size="15" /></template>Ajouter un dossier
-        </Button>
-        <div class="sidebar-demo__list">
-          <Button variant="ghost" size="md" block pressed>
-            <template #leading><Images :size="16" /></template>
-            <span class="row-copy">Toutes les images</span><span class="row-count">1 248</span>
+    <div v-else-if="kind === 'settings'" class="settings-demo">
+      <ShortcutView
+        :model-value="shortcut"
+        label="Ouvrir Spotlight"
+        description="Le raccourci global est modifiable à la volée."
+        disabled
+      />
+      <div class="settings-demo__section">
+        <header><Keyboard :size="16" /><div><strong>Apparence</strong><small>Appliquée immédiatement à toutes les fenêtres.</small></div></header>
+        <ButtonGroup full>
+          <Button variant="ghost" size="sm" :pressed="themeMode === 'system'" @click="emit('themeChange', 'system')">
+            <template #leading><Check v-if="themeMode === 'system'" :size="13" /></template>Système
           </Button>
-          <div class="folder-row-demo">
-            <Button variant="ghost" size="md" block>
-              <template #leading><Folder :size="16" /></template>
-              <span class="row-copy">Vacances</span><span class="row-count">438</span>
-            </Button>
-            <Button variant="ghost" size="icon" aria-label="Actions"><MoreHorizontal :size="15" /></Button>
-          </div>
-        </div>
-        <div class="ai-demo"><WandSparkles :size="16" /><div><strong>IA locale prête</strong><small>MobileCLIP-S0 · WebGPU</small></div><span class="status-dot" /></div>
+          <Button variant="ghost" size="sm" :pressed="themeMode === 'light'" @click="emit('themeChange', 'light')">
+            <template #leading><Sun :size="13" /></template>Clair
+          </Button>
+          <Button variant="ghost" size="sm" :pressed="themeMode === 'dark'" @click="emit('themeChange', 'dark')">
+            <template #leading><Moon :size="13" /></template>Sombre
+          </Button>
+        </ButtonGroup>
       </div>
-    </template>
+    </div>
 
-    <template v-else-if="kind === 'search'">
-      <div class="search-demo">
-        <MovingBorder border-radius="16px" :duration="4200">
-          <div class="search-demo__input"><Search :size="18" /><span>femme en robe rouge dans une ville</span><kbd>36</kbd></div>
-        </MovingBorder>
-        <div class="search-demo__grid">
-          <article v-for="(image, index) in demoImages" :key="image.label" class="search-card" :class="{ 'search-card--selected': index === 0 }">
-            <span class="demo-image" :class="image.className">
-              <span class="tag-strip"><i>{{ image.label }}</i><i>{{ index % 2 ? 'extérieur' : 'portrait' }}</i><i>{{ index % 2 ? 'lumineux' : 'rouge' }}</i></span>
-            </span>
-            <strong>{{ image.label }}.jpg</strong><small>{{ 1600 + index * 320 }} × {{ 1100 + index * 180 }}</small>
-          </article>
-        </div>
+    <div v-else class="indexing-demo">
+      <div class="indexing-demo__hero"><FolderOpen :size="28" /><div><strong>{{ hasFolders ? 'Ta bibliothèque est prête à grandir' : 'Ajoute ton premier dossier' }}</strong><span>L’indexation continue en arrière-plan pendant que tu recherches.</span></div></div>
+      <div class="indexing-demo__job">
+        <span><WandSparkles :size="17" /></span>
+        <div><strong>Photos</strong><small>Analyse IA · 684 sur 1 248</small><div class="progress-track"><i /></div></div>
+        <b>55 %</b>
       </div>
-    </template>
-
-    <template v-else-if="kind === 'preview'">
-      <div class="preview-demo">
-        <div class="preview-demo__backdrop" />
-        <div class="preview-demo__dialog">
-          <span class="preview-demo__image demo-image--city" />
-          <div class="preview-demo__meta"><strong>city-night.jpg</strong><span>Appuie sur Espace depuis la grille</span></div>
-          <Button variant="ghost" size="icon" aria-label="Informations"><Info :size="16" /></Button>
-        </div>
-        <div class="preview-demo__hint"><kbd>Espace</kbd><span>Preview native dans l’app</span></div>
-      </div>
-    </template>
-
-    <template v-else-if="kind === 'spotlight'">
-      <div class="spotlight-demo">
-        <MovingBorder border-radius="20px" :duration="3600">
-          <div class="spotlight-demo__surface">
-            <SpotlightInput
-              model-value="blue car at night"
-              view="search"
-              placeholder="All images: name or description…"
-              :searching="false"
-              result-label="8 résultats"
-            />
-            <div class="spotlight-demo__results">
-              <article v-for="(image, index) in demoImages.slice(0, 3)" :key="image.label" :class="{ active: index === 0 }">
-                <span class="demo-image" :class="image.className" />
-                <div><strong>{{ image.label }}.jpg</strong><small>{{ 92 - index * 6 }} % de correspondance</small></div>
-                <div class="spotlight-demo__actions">
-                  <Button variant="secondary" size="sm">Copier</Button>
-                  <Button variant="primary" size="sm">Imagyx</Button>
-                </div>
-              </article>
-            </div>
-          </div>
-        </MovingBorder>
-      </div>
-    </template>
-
-    <template v-else-if="kind === 'settings'">
-      <div class="settings-demo">
-        <ShortcutView
-          :model-value="shortcut"
-          label="Ouvrir Spotlight"
-          description="Le raccourci global est modifiable à la volée."
-          disabled
-        />
-        <div class="settings-demo__section">
-          <header><Keyboard :size="16" /><div><strong>Apparence</strong><small>Appliquée immédiatement à toutes les fenêtres.</small></div></header>
-          <ButtonGroup full>
-            <Button variant="ghost" size="sm" :pressed="themeMode === 'system'" @click="emit('themeChange', 'system')">
-              <template #leading><Check v-if="themeMode === 'system'" :size="13" /></template>Système
-            </Button>
-            <Button variant="ghost" size="sm" :pressed="themeMode === 'light'" @click="emit('themeChange', 'light')">
-              <template #leading><Sun :size="13" /></template>Clair
-            </Button>
-            <Button variant="ghost" size="sm" :pressed="themeMode === 'dark'" @click="emit('themeChange', 'dark')">
-              <template #leading><Moon :size="13" /></template>Sombre
-            </Button>
-          </ButtonGroup>
-        </div>
-      </div>
-    </template>
-
-    <template v-else>
-      <div class="indexing-demo">
-        <div class="indexing-demo__hero"><FolderOpen :size="28" /><div><strong>{{ hasFolders ? 'Ta bibliothèque est prête à grandir' : 'Ajoute ton premier dossier' }}</strong><span>L’indexation continue en arrière-plan pendant que tu recherches.</span></div></div>
-        <div class="indexing-demo__job">
-          <span><WandSparkles :size="17" /></span>
-          <div><strong>Photos</strong><small>Analyse IA · 684 sur 1 248</small><div class="progress-track"><i /></div></div>
-          <b>55 %</b>
-        </div>
-        <Button variant="primary" size="lg" block @click="emit('addFolder')">
-          <template #leading><FolderOpen :size="17" /></template>
-          {{ hasFolders ? 'Ajouter un autre dossier' : 'Choisir un dossier maintenant' }}
-        </Button>
-      </div>
-    </template>
+      <Button variant="primary" size="lg" block @click="emit('addFolder')">
+        <template #leading><FolderOpen :size="17" /></template>
+        {{ hasFolders ? 'Ajouter un autre dossier' : 'Choisir un dossier maintenant' }}
+      </Button>
+    </div>
   </div>
 </template>
 
@@ -197,11 +183,10 @@ const demoImages = [
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
   border-radius: 20px;
-  background:
-    radial-gradient(circle at 14% 8%, color-mix(in srgb, var(--primary) 8%, transparent), transparent 34%),
-    color-mix(in srgb, var(--background) 72%, var(--surface));
+  background: radial-gradient(circle at 14% 8%, color-mix(in srgb, var(--primary) 8%, transparent), transparent 34%), color-mix(in srgb, var(--background) 72%, var(--surface));
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.1), 0 24px 50px -42px rgb(15 23 42 / 0.55);
 }
+.preview-row-button { justify-content: flex-start; }
 .mini-app { display: grid; grid-template-columns: 150px minmax(0, 1fr); min-height: 330px; }
 .mini-sidebar { display: flex; flex-direction: column; gap: 12px; padding: 18px 14px; border-right: 1px solid var(--border); background: color-mix(in srgb, var(--sidebar) 94%, transparent); }
 .mini-brand,
@@ -210,7 +195,7 @@ const demoImages = [
 .sidebar-demo__brand > span { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 9px; background: var(--primary); color: white; box-shadow: inset 0 1px rgb(255 255 255 / 0.24); }
 .mini-brand strong { font-size: 12px; }
 .mini-sidebar__rows { display: grid; gap: 4px; }
-.mini-sidebar :deep(.ui-button) { justify-content: flex-start; font-size: 9px; }
+.mini-sidebar .preview-row-button { font-size: 9px; }
 .mini-workspace { padding: 20px; }
 .mini-search { display: flex; align-items: center; gap: 9px; min-height: 42px; padding: 0 13px; border: 1px solid var(--border); border-radius: 13px; background: var(--surface); color: var(--text-muted); box-shadow: var(--btn-depth-shadow); font-size: 10px; }
 .mini-search span { flex: 1; color: var(--text-secondary); }
@@ -229,10 +214,9 @@ kbd { padding: 4px 7px; border: 1px solid var(--border); border-bottom-color: va
 .sidebar-demo__brand strong { font-size: 13px; }
 .sidebar-demo__brand small { margin-top: 3px; color: var(--text-muted); font-size: 9px; }
 .sidebar-demo__list { display: grid; gap: 5px; margin-top: 16px; }
-.sidebar-demo__list :deep(.ui-button) { justify-content: flex-start; }
 .row-copy { flex: 1; text-align: left; }
 .row-count { color: var(--text-muted); font-size: 9px; }
-.folder-row-demo { position: relative; display: flex; gap: 4px; }
+.folder-row-demo { display: flex; gap: 4px; }
 .folder-row-demo > :first-child { flex: 1; }
 .ai-demo { display: flex; align-items: center; gap: 10px; margin-top: auto; padding: 11px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: var(--btn-depth-shadow); }
 .ai-demo div { flex: 1; display: grid; }
@@ -264,7 +248,7 @@ kbd { padding: 4px 7px; border: 1px solid var(--border); border-bottom-color: va
 .spotlight-demo { padding: 22px; }
 .spotlight-demo__surface { overflow: hidden; border-radius: 19px; background: color-mix(in srgb, var(--surface-elevated) 96%, transparent); }
 .spotlight-demo__results { padding: 5px 8px 9px; border-top: 1px solid var(--border); }
-.spotlight-demo__results article { position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 58px; padding: 7px 9px; border: 1px solid transparent; border-radius: 12px; }
+.spotlight-demo__results article { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 58px; padding: 7px 9px; border: 1px solid transparent; border-radius: 12px; }
 .spotlight-demo__results article.active { border-color: color-mix(in srgb, var(--primary) 30%, var(--border)); background: var(--primary-soft); }
 .spotlight-demo__results .demo-image { width: 44px; aspect-ratio: 1; }
 .spotlight-demo__results strong,
