@@ -55,6 +55,7 @@ export const imagyxApi = {
     invoke<void>('open_in_file_manager', { path, reveal }),
   copyImage: (path: string) => invoke<void>('copy_image_to_clipboard', { path }),
   openInImagyx: (imageId: string) => invoke<void>('open_in_imagyx', { imageId }),
+  openOnboarding: () => invoke<void>('open_onboarding'),
   setSpotlightExpanded: (expanded: boolean) =>
     invoke<void>('set_spotlight_expanded', { expanded }),
   hideSpotlight: () => invoke<void>('hide_spotlight'),
