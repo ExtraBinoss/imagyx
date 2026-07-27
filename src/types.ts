@@ -117,5 +117,6 @@ export interface SearchRequest {
   query: string
   folderId?: string
   limit?: number
+  offset?: number
   queryVector?: number[]
 }
