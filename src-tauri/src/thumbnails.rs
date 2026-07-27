@@ -7,13 +7,19 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-use image::{ImageReader, codecs::jpeg::JpegEncoder};
+use image::{
+    DynamicImage, ImageReader, RgbImage,
+    codecs::jpeg::JpegEncoder,
+    imageops::FilterType,
+};
 use parking_lot::Mutex;
 
 use crate::AppError;
 
 const DEFAULT_CAPACITY: usize = 64;
 const THUMBNAIL_EDGE: u32 = 256;
+pub const AI_IMAGE_EDGE: u32 = 224;
+pub const AI_IMAGE_CHANNELS: usize = 3;
 const JPEG_QUALITY: u8 = 55;
 const WRITE_BUFFER_BYTES: usize = 32 * 1024;
 
@@ -71,9 +77,43 @@ impl ThumbnailCache {
                 Ok(path)
             } else {
                 let path = self.cache_path(&cache_id);
-                create_thumbnail(source, &path)?;
+                let thumbnail = create_thumbnail(source)?;
+                write_thumbnail(&thumbnail, &path)?;
                 self.insert(cache_id.clone(), path.clone());
                 Ok(path)
+            }
+        };
+        self.release_lock(&cache_id, &lock);
+        result
+    }
+
+    pub fn prepare_ai_pixels(
+        &self,
+        image_id: &str,
+        source: &Path,
+        modified_at: i64,
+    ) -> Result<Vec<u8>, AppError> {
+        let cache_id = cache_id(image_id, modified_at);
+        let lock = self.lock_for(&cache_id);
+        let result = {
+            let _guard = lock.lock();
+            if let Some(path) = self.get_existing(&cache_id) {
+                match ai_pixels_from_path(&path) {
+                    Ok(pixels) => Ok(pixels),
+                    Err(error) if !path.is_file() => {
+                        let thumbnail = create_thumbnail(source)?;
+                        write_thumbnail(&thumbnail, &path)?;
+                        self.insert(cache_id.clone(), path);
+                        Ok(ai_pixels_from_thumbnail(thumbnail))
+                    }
+                    Err(error) => Err(error),
+                }
+            } else {
+                let path = self.cache_path(&cache_id);
+                let thumbnail = create_thumbnail(source)?;
+                write_thumbnail(&thumbnail, &path)?;
+                self.insert(cache_id.clone(), path);
+                Ok(ai_pixels_from_thumbnail(thumbnail))
             }
         };
         self.release_lock(&cache_id, &lock);
@@ -200,11 +240,13 @@ fn remove_from_lru(lru: &mut VecDeque<String>, key: &str) {
     }
 }
 
-fn create_thumbnail(source: &Path, target: &Path) -> Result<(), AppError> {
+fn create_thumbnail(source: &Path) -> Result<RgbImage, AppError> {
     let image = ImageReader::open(source)?.with_guessed_format()?.decode()?;
-    let thumbnail = image.thumbnail(THUMBNAIL_EDGE, THUMBNAIL_EDGE).to_rgb8();
-    let temporary = target.with_extension(format!("tmp-{}", std::process::id()));
+    Ok(image.thumbnail(THUMBNAIL_EDGE, THUMBNAIL_EDGE).to_rgb8())
+}
 
+fn write_thumbnail(thumbnail: &RgbImage, target: &Path) -> Result<(), AppError> {
+    let temporary = target.with_extension(format!("tmp-{}", std::process::id()));
     let write_result = (|| -> Result<(), AppError> {
         let file = File::create(&temporary)?;
         let mut writer = BufWriter::with_capacity(WRITE_BUFFER_BYTES, file);
@@ -232,12 +274,24 @@ fn create_thumbnail(source: &Path, target: &Path) -> Result<(), AppError> {
     Ok(())
 }
 
+fn ai_pixels_from_path(path: &Path) -> Result<Vec<u8>, AppError> {
+    let thumbnail = ImageReader::open(path)?.with_guessed_format()?.decode()?.to_rgb8();
+    Ok(ai_pixels_from_thumbnail(thumbnail))
+}
+
+fn ai_pixels_from_thumbnail(thumbnail: RgbImage) -> Vec<u8> {
+    DynamicImage::ImageRgb8(thumbnail)
+        .resize_to_fill(AI_IMAGE_EDGE, AI_IMAGE_EDGE, FilterType::Triangle)
+        .to_rgb8()
+        .into_raw()
+}
+
 #[cfg(test)]
 mod tests {
     use image::{Rgb, RgbImage};
     use tempfile::tempdir;
 
-    use super::ThumbnailCache;
+    use super::{AI_IMAGE_CHANNELS, AI_IMAGE_EDGE, ThumbnailCache};
 
     #[test]
     fn keeps_only_the_latest_files() {
@@ -284,5 +338,25 @@ mod tests {
 
         assert_eq!(first, second);
         assert!(first.is_file());
+    }
+
+    #[test]
+    fn prepares_fixed_rgb_pixels_for_the_model() {
+        let temp = tempdir().expect("temporary directory");
+        let source = temp.path().join("source.png");
+        let cache = ThumbnailCache::with_capacity(temp.path().join("cache"), 4).expect("cache");
+        RgbImage::from_pixel(480, 320, Rgb([12, 34, 56]))
+            .save(&source)
+            .expect("source image");
+
+        let pixels = cache
+            .prepare_ai_pixels("image", &source, 7)
+            .expect("AI pixels");
+
+        assert_eq!(
+            pixels.len(),
+            AI_IMAGE_EDGE as usize * AI_IMAGE_EDGE as usize * AI_IMAGE_CHANNELS
+        );
+        assert_eq!(cache.cached_items(), 1);
     }
 }
