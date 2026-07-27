@@ -11,8 +11,8 @@ Before changing code, read the relevant guide:
 - Rust conventions and backend quality: [`docs/RUST_CODE_QUALITY.md`](docs/RUST_CODE_QUALITY.md)
 - TypeScript and Vue conventions: [`docs/TS_CODE_QUALITY.md`](docs/TS_CODE_QUALITY.md)
 
+Read every guide touched by a cross-layer change. For example, a native Spotlight change normally requires all three documents.
 When a detailed guide conflicts with this file, the detailed guide wins for its area.
-If one of these documents does not exist yet, preserve the rules below and do not invent a competing convention.
 
 ## Repository principles
 
