@@ -1,10 +1,7 @@
 use std::{
-    collections::HashMap,
-    fs::{self, File},
-    path::{Path, PathBuf},
+    collections::{HashMap, VecDeque},
+    path::Path,
     sync::Arc,
-    thread,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use image::{ImageReader, codecs::jpeg::JpegEncoder};
@@ -12,36 +9,36 @@ use parking_lot::Mutex;
 
 use crate::AppError;
 
-const DEFAULT_CAPACITY: usize = 4_096;
-const PRUNE_INTERVAL: usize = 64;
+const DEFAULT_MAX_ITEMS: usize = 768;
+const DEFAULT_MAX_BYTES: usize = 64 * 1024 * 1024;
 const THUMBNAIL_EDGE: u32 = 384;
-const JPEG_QUALITY: u8 = 76;
+const JPEG_QUALITY: u8 = 74;
 
 #[derive(Debug, Default)]
 struct CacheState {
-    last_access: HashMap<PathBuf, u64>,
-    created_since_prune: usize,
-    pruning: bool,
+    entries: HashMap<String, Arc<Vec<u8>>>,
+    lru: VecDeque<String>,
+    bytes: usize,
 }
 
 #[derive(Debug)]
 pub struct ThumbnailCache {
-    directory: PathBuf,
-    capacity: usize,
-    state: Arc<Mutex<CacheState>>,
+    max_items: usize,
+    max_bytes: usize,
+    state: Mutex<CacheState>,
     key_locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
 }
 
 impl ThumbnailCache {
-    pub fn new(directory: PathBuf) -> Self {
-        Self::with_capacity(directory, DEFAULT_CAPACITY)
+    pub fn new() -> Self {
+        Self::with_limits(DEFAULT_MAX_ITEMS, DEFAULT_MAX_BYTES)
     }
 
-    pub fn with_capacity(directory: PathBuf, capacity: usize) -> Self {
+    pub fn with_limits(max_items: usize, max_bytes: usize) -> Self {
         Self {
-            directory,
-            capacity: capacity.max(1),
-            state: Arc::new(Mutex::new(CacheState::default())),
+            max_items: max_items.max(1),
+            max_bytes: max_bytes.max(1),
+            state: Mutex::new(CacheState::default()),
             key_locks: Mutex::new(HashMap::new()),
         }
     }
@@ -51,70 +48,59 @@ impl ThumbnailCache {
         image_id: &str,
         source: &Path,
         modified_at: i64,
-    ) -> Result<PathBuf, AppError> {
-        let cache_path = self.cache_path(image_id, modified_at);
-        if cache_path.exists() {
-            self.touch(&cache_path);
-            return Ok(cache_path);
+    ) -> Result<Arc<Vec<u8>>, AppError> {
+        let key = format!("{image_id}:{modified_at}");
+        if let Some(bytes) = self.get(&key) {
+            return Ok(bytes);
         }
 
-        let lock = self.lock_for(image_id);
+        let lock = self.lock_for(&key);
         let result = {
             let _guard = lock.lock();
-            if cache_path.exists() {
-                self.touch(&cache_path);
-                Ok(cache_path.clone())
+            if let Some(bytes) = self.get(&key) {
+                Ok(bytes)
             } else {
-                self.create_thumbnail(source, &cache_path)?;
-                self.touch(&cache_path);
-                self.schedule_prune(cache_path.clone());
-                Ok(cache_path.clone())
+                let bytes = Arc::new(create_thumbnail(source)?);
+                self.insert(key.clone(), Arc::clone(&bytes));
+                Ok(bytes)
             }
         };
-        self.release_lock(image_id, &lock);
+        self.release_lock(&key, &lock);
         result
     }
 
     pub fn cached_items(&self) -> usize {
-        fs::read_dir(&self.directory).map_or(0, |entries| {
-            entries
-                .filter_map(Result::ok)
-                .filter(|entry| {
-                    entry.path().extension().and_then(|value| value.to_str()) == Some("jpg")
-                })
-                .count()
-        })
+        self.state.lock().entries.len()
     }
 
-    fn create_thumbnail(&self, source: &Path, cache_path: &Path) -> Result<(), AppError> {
-        fs::create_dir_all(&self.directory)?;
-        let image = ImageReader::open(source)?.with_guessed_format()?.decode()?;
-        let thumbnail = image.thumbnail(THUMBNAIL_EDGE, THUMBNAIL_EDGE).to_rgb8();
-        let temporary = cache_path.with_extension(format!("tmp-{}", std::process::id()));
-
-        {
-            let mut output = File::create(&temporary)?;
-            let mut encoder = JpegEncoder::new_with_quality(&mut output, JPEG_QUALITY);
-            encoder.encode(
-                thumbnail.as_raw(),
-                thumbnail.width(),
-                thumbnail.height(),
-                image::ExtendedColorType::Rgb8,
-            )?;
-        }
-
-        if cache_path.exists() {
-            let _ = fs::remove_file(&temporary);
-        } else {
-            fs::rename(&temporary, cache_path)?;
-        }
-        Ok(())
+    fn get(&self, key: &str) -> Option<Arc<Vec<u8>>> {
+        let mut state = self.state.lock();
+        let bytes = state.entries.get(key).cloned()?;
+        touch(&mut state.lru, key);
+        Some(bytes)
     }
 
-    fn cache_path(&self, image_id: &str, modified_at: i64) -> PathBuf {
-        let short_id = image_id.get(..20).unwrap_or(image_id);
-        self.directory
-            .join(format!("{short_id}-{modified_at}.jpg"))
+    fn insert(&self, key: String, bytes: Arc<Vec<u8>>) {
+        if bytes.len() > self.max_bytes {
+            return;
+        }
+
+        let mut state = self.state.lock();
+        if let Some(previous) = state.entries.remove(&key) {
+            state.bytes = state.bytes.saturating_sub(previous.len());
+        }
+        state.bytes = state.bytes.saturating_add(bytes.len());
+        state.entries.insert(key.clone(), bytes);
+        touch(&mut state.lru, &key);
+
+        while state.entries.len() > self.max_items || state.bytes > self.max_bytes {
+            let Some(oldest) = state.lru.pop_front() else {
+                break;
+            };
+            if let Some(removed) = state.entries.remove(&oldest) {
+                state.bytes = state.bytes.saturating_sub(removed.len());
+            }
+        }
     }
 
     fn lock_for(&self, key: &str) -> Arc<Mutex<()>> {
@@ -134,127 +120,45 @@ impl ThumbnailCache {
             locks.remove(key);
         }
     }
-
-    fn touch(&self, path: &Path) {
-        self.state
-            .lock()
-            .last_access
-            .insert(path.to_path_buf(), unix_millis());
-    }
-
-    fn schedule_prune(&self, protected: PathBuf) {
-        if self.capacity <= PRUNE_INTERVAL {
-            let accesses = self.state.lock().last_access.clone();
-            if let Ok(removed) = prune_directory(
-                &self.directory,
-                self.capacity,
-                Some(&protected),
-                &accesses,
-            ) {
-                let mut state = self.state.lock();
-                for path in removed {
-                    state.last_access.remove(&path);
-                }
-            }
-            return;
-        }
-
-        let should_prune = {
-            let mut state = self.state.lock();
-            state.created_since_prune += 1;
-            if state.pruning || state.created_since_prune < PRUNE_INTERVAL {
-                false
-            } else {
-                state.created_since_prune = 0;
-                state.pruning = true;
-                true
-            }
-        };
-        if !should_prune {
-            return;
-        }
-
-        let directory = self.directory.clone();
-        let capacity = self.capacity;
-        let state = Arc::clone(&self.state);
-        thread::spawn(move || {
-            let accesses = state.lock().last_access.clone();
-            if let Ok(removed) =
-                prune_directory(&directory, capacity, Some(&protected), &accesses)
-            {
-                let mut cache_state = state.lock();
-                for path in removed {
-                    cache_state.last_access.remove(&path);
-                }
-            }
-            state.lock().pruning = false;
-        });
-    }
 }
 
-fn prune_directory(
-    directory: &Path,
-    capacity: usize,
-    protected: Option<&Path>,
-    accesses: &HashMap<PathBuf, u64>,
-) -> Result<Vec<PathBuf>, AppError> {
-    let mut entries = Vec::new();
-    for entry in fs::read_dir(directory)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().and_then(|value| value.to_str()) != Some("jpg") {
-            continue;
-        }
-        let fallback = entry
-            .metadata()?
-            .modified()
-            .ok()
-            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-            .map_or(0, |duration| duration.as_millis() as u64);
-        entries.push((path.clone(), accesses.get(&path).copied().unwrap_or(fallback)));
+fn touch(lru: &mut VecDeque<String>, key: &str) {
+    if let Some(index) = lru.iter().position(|candidate| candidate == key) {
+        lru.remove(index);
     }
-
-    if entries.len() <= capacity {
-        return Ok(Vec::new());
-    }
-
-    entries.sort_unstable_by_key(|(_, access)| *access);
-    let remove_count = entries.len().saturating_sub(capacity);
-    let mut removed = Vec::with_capacity(remove_count);
-    for (path, _) in entries.into_iter().take(remove_count) {
-        if protected.is_some_and(|protected| protected == path) {
-            continue;
-        }
-        if fs::remove_file(&path).is_ok() {
-            removed.push(path);
-        }
-    }
-    Ok(removed)
+    lru.push_back(key.to_owned());
 }
 
-fn unix_millis() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_millis() as u64)
+fn create_thumbnail(source: &Path) -> Result<Vec<u8>, AppError> {
+    let image = ImageReader::open(source)?.with_guessed_format()?.decode()?;
+    let thumbnail = image.thumbnail(THUMBNAIL_EDGE, THUMBNAIL_EDGE).to_rgb8();
+    let mut encoded = Vec::new();
+    let mut encoder = JpegEncoder::new_with_quality(&mut encoded, JPEG_QUALITY);
+    encoder.encode(
+        thumbnail.as_raw(),
+        thumbnail.width(),
+        thumbnail.height(),
+        image::ExtendedColorType::Rgb8,
+    )?;
+    Ok(encoded)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use image::{Rgb, RgbImage};
     use tempfile::tempdir;
 
     use super::ThumbnailCache;
 
     #[test]
-    fn keeps_the_cache_bounded() {
+    fn keeps_the_memory_cache_bounded() {
         let temp = tempdir().expect("temporary directory");
-        let source_dir = temp.path().join("source");
-        let cache_dir = temp.path().join("cache");
-        std::fs::create_dir_all(&source_dir).expect("source directory");
-        let cache = ThumbnailCache::with_capacity(cache_dir.clone(), 2);
+        let cache = ThumbnailCache::with_limits(2, usize::MAX);
 
         for index in 0..3 {
-            let source = source_dir.join(format!("{index}.png"));
+            let source = temp.path().join(format!("{index}.png"));
             RgbImage::from_pixel(64, 64, Rgb([index as u8, 0, 0]))
                 .save(&source)
                 .expect("source image");
@@ -267,30 +171,27 @@ mod tests {
     }
 
     #[test]
-    fn reuses_existing_thumbnail_without_reencoding() {
+    fn reuses_encoded_bytes_without_writing_a_thumbnail_file() {
         let temp = tempdir().expect("temporary directory");
         let source = temp.path().join("source.png");
-        let cache = ThumbnailCache::with_capacity(temp.path().join("cache"), 4);
         RgbImage::from_pixel(64, 64, Rgb([12, 34, 56]))
             .save(&source)
             .expect("source image");
+        let cache = ThumbnailCache::with_limits(4, usize::MAX);
 
         let first = cache
             .get_or_create("image", &source, 7)
             .expect("first thumbnail");
-        let first_modified = std::fs::metadata(&first)
-            .and_then(|metadata| metadata.modified())
-            .expect("modified time");
         let second = cache
             .get_or_create("image", &source, 7)
             .expect("cached thumbnail");
 
-        assert_eq!(first, second);
+        assert!(Arc::ptr_eq(&first, &second));
         assert_eq!(
-            first_modified,
-            std::fs::metadata(second)
-                .and_then(|metadata| metadata.modified())
-                .expect("cached modified time")
+            std::fs::read_dir(temp.path())
+                .expect("temporary directory")
+                .count(),
+            1
         );
     }
 }
