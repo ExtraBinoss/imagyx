@@ -80,7 +80,14 @@ mod tests {
             semantic_score: None,
         };
         database
-            .save_assets(&[asset("source", "png"), asset("webp", "webp"), asset("avif", "avif")], &[])
+            .save_assets(
+                &[
+                    asset("source", "png"),
+                    asset("webp", "webp"),
+                    asset("avif", "avif"),
+                ],
+                &[],
+            )
             .expect("assets");
         database
             .link_derivative("webp", "source", "webp")
