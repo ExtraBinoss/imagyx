@@ -9,35 +9,6 @@ use crate::{
     state::AppState,
 };
 
-#[tauri::command(rename_all = "camelCase")]
-pub async fn prepare_ai_images(
-    image_ids: Vec<String>,
-    state: State<'_, Arc<AppState>>,
-) -> Result<Vec<String>, String> {
-    let state = Arc::clone(state.inner());
-    tauri::async_runtime::spawn_blocking(move || {
-        let by_id = state
-            .database
-            .images_by_ids(&image_ids)
-            .map_err(|error| error.to_string())?
-            .into_iter()
-            .map(|image| (image.id.clone(), image))
-            .collect::<HashMap<_, _>>();
-
-        image_ids
-            .par_iter()
-            .map(|image_id| {
-                by_id
-                    .get(image_id)
-                    .map(|image| image.path.clone())
-                    .ok_or_else(|| format!("Image inconnue: {image_id}"))
-            })
-            .collect::<Result<Vec<String>, String>>()
-    })
-    .await
-    .map_err(|error| error.to_string())?
-}
-
 #[tauri::command]
 pub fn save_embeddings(
     embeddings: Vec<ImageEmbedding>,
