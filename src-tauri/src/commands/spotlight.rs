@@ -21,12 +21,24 @@ static SPOTLIGHT_READY: AtomicBool = AtomicBool::new(false);
 static SPOTLIGHT_SHOW_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 pub(crate) fn toggle_spotlight(app: AppHandle) {
+    request_spotlight(app, true);
+}
+
+pub(crate) fn show_spotlight(app: AppHandle) {
+    request_spotlight(app, false);
+}
+
+fn request_spotlight(app: AppHandle, toggle_existing: bool) {
     if let Some(window) = app.get_webview_window("spotlight") {
         if !SPOTLIGHT_READY.load(Ordering::Acquire) {
             SPOTLIGHT_SHOW_REQUESTED.store(true, Ordering::Release);
             return;
         }
-        toggle_existing_window(&window);
+        if toggle_existing {
+            toggle_existing_window(&window);
+        } else {
+            show_spotlight_window(&window);
+        }
         return;
     }
 
