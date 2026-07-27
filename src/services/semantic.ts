@@ -4,6 +4,7 @@ import type { ImageAsset, ModelDownloadProgress, QueryConcept, RuntimeStats } fr
 import { perfLog } from '../utils'
 import { requestSemanticEmbedding } from './semantic-channel'
 import { buildQueryPromptPlan, combinePromptVectors } from './query-prompts'
+import { VisionWorkerClient, type VisionDevice } from './vision-worker-client'
 
 const MODEL_ID = 'Xenova/mobileclip_s0'
 const MODEL_NAME = 'MobileCLIP-S0'
@@ -27,7 +28,7 @@ const DEFAULT_IMAGE_LABELS = [
   'objet bleu', 'objet vert', 'objet jaune', 'image sombre', 'image lumineuse',
 ]
 
-type Device = 'webgpu' | 'wasm'
+type Device = VisionDevice
 type TransformersModule = typeof import('@huggingface/transformers')
 type RuntimeCallbacks = {
   progress: (progress: ModelDownloadProgress) => void
@@ -36,7 +37,7 @@ type RuntimeCallbacks = {
 
 type PreparedBatch = {
   batch: ImageAsset[]
-  inputs: any
+  pixels: ArrayBuffer
   prepareMs: number
 }
 
@@ -59,17 +60,17 @@ export interface EmbeddedQuery {
 }
 
 class SemanticRuntime {
-  private visionModel: any = null
+  private readonly visionWorker = new VisionWorkerClient()
   private textModel: any = null
-  private processor: any = null
   private tokenizer: any = null
-  private device: Device = 'webgpu'
+  private visionDevice: Device = 'webgpu'
+  private visionReady = false
   private loading: Promise<void> | null = null
   private textLoading: Promise<void> | null = null
   private textPriming: Promise<void> | null = null
   private textPrimed = false
-  private environmentLoading: Promise<void> | null = null
-  private environmentReady = false
+  private environmentLoading: Promise<string> | null = null
+  private localModelPath: string | null = null
   private indexing: Promise<void> | null = null
   private genericConcepts: QueryConcept[] | null = null
   private callbacks: RuntimeCallbacks | null = null
@@ -97,7 +98,7 @@ class SemanticRuntime {
   }
 
   async prepare() {
-    if (this.visionModel && this.processor) return
+    if (this.visionReady) return
     if (this.loading) return this.loading
     this.loading = this.loadVisionRuntime()
     try { await this.loading } finally { this.loading = null }
@@ -124,27 +125,19 @@ class SemanticRuntime {
     try { await this.indexing } finally { this.indexing = null }
   }
 
-  private async prepareImageBatch(batch: ImageAsset[], RawImage: any): Promise<PreparedBatch> {
+  private async prepareImageBatch(batch: ImageAsset[]): Promise<PreparedBatch> {
     const started = performance.now()
-    const packed = await imagyxApi.prepareAiImages(batch.map((asset) => asset.id))
+    const pixels = await imagyxApi.prepareAiImages(batch.map((asset) => asset.id))
     const expectedBytes = batch.length * AI_IMAGE_BYTES
-    if (packed.byteLength !== expectedBytes) {
-      throw new Error(`Batch RGB invalide: ${packed.byteLength} octets au lieu de ${expectedBytes}`)
+    if (pixels.byteLength !== expectedBytes) {
+      throw new Error(`Batch RGB invalide: ${pixels.byteLength} octets au lieu de ${expectedBytes}`)
     }
-
-    const images = batch.map((_, index) => new RawImage(
-      new Uint8Array(packed, index * AI_IMAGE_BYTES, AI_IMAGE_BYTES),
-      AI_IMAGE_EDGE,
-      AI_IMAGE_EDGE,
-      AI_IMAGE_CHANNELS,
-    ))
-    const inputs = await this.processor(images.length === 1 ? images[0] : images)
-    return { batch, inputs, prepareMs: performance.now() - started }
+    return { batch, pixels, prepareMs: performance.now() - started }
   }
 
   private nextBatchSize(batchSize: number, inferenceMs: number, count: number): number {
     const inferencePerImage = inferenceMs / Math.max(1, count)
-    if (this.device === 'webgpu') {
+    if (this.visionDevice === 'webgpu') {
       if (inferencePerImage < 500 && batchSize < MAX_BATCH_SIZE) {
         return Math.min(MAX_BATCH_SIZE, batchSize * 2)
       }
@@ -170,10 +163,9 @@ class SemanticRuntime {
     }
 
     await this.prepare()
-    const { RawImage } = await loadTransformers()
     const started = performance.now()
     let processed = 0
-    let batchSize = this.device === 'webgpu' ? INITIAL_WEBGPU_BATCH_SIZE : INITIAL_WASM_BATCH_SIZE
+    let batchSize = this.visionDevice === 'webgpu' ? INITIAL_WEBGPU_BATCH_SIZE : INITIAL_WASM_BATCH_SIZE
     let batchCurrent = 0
     let decodeMs = 0
     let inferenceMs = 0
@@ -191,25 +183,22 @@ class SemanticRuntime {
       const batch = pending.slice(processed, processed + batchSize)
       batchCurrent += 1
       this.patchStats({ stage: 'decoding', batchCurrent, batchSize: batch.length })
-      const prepared = await this.prepareImageBatch(batch, RawImage)
-      decodeMs += prepared.prepareMs
+      const prepared = await this.prepareImageBatch(batch)
 
       this.patchStats({ stage: 'inference' })
-      const inferenceStarted = performance.now()
-      const output = await this.visionModel(prepared.inputs)
-      const currentInferenceMs = performance.now() - inferenceStarted
-      const vectors = tensorRows(output.image_embeds)
-      inferenceMs += currentInferenceMs
+      const result = await this.visionWorker.infer(prepared.pixels, prepared.batch.length)
+      decodeMs += prepared.prepareMs + result.preprocessMs
+      inferenceMs += result.inferenceMs
 
       this.patchStats({ stage: 'saving' })
       const saveStarted = performance.now()
       await imagyxApi.saveEmbeddings(prepared.batch.map((asset, index) => ({
         imageId: asset.id,
-        vector: vectors[index] ?? [],
+        vector: result.vectors[index] ?? [],
       })))
       saveMs += performance.now() - saveStarted
       processed += prepared.batch.length
-      batchSize = this.nextBatchSize(batchSize, currentInferenceMs, prepared.batch.length)
+      batchSize = this.nextBatchSize(batchSize, result.inferenceMs, prepared.batch.length)
 
       const elapsedMs = performance.now() - started
       const imagesPerSecond = processed / Math.max(elapsedMs / 1000, 0.001)
@@ -297,26 +286,15 @@ class SemanticRuntime {
       this.patchStats({ stage: 'loading-text' })
       await this.ensureModelEnvironment()
       try {
-        this.device = 'webgpu'
         await this.loadTextForDevice('webgpu')
-        this.patchStats({
-          stage: this.paused ? 'paused' : 'ready',
-          backendEffective: 'Transformers.js · WebGPU',
-          accelerationActive: true,
-          accelerationLabel: 'GPU WebGPU actif',
-          fallbackReason: undefined,
-        })
+        this.patchStats({ stage: this.paused ? 'paused' : 'ready' })
       } catch (error) {
-        this.device = 'wasm'
         this.textModel = null
         this.tokenizer = null
         await this.loadTextForDevice('wasm')
         this.patchStats({
           stage: this.paused ? 'paused' : 'ready',
-          backendEffective: 'Transformers.js · WASM',
-          accelerationActive: false,
-          accelerationLabel: 'CPU WASM',
-          fallbackReason: `WebGPU indisponible: ${String(error)}`,
+          fallbackReason: `Recherche texte sur WASM: ${String(error)}`,
         })
       }
     })()
@@ -344,8 +322,8 @@ class SemanticRuntime {
     this.textPrimed = false
   }
 
-  private async ensureModelEnvironment() {
-    if (this.environmentReady) return
+  private async ensureModelEnvironment(): Promise<string> {
+    if (this.localModelPath) return this.localModelPath
     if (this.environmentLoading) return this.environmentLoading
     this.environmentLoading = (async () => {
       const [{ env }, modelRoot] = await Promise.all([
@@ -353,51 +331,44 @@ class SemanticRuntime {
         imagyxApi.prepareLocalModel('mobileclip-s0'),
       ])
       const modelsDir = modelRoot.replace(/[\\/]+Xenova[\\/]mobileclip_s0$/, '')
+      const localModelPath = `${imagyxApi.fileUrl(modelsDir).replace(/\/$/, '')}/`
       env.allowLocalModels = true
       env.allowRemoteModels = false
-      env.localModelPath = `${imagyxApi.fileUrl(modelsDir).replace(/\/$/, '')}/`
+      env.localModelPath = localModelPath
       env.useBrowserCache = false
-      this.environmentReady = true
+      this.localModelPath = localModelPath
+      return localModelPath
     })()
-    try { await this.environmentLoading } finally { this.environmentLoading = null }
+    try {
+      return await this.environmentLoading
+    } finally {
+      this.environmentLoading = null
+    }
   }
 
   private async loadVisionRuntime() {
     const start = performance.now()
     this.publishProgress({ stage: 'checking', message: `Vérification de ${MODEL_NAME}…`, currentBytes: 0, totalBytes: 0, currentFile: 0, totalFiles: 0 })
     this.patchStats({ stage: 'loading', modelName: MODEL_NAME, backendRequested: 'WebGPU' })
-    await this.ensureModelEnvironment()
-    try {
-      this.device = 'webgpu'
-      await this.loadVisionForDevice('webgpu')
-      this.patchStats({ stage: this.paused ? 'paused' : 'ready', backendEffective: 'Transformers.js · WebGPU', accelerationActive: true, accelerationLabel: 'GPU WebGPU actif', fallbackReason: undefined })
-    } catch (error) {
-      this.device = 'wasm'
-      this.visionModel = null
-      this.processor = null
-      await this.loadVisionForDevice('wasm')
-      this.patchStats({ stage: this.paused ? 'paused' : 'ready', backendEffective: 'Transformers.js · WASM', accelerationActive: false, accelerationLabel: 'CPU WASM', fallbackReason: `WebGPU indisponible: ${String(error)}` })
-    }
+    const localModelPath = await this.ensureModelEnvironment()
+    const ready = await this.visionWorker.initialize(MODEL_ID, localModelPath)
+    this.visionDevice = ready.device
+    this.visionReady = true
+    this.patchStats({
+      stage: this.paused ? 'paused' : 'ready',
+      backendEffective: ready.backendEffective,
+      accelerationActive: ready.accelerationActive,
+      accelerationLabel: ready.accelerationLabel,
+      fallbackReason: ready.fallbackReason,
+    })
     this.publishProgress({ stage: 'ready', message: `${MODEL_NAME} prêt hors connexion.`, currentBytes: 0, totalBytes: 0, currentFile: 6, totalFiles: 6 })
-    perfLog('SemanticIA', 'Vision Model Load', performance.now() - start, { device: this.device })
+    perfLog('SemanticIA', 'Vision Worker Model Load', performance.now() - start, {
+      device: this.visionDevice,
+      worker: true,
+    })
   }
 
-  private async loadVisionForDevice(device: Device) {
-    const {
-      AutoProcessor,
-      CLIPVisionModelWithProjection,
-      RawImage,
-    } = await loadTransformers()
-    const options = this.modelOptions(device)
-    ;[this.processor, this.visionModel] = await Promise.all([
-      AutoProcessor.from_pretrained(MODEL_ID, options),
-      CLIPVisionModelWithProjection.from_pretrained(MODEL_ID, options),
-    ])
-    const blank = new RawImage(new Uint8ClampedArray(224 * 224 * 4), 224, 224, 4)
-    await this.visionModel(await this.processor(blank))
-  }
-
-  private modelOptions(device: Device = this.device) {
+  private modelOptions(device: Device) {
     return { device, dtype: 'fp32', local_files_only: true } as const
   }
 
