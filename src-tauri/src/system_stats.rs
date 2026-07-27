@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use parking_lot::Mutex;
 use sysinfo::{Pid, ProcessesToUpdate, System, get_current_pid};
 
@@ -11,22 +13,21 @@ pub struct ResourceSnapshot {
 }
 
 pub struct SystemMonitor {
-    system: Mutex<System>,
+    system: OnceLock<Mutex<System>>,
     pid: Option<Pid>,
 }
 
 impl SystemMonitor {
     pub fn new() -> Self {
-        let mut system = System::new_all();
-        system.refresh_cpu_usage();
         Self {
-            system: Mutex::new(system),
+            system: OnceLock::new(),
             pid: get_current_pid().ok(),
         }
     }
 
     pub fn snapshot(&self) -> ResourceSnapshot {
-        let mut system = self.system.lock();
+        let system = self.system.get_or_init(|| Mutex::new(System::new_all()));
+        let mut system = system.lock();
         system.refresh_cpu_usage();
         system.refresh_memory();
         if let Some(pid) = self.pid {
