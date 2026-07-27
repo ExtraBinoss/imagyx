@@ -60,7 +60,7 @@ fn pending_query_only_returns_missing_embeddings() {
 }
 
 #[test]
-fn recent_query_is_ordered_and_bounded() {
+fn recent_query_is_ordered_bounded_and_paginated() {
     let (_temp, database, folder) = fixture();
     database
         .save_assets(
@@ -71,7 +71,31 @@ fn recent_query_is_ordered_and_bounded() {
             &[],
         )
         .expect("save assets");
-    let recent = database.recent_images(None, 1).expect("recent images");
-    assert_eq!(recent.len(), 1);
-    assert_eq!(recent[0].id, "new");
+    let first_page = database
+        .recent_images(None, 1, 0)
+        .expect("first recent page");
+    let second_page = database
+        .recent_images(None, 1, 1)
+        .expect("second recent page");
+    assert_eq!(first_page.len(), 1);
+    assert_eq!(first_page[0].id, "new");
+    assert_eq!(second_page.len(), 1);
+    assert_eq!(second_page[0].id, "old");
+}
+
+#[test]
+fn validates_thumbnail_identity_and_path() {
+    let (_temp, database, folder) = fixture();
+    let image = asset(&folder.id, "one", "one.jpg", 1);
+    database.save_assets(&[image], &[]).expect("save asset");
+    assert!(
+        database
+            .image_path_is_known("one", "/tmp/design/one.jpg")
+            .expect("known path")
+    );
+    assert!(
+        !database
+            .image_path_is_known("one", "/tmp/design/other.jpg")
+            .expect("unknown path")
+    );
 }
