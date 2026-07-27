@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { AlignLeft, AlignRight, Check, Copy, Info, Keyboard, Layout, Monitor, Moon, Palette, SearchX, Sun } from '@lucide/vue'
+import { AlignLeft, AlignRight, BookOpen, Check, Copy, Info, Keyboard, Layout, Monitor, Moon, Palette, SearchX, Sun } from '@lucide/vue'
 import type { ThemeMode } from '../../stores/theme'
 import { usePlatformStore } from '../../stores/platform'
 import { useLibraryStore } from '../../stores/library'
@@ -30,6 +30,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   shortcutChange: [value: string]
   themeChange: [value: ThemeMode]
+  onboarding: []
 }>()
 
 const platform = usePlatformStore()
@@ -41,8 +42,9 @@ const normalizedQuery = computed(() => (props.query ?? '').trim().toLocaleLowerC
 const showShortcut = computed(() => isPopover.value || matches(['raccourci', 'shortcut', 'clavier', 'keybind', 'spotlight', 'ouvrir']))
 const showTheme = computed(() => isPopover.value || matches(['thème', 'theme', 'apparence', 'clair', 'sombre', 'système', 'couleur']))
 const showControls = computed(() => isPopover.value || matches(['boutons', 'bouton', 'contrôles', 'controles', 'fermeture', 'réduction', 'reduction', 'fenêtre', 'fenetre', 'position', 'gauche', 'droite', 'titlebar', 'barre']))
+const showOnboarding = computed(() => isPopover.value || matches(['onboarding', 'guide', 'tutoriel', 'découvrir', 'decouvrir', 'bienvenue', 'aide', 'fonctionnalités', 'fonctionnalites']))
 const showInfo = computed(() => isPopover.value || matches(['info', 'information', 'version', 'débug', 'debug', 'système', 'imagyx', 'stats', 'indexation', 'base', 'sqlite']))
-const hasResults = computed(() => showShortcut.value || showTheme.value || showControls.value || showInfo.value)
+const hasResults = computed(() => showShortcut.value || showTheme.value || showControls.value || showOnboarding.value || showInfo.value)
 
 const stats = computed(() => library.runtimeStats)
 const dbPath = computed(() => library.appInfo?.databasePath ?? 'Indisponible')
@@ -122,6 +124,16 @@ async function copyDebugInfo() {
       </ButtonGroup>
     </section>
 
+    <section v-if="showOnboarding" class="settings-section">
+      <header>
+        <span class="settings-section__icon"><BookOpen :size="17" /></span>
+        <div><strong>Guide de découverte</strong><p>Revois les fonctions principales et ajoute un dossier depuis le parcours.</p></div>
+      </header>
+      <Button variant="secondary" size="md" block @click="emit('onboarding')">
+        <template #leading><BookOpen :size="16" /></template>Relancer l’onboarding
+      </Button>
+    </section>
+
     <section v-if="showInfo" class="settings-section info-section">
       <Accordion title="Imagyx Information" :default-open="false">
         <template #title>
@@ -160,7 +172,7 @@ async function copyDebugInfo() {
     <div v-if="!hasResults" class="settings-empty">
       <SearchX :size="25" />
       <strong>Aucun réglage trouvé</strong>
-      <span>Essaie “raccourci”, “thème” ou “apparence”.</span>
+      <span>Essaie “raccourci”, “thème”, “onboarding” ou “apparence”.</span>
     </div>
   </div>
 </template>
