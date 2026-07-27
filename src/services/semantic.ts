@@ -1,3 +1,4 @@
+import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { imagyxApi } from '../api/tauri'
 import type { ImageAsset, ModelDownloadProgress, QueryConcept, RuntimeStats } from '../types'
@@ -52,7 +53,29 @@ type UiResponsivenessProfile = {
   averageEventLoopDelayMs: number
 }
 
+type RustAiImagePrepProfile = {
+  batchId: string
+  count: number
+  outputBytes: number
+  cacheHits: number
+  cacheMisses: number
+  databaseLookupMs: number
+  rayonWallMs: number
+  packMs: number
+  commandWallMs: number
+  cumulativeLockWaitMs: number
+  cumulativeCacheLookupMs: number
+  cumulativeThumbnailReadDecodeMs: number
+  cumulativeSourceReadDecodeMs: number
+  cumulativeThumbnailResizeMs: number
+  cumulativeThumbnailEncodeWriteMs: number
+  cumulativeAiResizeMs: number
+  cumulativeImageTotalMs: number
+  maxImageTotalMs: number
+}
+
 let transformersLoading: Promise<TransformersModule> | null = null
+let rustProfileListener: Promise<void> | null = null
 
 function loadTransformers(): Promise<TransformersModule> {
   if (!transformersLoading) {
@@ -67,6 +90,45 @@ function loadTransformers(): Promise<TransformersModule> {
 
 function roundMs(value: number): number {
   return Math.round(value * 100) / 100
+}
+
+function logRustAiPrepProfile(profile: RustAiImagePrepProfile) {
+  console.groupCollapsed(
+    `[Imagyx][Rust AI Prep][${profile.batchId}] ${profile.count} img · ${roundMs(profile.commandWallMs)} ms · cache ${profile.cacheHits}/${profile.count}`,
+  )
+  console.table({
+    database_lookup_ms: roundMs(profile.databaseLookupMs),
+    rayon_parallel_wall_ms: roundMs(profile.rayonWallMs),
+    rgb_pack_ms: roundMs(profile.packMs),
+    command_end_to_end_ms: roundMs(profile.commandWallMs),
+    cumulative_lock_wait_ms: roundMs(profile.cumulativeLockWaitMs),
+    cumulative_cache_lookup_ms: roundMs(profile.cumulativeCacheLookupMs),
+    cumulative_cached_jpeg_read_decode_ms: roundMs(profile.cumulativeThumbnailReadDecodeMs),
+    cumulative_original_read_decode_ms: roundMs(profile.cumulativeSourceReadDecodeMs),
+    cumulative_thumbnail_resize_ms: roundMs(profile.cumulativeThumbnailResizeMs),
+    cumulative_thumbnail_encode_write_ms: roundMs(profile.cumulativeThumbnailEncodeWriteMs),
+    cumulative_ai_224_resize_ms: roundMs(profile.cumulativeAiResizeMs),
+    cumulative_all_images_ms: roundMs(profile.cumulativeImageTotalMs),
+    slowest_image_ms: roundMs(profile.maxImageTotalMs),
+  })
+  console.log('Rust batch metadata', {
+    batchId: profile.batchId,
+    count: profile.count,
+    outputBytes: profile.outputBytes,
+    cacheHits: profile.cacheHits,
+    cacheMisses: profile.cacheMisses,
+    note: 'Les valeurs cumulative_* sont additionnées entre les threads Rayon et peuvent dépasser rayon_parallel_wall_ms. Le temps mur à comparer au frontend est command_end_to_end_ms.',
+  })
+  console.groupEnd()
+}
+
+function ensureRustProfileListener(): Promise<void> {
+  if (!rustProfileListener) {
+    rustProfileListener = listen<RustAiImagePrepProfile>('ai-image-prep-profile', (event) => {
+      logRustAiPrepProfile(event.payload)
+    }).then(() => undefined)
+  }
+  return rustProfileListener
 }
 
 function startUiResponsivenessProbe(intervalMs = 16): () => UiResponsivenessProfile {
@@ -238,9 +300,9 @@ class SemanticRuntime {
     try { await this.indexing } finally { this.indexing = null }
   }
 
-  private async prepareImageBatch(batch: ImageAsset[]): Promise<PreparedBatch> {
+  private async prepareImageBatch(batch: ImageAsset[], batchId: string): Promise<PreparedBatch> {
     const started = performance.now()
-    const pixels = await imagyxApi.prepareAiImages(batch.map((asset) => asset.id))
+    const pixels = await imagyxApi.prepareAiImages(batch.map((asset) => asset.id), batchId)
     const expectedBytes = batch.length * AI_IMAGE_BYTES
     if (pixels.byteLength !== expectedBytes) {
       throw new Error(`Batch RGB invalide: ${pixels.byteLength} octets au lieu de ${expectedBytes}`)
@@ -269,6 +331,7 @@ class SemanticRuntime {
   }
 
   private async runPendingIndex(folderId?: string) {
+    await ensureRustProfileListener()
     const pending = await imagyxApi.pendingImages(folderId)
     if (pending.length === 0) {
       this.patchStats({ stage: 'ready', current: 0, total: 0 })
@@ -299,7 +362,7 @@ class SemanticRuntime {
       batchCurrent += 1
       const batchId = `${runId}-${batchCurrent}`
       this.patchStats({ stage: 'decoding', batchCurrent, batchSize: batch.length })
-      const prepared = await this.prepareImageBatch(batch)
+      const prepared = await this.prepareImageBatch(batch, batchId)
 
       this.patchStats({ stage: 'inference' })
       const measured = await profileUiWhile(
