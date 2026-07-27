@@ -209,13 +209,15 @@ fn set_paused(app: &AppHandle, paused: bool) {
         let _ = controller.pause_item.set_text("Reprendre l’indexation");
         let _ = controller.pause_item.set_enabled(true);
         update_tray_visual(app, &controller, false, format!("Imagyx — {label}"));
+        return;
+    }
+
+    let _ = controller.pause_item.set_text("Mettre l’indexation en pause");
+    drop(controller);
+    if total > current {
+        set_indexing(app, current, total, "Reprise de l’indexation");
     } else {
-        let _ = controller.pause_item.set_text("Mettre l’indexation en pause");
-        if total > current {
-            set_indexing(app, current, total, "Reprise de l’indexation");
-        } else {
-            set_ready(app, indexed_image_count(app));
-        }
+        set_ready(app, indexed_image_count(app));
     }
 }
 
@@ -251,7 +253,11 @@ fn update_tray_visual(
     let was_busy = controller.busy.swap(busy, Ordering::AcqRel);
     if let Some(icon) = app.tray_by_id(TRAY_ID) {
         if was_busy != busy {
-            let image = if busy { BUSY_ICON.clone() } else { IDLE_ICON.clone() };
+            let image = if busy {
+                BUSY_ICON.clone()
+            } else {
+                IDLE_ICON.clone()
+            };
             if let Err(error) = icon.set_icon(Some(image)) {
                 tracing::event("tray.icon.update.failed", error);
             }
@@ -274,7 +280,12 @@ fn show_main_window(app: &AppHandle) {
 fn indexed_image_count(app: &AppHandle) -> usize {
     app.try_state::<Arc<AppState>>()
         .and_then(|state| state.database.folders_for_watching().ok())
-        .map(|folders| folders.into_iter().map(|folder| folder.image_count).sum())
+        .map(|folders| {
+            folders
+                .into_iter()
+                .filter_map(|folder| usize::try_from(folder.image_count).ok())
+                .sum()
+        })
         .unwrap_or_default()
 }
 
