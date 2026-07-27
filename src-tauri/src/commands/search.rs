@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
-use tauri::State;
+use tauri::{State, ipc::Response};
 
 use crate::{
     indexer,
@@ -14,20 +14,10 @@ pub async fn get_thumbnail(
     path: String,
     modified_at: i64,
     state: State<'_, Arc<AppState>>,
-) -> Result<String, String> {
+) -> Result<Response, String> {
     let source = PathBuf::from(&path);
     let state = Arc::clone(state.inner());
-    tauri::async_runtime::spawn_blocking(move || {
-        if let Some(cached) = state
-            .database
-            .thumbnail_path(&image_id, &path)
-            .map_err(|error| error.to_string())?
-        {
-            if PathBuf::from(&cached).is_file() {
-                return Ok(cached);
-            }
-        }
-
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
         let known = state
             .database
             .image_path_is_known(&image_id, &path)
@@ -35,19 +25,17 @@ pub async fn get_thumbnail(
         if !known {
             return Err("L’image ne fait pas partie de la bibliothèque".into());
         }
-        let thumbnail = state
+
+        state
             .thumbnails
             .get_or_create(&image_id, &source, modified_at)
-            .map_err(|error| error.to_string())?;
-        let thumbnail = thumbnail.to_string_lossy().into_owned();
-        state
-            .database
-            .save_thumbnail_path(&image_id, &path, &thumbnail)
-            .map_err(|error| error.to_string())?;
-        Ok(thumbnail)
+            .map(|bytes| bytes.as_ref().clone())
+            .map_err(|error| error.to_string())
     })
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())??;
+
+    Ok(Response::new(bytes))
 }
 
 #[tauri::command]
