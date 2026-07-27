@@ -11,5 +11,7 @@ export default {
   'sidebar.index_incomplete': 'Индексация не завершена',
   'sidebar.index_coverage': 'Проиндексировано {embedded} из {total} изображений',
   'sidebar.reindex_incomplete': 'Переиндексировать неполную папку',
+  'sidebar.resume_indexing': 'Продолжить индексацию',
+  'sidebar.reindex_full': 'Переиндексировать полностью',
   'sidebar.unfollow': 'Отписаться',
 } as const

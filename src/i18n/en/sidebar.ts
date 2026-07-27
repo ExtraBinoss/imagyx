@@ -11,5 +11,7 @@ export default {
   'sidebar.index_incomplete': 'Index incomplete',
   'sidebar.index_coverage': '{embedded} of {total} images indexed',
   'sidebar.reindex_incomplete': 'Reindex incomplete folder',
+  'sidebar.resume_indexing': 'Continue indexing',
+  'sidebar.reindex_full': 'Reindex from scratch',
   'sidebar.unfollow': 'Unfollow',
 } as const

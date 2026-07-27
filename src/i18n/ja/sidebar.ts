@@ -11,5 +11,7 @@ export default {
   'sidebar.index_incomplete': 'インデックスが不完全です',
   'sidebar.index_coverage': '{total} 枚中 {embedded} 枚をインデックス済み',
   'sidebar.reindex_incomplete': '不完全なフォルダーを再インデックス',
+  'sidebar.resume_indexing': 'インデックスを続行',
+  'sidebar.reindex_full': '完全に再インデックス',
   'sidebar.unfollow': 'フォロー解除',
 } as const

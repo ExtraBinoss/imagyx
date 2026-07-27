@@ -11,5 +11,7 @@ export default {
   'sidebar.index_incomplete': 'الفهرسة غير مكتملة',
   'sidebar.index_coverage': 'تمت فهرسة {embedded} من {total} صورة',
   'sidebar.reindex_incomplete': 'أعد فهرسة المجلد غير المكتمل',
+  'sidebar.resume_indexing': 'متابعة الفهرسة',
+  'sidebar.reindex_full': 'إعادة الفهرسة بالكامل',
   'sidebar.unfollow': 'إلغاء المتابعة',
 } as const

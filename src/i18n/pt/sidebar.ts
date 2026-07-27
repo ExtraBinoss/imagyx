@@ -11,5 +11,7 @@ export default {
   'sidebar.index_incomplete': 'Indexação incompleta',
   'sidebar.index_coverage': '{embedded} de {total} imagens indexadas',
   'sidebar.reindex_incomplete': 'Reindexar pasta incompleta',
+  'sidebar.resume_indexing': 'Continuar indexação',
+  'sidebar.reindex_full': 'Reindexar completamente',
   'sidebar.unfollow': 'Deixar de seguir',
 } as const

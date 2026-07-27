@@ -11,5 +11,7 @@ export default {
   'sidebar.index_incomplete': 'Indizierung unvollständig',
   'sidebar.index_coverage': '{embedded} von {total} Bildern indiziert',
   'sidebar.reindex_incomplete': 'Unvollständigen Ordner neu indizieren',
+  'sidebar.resume_indexing': 'Indizierung fortsetzen',
+  'sidebar.reindex_full': 'Vollständig neu indizieren',
   'sidebar.unfollow': 'Nicht mehr folgen',
 } as const

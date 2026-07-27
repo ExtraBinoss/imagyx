@@ -11,5 +11,7 @@ export default {
   'sidebar.index_incomplete': '索引不完整',
   'sidebar.index_coverage': '已索引 {embedded}/{total} 张图片',
   'sidebar.reindex_incomplete': '重新索引不完整的文件夹',
+  'sidebar.resume_indexing': '继续索引',
+  'sidebar.reindex_full': '完全重新索引',
   'sidebar.unfollow': '取消关注',
 } as const
