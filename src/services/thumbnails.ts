@@ -1,5 +1,6 @@
 import type { ImageAsset } from '../types'
 import { imagyxApi } from '../api/tauri'
+import { perfSample } from '../utils'
 
 const MAX_CONCURRENT_REQUESTS = 4
 const MAX_QUEUED_REQUESTS = 96
@@ -64,18 +65,23 @@ export function requestThumbnail(
   const existing = pending.get(key)
   if (existing) return existing
 
+  const queuedAt = performance.now()
   const request = new Promise<string>((resolve, reject) => {
     makeRoom()
     queue.push({
       key,
       cancel: () => reject(new Error('Thumbnail request superseded by the visible viewport')),
       run: async () => {
+        const startedAt = performance.now()
+        perfSample('Thumbnail', 'queue wait', startedAt - queuedAt)
         try {
           const path = await imagyxApi.thumbnail(image)
           const url = imagyxApi.fileUrl(path)
           remember(key, url)
+          perfSample('Thumbnail', 'IPC and generation', performance.now() - startedAt)
           resolve(url)
         } catch (error) {
+          perfSample('Thumbnail', 'failed request', performance.now() - startedAt)
           reject(error)
         } finally {
           pending.delete(key)
