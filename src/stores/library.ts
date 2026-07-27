@@ -285,31 +285,45 @@ export const useLibraryStore = defineStore("library", {
         this.selectedFolderId = null;
     },
     async refreshImages() {
+      const start = performance.now();
       const sequence = ++this.searchSequence;
       const query = this.query.trim();
       const folderId = this.selectedFolderId ?? undefined;
       this.error = null;
       this.activeConcepts = [];
       this.semanticSearching = Boolean(query);
+      this.displayLimit = INITIAL_DISPLAY_LIMIT;
       if (!this.images.length) this.loading = true;
       try {
         if (!query) {
-          this.images = await imagyxApi.search({
+          const results = await imagyxApi.search({
             query,
             folderId,
             limit: 20_000,
+          });
+          if (sequence !== this.searchSequence) return;
+          this.allSearchResults = results;
+          this.images = results.slice(0, this.displayLimit);
+          perfLog("LibraryStore", "refreshImages (browse all)", performance.now() - start, {
+            totalResults: results.length,
+            displayed: this.images.length,
           });
           return;
         }
 
         const lexicalPromise = imagyxApi
-          .search({ query, folderId, limit: 60 })
-          .then((images) => {
+          .search({ query, folderId, limit: 20_000 })
+          .then((results) => {
             if (sequence === this.searchSequence) {
-              this.images = images;
+              this.allSearchResults = results;
+              this.images = results.slice(0, this.displayLimit);
               this.loading = false;
+              perfLog("LibraryStore", "refreshImages (fast lexical)", performance.now() - start, {
+                totalResults: results.length,
+                displayed: this.images.length,
+              });
             }
-            return images;
+            return results;
           });
         const [lexicalResult, embeddingResult] = await Promise.allSettled([
           lexicalPromise,
@@ -326,10 +340,15 @@ export const useLibraryStore = defineStore("library", {
           query,
           queryVector: embedded.queryVector,
           folderId,
-          limit: 60,
+          limit: 20_000,
         });
         if (sequence !== this.searchSequence) return;
-        this.images = hybrid;
+        this.allSearchResults = hybrid;
+        this.images = hybrid.slice(0, this.displayLimit);
+        perfLog("LibraryStore", "refreshImages (hybrid semantic finish)", performance.now() - start, {
+          totalResults: hybrid.length,
+          displayed: this.images.length,
+        });
       } catch (error) {
         if (sequence === this.searchSequence) this.reportError(error);
       } finally {
@@ -338,6 +357,15 @@ export const useLibraryStore = defineStore("library", {
           this.semanticSearching = false;
         }
       }
+    },
+    loadMoreImages() {
+      if (this.displayLimit >= this.allSearchResults.length) return;
+      this.displayLimit += PAGE_INCREMENT;
+      this.images = this.allSearchResults.slice(0, this.displayLimit);
+      perfLog("LibraryStore", "loadMoreImages", 0, {
+        newDisplayLimit: this.displayLimit,
+        total: this.allSearchResults.length,
+      });
     },
     async explainImage(imageId: string) {
       const image = this.images.find((item) => item.id === imageId);
