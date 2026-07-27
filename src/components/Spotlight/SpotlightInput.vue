@@ -36,7 +36,7 @@ defineExpose({ focus, select })
       class="spotlight-input__nav"
       variant="ghost"
       size="icon"
-      aria-label="Retour à la recherche"
+      aria-label="Back to search"
       @click="emit('back')"
     >
       <ArrowLeft :size="18" />
@@ -55,7 +55,7 @@ defineExpose({ focus, select })
       autocomplete="off"
       spellcheck="false"
       :placeholder="placeholder"
-      :aria-label="view === 'settings' ? 'Rechercher dans les réglages' : 'Recherche rapide'"
+      :aria-label="view === 'settings' ? 'Search settings' : 'Quick search'"
       @input="handleInput"
     />
 
@@ -67,7 +67,7 @@ defineExpose({ focus, select })
       class="spotlight-input__clear"
       variant="ghost"
       size="icon"
-      aria-label="Effacer la recherche"
+      aria-label="Clear search"
       @click="emit('update:modelValue', '')"
     >
       <X :size="16" />
@@ -77,7 +77,7 @@ defineExpose({ focus, select })
       class="spotlight-input__settings"
       variant="ghost"
       size="icon"
-      aria-label="Ouvrir les réglages"
+      aria-label="Open settings"
       @click="emit('settings')"
     >
       <Settings2 :size="17" />
