@@ -47,6 +47,7 @@ const emit = defineEmits<{
   add: [];
   remove: [folderId: string];
   reindex: [folderId: string];
+  resumeFolderIndexing: [folderId: string];
   pauseIndexing: [];
   resumeIndexing: [];
 }>();
@@ -98,12 +99,16 @@ async function openFolder(folderId: string) {
   if (folder) await imagyxApi.openInFileManager(folder.path);
 }
 
-async function runContextAction(action: "open" | "reindex" | "remove") {
+async function runContextAction(action: "open" | "resume" | "reindex" | "remove") {
   const folderId = contextMenu.value?.folderId;
   if (!folderId) return;
   closeContextMenu();
   if (action === "open") {
     await openFolder(folderId);
+    return;
+  }
+  if (action === "resume") {
+    emit('resumeFolderIndexing', folderId);
     return;
   }
   emit(action, folderId);
@@ -216,6 +221,17 @@ onBeforeUnmount(() => {
                   }}
                 </Button>
                 <Button
+                  v-if="isFolderIncomplete(folder.id)"
+                  variant="primary"
+                  size="sm"
+                  block
+                  :loading="isFolderReindexing(folder.id)"
+                  @click="emit('resumeFolderIndexing', folder.id); close();"
+                >
+                  <template #leading><RefreshCw :size="15" /></template>
+                  {{ t("sidebar.resume_indexing") }}
+                </Button>
+                <Button
                   variant="ghost"
                   size="sm"
                   block
@@ -230,7 +246,7 @@ onBeforeUnmount(() => {
                     isFolderReindexing(folder.id)
                       ? t("sidebar.reindexing")
                       : isFolderIncomplete(folder.id)
-                        ? t("sidebar.reindex_incomplete")
+                        ? t("sidebar.reindex_full")
                         : t("sidebar.reindex")
                   }}
                 </Button>
@@ -305,6 +321,17 @@ onBeforeUnmount(() => {
         >{{ t("open_in_file_manager", { name: platform.fileManagerName }) }}
       </Button>
       <Button
+        v-if="isFolderIncomplete(contextMenu.folderId)"
+        variant="primary"
+        size="sm"
+        block
+        :loading="isFolderReindexing(contextMenu.folderId)"
+        @click="runContextAction('resume')"
+      >
+        <template #leading><RefreshCw :size="15" /></template>
+        {{ t("sidebar.resume_indexing") }}
+      </Button>
+      <Button
         variant="ghost"
         size="sm"
         block
@@ -315,7 +342,9 @@ onBeforeUnmount(() => {
         {{
           isFolderReindexing(contextMenu.folderId)
             ? t("sidebar.reindexing")
-            : t("sidebar.reindex")
+            : isFolderIncomplete(contextMenu.folderId)
+              ? t("sidebar.reindex_full")
+              : t("sidebar.reindex")
         }}
       </Button>
       <Button

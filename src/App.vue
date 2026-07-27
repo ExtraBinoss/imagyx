@@ -238,6 +238,7 @@ onBeforeUnmount(() => {
       @add="addFolder"
       @remove="removeFolder"
       @reindex="store.reindexFolder"
+      @resume-folder-indexing="store.resumeFolderIndexing"
       @pause-indexing="pauseIndexing"
       @resume-indexing="resumeIndexing"
     />

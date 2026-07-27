@@ -606,6 +606,25 @@ export const useLibraryStore = defineStore("library", {
       }
     },
 
+    async resumeFolderIndexing(folderId: string) {
+      const folder = this.folders.find((item) => item.id === folderId);
+      if (!folder) return;
+      this.progress = {
+        folderId,
+        folderName: folder.name,
+        current: 0,
+        total: folder.imageCount,
+        stage: "queued",
+        message: storeT('spotlight.index_message.queued', { total: folder.imageCount }),
+      };
+      try {
+        await semanticRuntime.resumeIndexing(folderId);
+        this.scheduleRefresh();
+      } catch (error) {
+        this.reportError(error);
+      }
+    },
+
     async addFolder(path: string) {
       try {
         const folder = await imagyxApi.addFolder(path);
