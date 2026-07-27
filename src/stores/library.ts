@@ -285,37 +285,51 @@ export const useLibraryStore = defineStore("library", {
         this.selectedFolderId = null;
     },
     async refreshImages() {
-      const start = performance.now();
       const sequence = ++this.searchSequence;
       const query = this.query.trim();
+      const folderId = this.selectedFolderId ?? undefined;
       this.error = null;
+      this.activeConcepts = [];
       this.semanticSearching = Boolean(query);
-      this.displayLimit = INITIAL_DISPLAY_LIMIT;
       if (!this.images.length) this.loading = true;
       try {
-        const embedded = query
-          ? await semanticRuntime.embedQuery(query)
-          : undefined;
+        if (!query) {
+          this.images = await imagyxApi.search({
+            query,
+            folderId,
+            limit: 20_000,
+          });
+          return;
+        }
+
+        const lexicalPromise = imagyxApi
+          .search({ query, folderId, limit: 60 })
+          .then((images) => {
+            if (sequence === this.searchSequence) {
+              this.images = images;
+              this.loading = false;
+            }
+            return images;
+          });
+        const [lexicalResult, embeddingResult] = await Promise.allSettled([
+          lexicalPromise,
+          semanticRuntime.embedQuery(query),
+        ]);
+        if (lexicalResult.status === "rejected") throw lexicalResult.reason;
         if (sequence !== this.searchSequence) return;
-        const results = await imagyxApi.search({
+        if (embeddingResult.status === "rejected") throw embeddingResult.reason;
+
+        const embedded = embeddingResult.value;
+        this.activeConcepts = embedded?.concepts ?? [];
+        if (!embedded?.queryVector) return;
+        const hybrid = await imagyxApi.search({
           query,
-          queryVector: embedded?.queryVector,
-          folderId: this.selectedFolderId ?? undefined,
-          limit: 20_000,
+          queryVector: embedded.queryVector,
+          folderId,
+          limit: 60,
         });
         if (sequence !== this.searchSequence) return;
-        this.activeConcepts = embedded?.concepts ?? [];
-        this.allSearchResults = results;
-        this.images = results.slice(0, this.displayLimit);
-        perfLog(
-          "LibraryStore",
-          "refreshImages (search & initial batch)",
-          performance.now() - start,
-          {
-            totalResults: results.length,
-            displayed: this.images.length,
-          },
-        );
+        this.images = hybrid;
       } catch (error) {
         if (sequence === this.searchSequence) this.reportError(error);
       } finally {
@@ -324,11 +338,6 @@ export const useLibraryStore = defineStore("library", {
           this.semanticSearching = false;
         }
       }
-    },
-    loadMoreImages() {
-      if (this.displayLimit >= this.allSearchResults.length) return;
-      this.displayLimit += PAGE_INCREMENT;
-      this.images = this.allSearchResults.slice(0, this.displayLimit);
     },
     async explainImage(imageId: string) {
       const image = this.images.find((item) => item.id === imageId);
