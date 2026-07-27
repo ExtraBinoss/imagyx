@@ -359,6 +359,14 @@ onMounted(async () => {
   void platform.initialize()
   void shortcut.initialize()
   window.addEventListener('keydown', handleKeydown, { capture: true })
+  const unlisteners = await Promise.all([
+    listen('spotlight-will-open', prepareOpen),
+    listen('spotlight-opened', animateOpen),
+    listen('spotlight-will-hide', prepareHide),
+    listen<IndexProgress>('index-progress', (event) => handleIndexProgress(event.payload)),
+    listen<RuntimeStats>('runtime-stats', (event) => handleRuntimeStats(event.payload)),
+    listen('library-updated', () => resultCache.clear()),
+  ]);
   [
     unlistenWillOpen,
     unlistenOpened,
@@ -366,14 +374,7 @@ onMounted(async () => {
     unlistenIndex,
     unlistenRuntime,
     unlistenLibrary,
-  ] = await Promise.all([
-    listen('spotlight-will-open', prepareOpen),
-    listen('spotlight-opened', animateOpen),
-    listen('spotlight-will-hide', prepareHide),
-    listen<IndexProgress>('index-progress', (event) => handleIndexProgress(event.payload)),
-    listen<RuntimeStats>('runtime-stats', (event) => handleRuntimeStats(event.payload)),
-    listen('library-updated', () => resultCache.clear()),
-  ])
+  ] = unlisteners
   unlistenFocus = await currentWindow.onFocusChanged(({ payload }) => {
     if (!payload && !dialogOpen.value) void imagyxApi.hideSpotlight()
   })
@@ -395,9 +396,21 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="spotlight-root">
-    <section class="spotlight-stage" :class="{ 'spotlight-stage--visible': visible }" aria-label="Recherche rapide Imagyx">
-      <MovingBorder class="spotlight-border" border-radius="22px" :duration="searching ? 2600 : 4400" :active="visible">
-        <div class="spotlight-surface" :class="{ 'spotlight-surface--expanded': shellMerged }">
+    <section
+      class="spotlight-stage"
+      :class="{ 'spotlight-stage--visible': visible }"
+      aria-label="Recherche rapide Imagyx"
+    >
+      <MovingBorder
+        class="spotlight-border"
+        border-radius="22px"
+        :duration="searching ? 2600 : 4400"
+        :active="visible"
+      >
+        <div
+          class="spotlight-surface"
+          :class="{ 'spotlight-surface--expanded': shellMerged }"
+        >
           <SpotlightInput
             ref="inputView"
             v-model="activeQuery"
@@ -455,33 +468,128 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.spotlight-root { width: 100%; height: 100%; overflow: hidden; padding: 16px 14px 24px; background: transparent; }
-.spotlight-stage { width: 100%; opacity: 0; transform: translateY(-8px) scale(0.965); filter: blur(7px); pointer-events: none; transform-origin: 50% 18px; }
-.spotlight-stage--visible { opacity: 1; transform: none; filter: none; pointer-events: auto; animation: spotlight-pop 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
-.spotlight-border { width: 100%; }
+.spotlight-root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  padding: 16px 14px 24px;
+  background: transparent;
+}
+.spotlight-stage {
+  width: 100%;
+  opacity: 0;
+  transform: translateY(-8px) scale(0.965);
+  filter: blur(7px);
+  pointer-events: none;
+  transform-origin: 50% 18px;
+}
+.spotlight-stage--visible {
+  opacity: 1;
+  transform: none;
+  filter: none;
+  pointer-events: auto;
+  animation: spotlight-pop 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.spotlight-border {
+  width: 100%;
+}
 .spotlight-surface {
   width: 100%;
   overflow: hidden;
   border-radius: 21px;
   background: color-mix(in srgb, var(--surface-elevated) 95%, transparent);
-  box-shadow: inset 0 1px rgb(255 255 255 / 0.1), 0 8px 24px -20px rgb(15 23 42 / 0.32);
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.1),
+    0 8px 24px -20px rgb(15 23 42 / 0.32);
   backdrop-filter: blur(28px) saturate(1.18);
-  transition: box-shadow 240ms ease, background-color 180ms ease;
+  transition:
+    box-shadow 240ms ease,
+    background-color 180ms ease;
 }
-.spotlight-surface--expanded { box-shadow: inset 0 1px rgb(255 255 255 / 0.1), 0 18px 38px -28px rgb(15 23 42 / 0.42); }
-.spotlight-panel { height: 472px; min-height: 0; overflow: hidden; border-top: 1px solid color-mix(in srgb, var(--border) 76%, transparent); }
+.spotlight-surface--expanded {
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.1),
+    0 18px 38px -28px rgb(15 23 42 / 0.42);
+}
+.spotlight-panel {
+  height: 472px;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+}
 .panel-morph-enter-active,
-.panel-morph-leave-active { transition: max-height 260ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease, clip-path 260ms cubic-bezier(0.16, 1, 0.3, 1); overflow: hidden; }
+.panel-morph-leave-active {
+  transition:
+    max-height 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 180ms ease,
+    clip-path 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
 .panel-morph-enter-from,
-.panel-morph-leave-to { max-height: 0; opacity: 0; clip-path: inset(0 0 100% 0 round 0 0 21px 21px); }
+.panel-morph-leave-to {
+  max-height: 0;
+  opacity: 0;
+  clip-path: inset(0 0 100% 0 round 0 0 21px 21px);
+}
 .panel-morph-enter-to,
-.panel-morph-leave-from { max-height: 472px; opacity: 1; clip-path: inset(0 round 0 0 21px 21px); }
+.panel-morph-leave-from {
+  max-height: 472px;
+  opacity: 1;
+  clip-path: inset(0 round 0 0 21px 21px);
+}
 .view-swap-enter-active,
-.view-swap-leave-active { transition: opacity 120ms ease, transform 170ms cubic-bezier(0.16, 1, 0.3, 1), filter 120ms ease; }
-.view-swap-enter-from { opacity: 0; transform: translateX(9px); filter: blur(3px); }
-.view-swap-leave-to { opacity: 0; transform: translateX(-7px); filter: blur(3px); }
-:global(:root[data-theme='dark']) .spotlight-surface { box-shadow: inset 0 1px rgb(255 255 255 / 0.055), 0 9px 26px -20px rgb(0 0 0 / 0.58); }
-:global(:root[data-theme='dark']) .spotlight-surface--expanded { box-shadow: inset 0 1px rgb(255 255 255 / 0.055), 0 20px 42px -28px rgb(0 0 0 / 0.72); }
-@keyframes spotlight-pop { 0% { opacity: 0; transform: translateY(-12px) scale(0.94); filter: blur(8px); } 68% { opacity: 1; transform: translateY(1px) scale(1.006); filter: blur(0); } 100% { opacity: 1; transform: none; filter: none; } }
-@media (prefers-reduced-motion: reduce) { .spotlight-stage--visible { animation-duration: 0.01ms; } .panel-morph-enter-active, .panel-morph-leave-active, .view-swap-enter-active, .view-swap-leave-active { transition-duration: 0.01ms; } }
+.view-swap-leave-active {
+  transition:
+    opacity 120ms ease,
+    transform 170ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 120ms ease;
+}
+.view-swap-enter-from {
+  opacity: 0;
+  transform: translateX(9px);
+  filter: blur(3px);
+}
+.view-swap-leave-to {
+  opacity: 0;
+  transform: translateX(-7px);
+  filter: blur(3px);
+}
+:global(:root[data-theme="dark"]) .spotlight-surface {
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.055),
+    0 9px 26px -20px rgb(0 0 0 / 0.58);
+}
+:global(:root[data-theme="dark"]) .spotlight-surface--expanded {
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.055),
+    0 20px 42px -28px rgb(0 0 0 / 0.72);
+}
+@keyframes spotlight-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.94);
+    filter: blur(8px);
+  }
+  68% {
+    opacity: 1;
+    transform: translateY(1px) scale(1.006);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spotlight-stage--visible {
+    animation-duration: 0.01ms;
+  }
+  .panel-morph-enter-active,
+  .panel-morph-leave-active,
+  .view-swap-enter-active,
+  .view-swap-leave-active {
+    transition-duration: 0.01ms;
+  }
+}
 </style>
