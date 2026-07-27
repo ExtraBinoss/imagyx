@@ -1,62 +1,118 @@
-# Imagyx
+<p align="center">
+  <img src="./src-tauri/icons/imagyx-bigger.png" alt="Imagyx logo" width="112" height="112" />
+</p>
 
-Imagyx est une bibliothèque d’images locale, offline-first et conçue pour retrouver rapidement des visuels par nom ou par description naturelle.
+<h1 align="center">Imagyx</h1>
 
-## Prototype actuel
+<p align="center">
+  <strong>Find images on your computer with natural language. Local, private, open-source.</strong>
+</p>
 
-- application desktop Tauri 2 ;
-- Vue 3, Pinia, TypeScript et Vite ;
-- grille virtualisée avec miniatures générées uniquement pour les cartes visibles ;
-- cache disque LRU limité à 256 miniatures et cache mémoire limité à 512 URL ;
-- watcher natif récursif Windows, macOS et Linux ;
-- SQLite en WAL pour les métadonnées et les embeddings ;
-- MobileCLIP2-S0 exécuté directement avec ONNX Runtime ;
-- téléchargement au premier lancement de `visual.onnx`, `visual.onnx.data`, `text.onnx`, `text.onnx.data` et `tokenizer.json` ;
-- essai explicite de CoreML, DirectML ou CUDA, puis création de sessions CPU séparées si l’accélérateur échoue ;
-- prétraitement parallèle des images vers 256 × 256 ;
-- lots adaptatifs : 48 images avec accélération GPU confirmée, 12 images sur CPU ;
-- progression et statistiques dans la sidebar avec popover détaillé ;
-- informations CPU/RAM du processus via `sysinfo`.
+<p align="center">
+  <a href="https://github.com/ExtraBinoss/imagyx/releases"><strong>Download</strong></a>
+  ·
+  <a href="#how-it-works">How it works</a>
+  ·
+  <a href="./docs/dev/README.md">Developer setup</a>
+</p>
 
-Les poids ONNX utilisés par l’application proviennent du dépôt communautaire `RuteNL/MobileCLIP2-S0-OpenCLIP-ONNX`, exporté depuis MobileCLIP2-S0. Les anciens embeddings CLIP ViT-B/32 sont invalidés automatiquement lors de la migration afin d’éviter de mélanger deux espaces vectoriels différents.
+<br />
 
-## Sidebar IA
+<table>
+  <tr>
+    <td align="center">
+      <strong>Banner placeholder</strong><br />
+      Replace this block with <code>docs/assets/imagyx-banner.webp</code><br />
+      Expected size: <strong>1600 × 800 px</strong> · 2:1 ratio · WebP or PNG<br />
+      Keep important content inside the centered 1200 × 600 px safe area.
+    </td>
+  </tr>
+</table>
 
-Le panneau compact de la sidebar affiche :
+<!--
+When the banner is ready, replace the placeholder table with:
+<p align="center">
+  <img src="./docs/assets/imagyx-banner.webp" alt="Imagyx natural-language image search" width="100%" />
+</p>
+-->
 
-- téléchargement ou progression de l’analyse ;
-- backend réellement initialisé ;
-- indication `GPU actif`, `CPU` ou `CPU (repli)` ;
-- taille du lot ;
-- débit en images par seconde ;
-- temps moyen par image ;
-- consommation CPU et mémoire du processus ;
-- dernière erreur du runtime, lorsqu’elle existe.
+<br />
 
-## Développement
+Imagyx lets you search the images already stored on your computer using ordinary words and descriptions. Search for things such as `purple sunset`, `red texture`, `a person near the sea`, or part of a filename—without uploading your library anywhere.
 
-Prérequis : Node.js 22.12+, Rust 1.88+ et les dépendances système Tauri de la plateforme.
+## Download
 
-```bash
-npm install
-npm run tauri dev
-```
+<p>
+  <a href="https://github.com/ExtraBinoss/imagyx/releases"><strong>Download Imagyx from GitHub Releases →</strong></a>
+</p>
 
-Vérifications locales recommandées :
+Windows and macOS builds are published manually on the Releases page. Your images stay where they are; installing Imagyx does not import, move, or duplicate them.
 
-```bash
-npm run typecheck
-npm test
-npm run build
-cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-cargo test --manifest-path src-tauri/Cargo.toml
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
-cargo check --manifest-path src-tauri/Cargo.toml
-```
+<h2 id="how-it-works">How it works</h2>
 
-GitHub Actions est volontairement configuré avec `workflow_dispatch` uniquement. Aucun commit ou pull request ne déclenche automatiquement un workflow.
+<table>
+  <thead>
+    <tr>
+      <th width="33%">1 · Add a folder</th>
+      <th width="33%">2 · Let Imagyx index it</th>
+      <th width="33%">3 · Search naturally</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        Choose any folder that contains images. Imagyx discovers the files and automatically prepares the local search components it needs.
+      </td>
+      <td>
+        Wait for the first indexing pass to finish. Progress stays visible while image metadata and the private semantic index are created.
+      </td>
+      <td>
+        Search from the app or open Spotlight with <kbd>Ctrl</kbd> + <kbd>9</kbd> on the numeric keypad by default.
+      </td>
+    </tr>
+  </tbody>
+</table>
 
-## Stockage
+After the first setup, the search engine and index live locally on your computer. New and changed images are detected automatically inside followed folders.
+
+## Search without opening the full app
+
+Use the global Spotlight shortcut:
+
+<p align="center">
+  <kbd>Ctrl</kbd> + <kbd>9</kbd>
+  <br />
+  <sub>Numeric keypad by default. The shortcut can be changed in Imagyx settings.</sub>
+</p>
+
+Type a description, move through results with the arrow keys, then open, copy, or reveal an image directly from the overlay.
+
+## Built around your privacy
+
+<table>
+  <tr>
+    <td width="33%" align="center">
+      <strong>Local</strong><br />
+      Search and indexing run on your computer.
+    </td>
+    <td width="33%" align="center">
+      <strong>Private</strong><br />
+      Your images are not uploaded to a search service.
+    </td>
+    <td width="33%" align="center">
+      <strong>Non-destructive</strong><br />
+      Original files are never renamed, moved, or modified.
+    </td>
+  </tr>
+</table>
+
+The first setup may download the files required by the local search model. Once cached, normal searching works against the local index.
+
+## Lightweight in the background
+
+Imagyx is designed to remain unobtrusive when it is waiting in the background, with an idle memory footprint of approximately **40 MB** in typical use. Indexing and the first model warm-up temporarily use more CPU and memory while work is actively being performed.
+
+Generated data is kept separately from your originals:
 
 ```text
 Pictures/imagyx/
@@ -66,11 +122,68 @@ Pictures/imagyx/
 └── logs/
 ```
 
-Les fichiers originaux ne sont ni copiés, ni modifiés, ni envoyés vers un serveur.
+## Features
 
-## Limites
+- natural-language and filename search;
+- fast Spotlight-style global search;
+- automatic recursive folder watching;
+- local semantic indexing;
+- progressive results while semantic search finishes;
+- on-demand cached thumbnails;
+- keyboard-first navigation and quick actions;
+- light and dark appearance;
+- Windows and macOS desktop support.
 
-- cette migration MobileCLIP n’a pas été compilée dans l’environnement de l’assistant ;
-- l’export ONNX est communautaire et doit être validé sur Windows et macOS ;
-- l’activation GPU doit être testée sur du matériel réel ;
-- la signature et la notarisation ne sont pas configurées.
+## Contributing
+
+Issues, ideas, bug reports, and pull requests are welcome. Development setup is documented separately for each supported platform:
+
+- [Windows development guide](./docs/dev/windows.md)
+- [macOS development guide](./docs/dev/mac.md)
+- [Developer documentation index](./docs/dev/README.md)
+
+<details>
+  <summary><strong>Developer information</strong></summary>
+
+  <br />
+
+  ### Quick start
+
+  Requirements:
+
+  - Node.js 22.12 or newer;
+  - Rust 1.88 or newer;
+  - the native build dependencies documented in the platform guides.
+
+  ```bash
+  npm install
+  npm run tauri dev
+  ```
+
+  ### Local validation
+
+  ```bash
+  npm run typecheck
+  npm test
+  npm run build
+  cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+  cargo check --manifest-path src-tauri/Cargo.toml
+  cargo test --manifest-path src-tauri/Cargo.toml
+  cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
+  ```
+
+  ### Implementation overview
+
+  The desktop shell is built with Tauri and Rust. The interface uses Vue and TypeScript. Metadata, text search, and persisted vectors are stored locally with SQLite. Semantic search uses MobileCLIP-S0 through Transformers.js, with WebGPU acceleration when available and a WASM fallback.
+
+  The Rust backend is divided by responsibility under `src-tauri/src/`, including commands, database access, indexing, fuzzy search, tracing, and the in-memory vector store.
+
+  Release workflows and release publication are intentionally manual. Build artifacts can be produced with:
+
+  ```bash
+  npm run tauri build
+  ```
+
+  Additional performance and backend notes are available in [docs/RUST_PERFORMANCE_PLAN.md](./docs/RUST_PERFORMANCE_PLAN.md).
+
+</details>
