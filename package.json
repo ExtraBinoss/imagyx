@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:hyperframes": "vite --port 8500",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@tauri-apps/cli": "2.11.4",
     "@vitejs/plugin-vue": "6.0.8",
+    "hyperframes": "^0.7.76",
     "typescript": "7.0.2",
     "vite": "8.1.5",
     "vitest": "4.1.10"

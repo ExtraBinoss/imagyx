@@ -75,6 +75,13 @@ export function requestThumbnail(
         const startedAt = performance.now()
         perfSample('Thumbnail', 'queue wait', startedAt - queuedAt)
         try {
+          const mockUrl = (image as unknown as { thumbnail_url?: string; preview_url?: string }).thumbnail_url ||
+            (image as unknown as { thumbnail_url?: string; preview_url?: string }).preview_url
+          if (mockUrl) {
+            remember(key, mockUrl)
+            resolve(mockUrl)
+            return
+          }
           const path = await imagyxApi.thumbnail(image)
           const url = imagyxApi.fileUrl(path)
           remember(key, url)

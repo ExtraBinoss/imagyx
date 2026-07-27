@@ -8,8 +8,8 @@ import {
   Keyboard,
   Moon,
   MoreHorizontal,
+  Plus,
   Search,
-  Sparkles,
   Sun,
   WandSparkles,
 } from '@lucide/vue'
@@ -18,6 +18,7 @@ import tribalPortrait from '../../assets/onboarding_assets/99003f6e5f05348d1852c
 import womanGreen from '../../assets/onboarding_assets/girl_train_segmented.png'
 import womanPortrait from '../../assets/onboarding_assets/karina armageddon.jpg'
 import greenFashion from '../../assets/onboarding_assets/téléchargement (2).jpg'
+import imagyxLogo from '../../../src-tauri/icons/imagyx-bigger.png'
 import ShortcutView from '../shortcuts/ShortcutView.vue'
 import SpotlightInput from '../Spotlight/SpotlightInput.vue'
 import Button from '../ui/Button/Button.vue'
@@ -41,25 +42,25 @@ const demoImages = [
   {
     src: womanGreen,
     label: 'Woman in green',
-    fileName: 'woman-green.png',
+    fileName: 'girl_train_segmented.png',
     tags: ['woman', 'green', 'train'],
   },
   {
     src: womanPortrait,
     label: 'Woman portrait',
-    fileName: 'woman-portrait.jpg',
+    fileName: 'karina armageddon.jpg',
     tags: ['woman', 'portrait', 'editorial'],
   },
   {
     src: tribalPortrait,
     label: 'Tribal style',
-    fileName: 'tribal-style.jpg',
+    fileName: '99003f6e5f05348d1852c38ed196d988.jpg',
     tags: ['tribal', 'woman', 'pattern'],
   },
   {
     src: greenFashion,
     label: 'Green fashion',
-    fileName: 'green-fashion.jpg',
+    fileName: 'téléchargement (2).jpg',
     tags: ['green', 'fashion', 'woman'],
   },
 ]
@@ -69,17 +70,22 @@ const demoImages = [
   <div class="feature-preview" :class="`feature-preview--${kind}`">
     <div v-if="kind === 'welcome'" class="mini-app">
       <aside class="mini-sidebar">
-        <div class="mini-brand"><span><Sparkles :size="15" /></span><strong>Imagyx</strong></div>
+        <div class="mini-brand">
+          <img :src="imagyxLogo" class="brand-logo" alt="Imagyx logo" />
+          <div><strong>Imagyx</strong><small>Local Intelligence</small></div>
+        </div>
         <Button class="preview-row-button" variant="primary" size="sm" block @click="emit('addFolder')">
-          <template #leading><FolderOpen :size="14" /></template>
-          {{ hasFolders ? 'Add another folder' : 'Add a folder' }}
+          <template #leading><Plus :size="14" :stroke-width="2.2" /></template>
+          Add Folder
         </Button>
         <div class="mini-sidebar__rows">
+          <span class="mini-section-label">Library</span>
           <Button class="preview-row-button" variant="ghost" size="sm" block pressed>
-            <template #leading><Images :size="14" /></template>All images
+            <template #leading><Images :size="14" /></template>All Images
           </Button>
+          <span class="mini-section-label">Watched Folders</span>
           <Button class="preview-row-button" variant="ghost" size="sm" block>
-            <template #leading><Folder :size="14" /></template>Photos
+            <template #leading><Folder :size="14" /></template>Visual references
           </Button>
         </div>
       </aside>
@@ -92,7 +98,7 @@ const demoImages = [
         <div class="mini-grid">
           <div v-for="image in demoImages" :key="image.fileName" class="mini-card">
             <img class="demo-image" :src="image.src" :alt="image.label" />
-            <strong>{{ image.label }}</strong>
+            <strong>{{ image.fileName }}</strong>
           </div>
         </div>
       </section>
@@ -100,17 +106,19 @@ const demoImages = [
 
     <div v-else-if="kind === 'sidebar'" class="sidebar-demo">
       <div class="sidebar-demo__brand">
-        <span><Sparkles :size="16" /></span>
-        <div><strong>Imagyx</strong><small>Local intelligence</small></div>
+        <img :src="imagyxLogo" class="brand-logo" alt="Imagyx logo" />
+        <div><strong>Imagyx</strong><small>Local Intelligence</small></div>
       </div>
       <Button class="preview-row-button" variant="primary" size="md" block @click="emit('addFolder')">
-        <template #leading><FolderOpen :size="15" /></template>Add a folder
+        <template #leading><Plus :size="16" :stroke-width="2.2" /></template>Add Folder
       </Button>
       <div class="sidebar-demo__list">
+        <span class="sidebar-section-label">Library</span>
         <Button class="preview-row-button" variant="ghost" size="md" block pressed>
           <template #leading><Images :size="16" /></template>
-          <span class="row-copy">All images</span><span class="row-count">1,248</span>
+          <span class="row-copy">All Images</span><span class="row-count">1,248</span>
         </Button>
+        <span class="sidebar-section-label">Watched Folders</span>
         <div class="folder-row-demo">
           <Button class="preview-row-button" variant="ghost" size="md" block>
             <template #leading><Folder :size="16" /></template>
@@ -264,9 +272,15 @@ const demoImages = [
 .mini-sidebar { display: flex; flex-direction: column; gap: 12px; padding: 18px 14px; border-right: 1px solid var(--border); background: color-mix(in srgb, var(--sidebar) 94%, transparent); }
 .mini-brand,
 .sidebar-demo__brand { display: flex; align-items: center; gap: 9px; }
-.mini-brand > span,
-.sidebar-demo__brand > span { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 9px; background: var(--primary); color: white; box-shadow: inset 0 1px rgb(255 255 255 / 0.24); }
-.mini-brand strong { font-size: 12px; }
+.brand-logo { width: 28px; height: 28px; object-fit: contain; flex-shrink: 0; }
+.mini-brand strong,
+.sidebar-demo__brand strong { font-size: 13px; line-height: 1.1; }
+.mini-brand small,
+.sidebar-demo__brand small { font-size: 9px; color: var(--text-muted); display: block; }
+.mini-sidebar__rows { display: grid; gap: 4px; }
+.mini-section-label { font-size: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-top: 6px; margin-bottom: 2px; }
+.sidebar-section-label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-top: 8px; margin-bottom: 2px; }
+.mini-sidebar .preview-row-button { font-size: 9px; }
 .mini-sidebar__rows { display: grid; gap: 4px; }
 .mini-sidebar .preview-row-button { font-size: 9px; }
 .mini-workspace { min-height: 0; overflow: hidden; padding: 20px; }
