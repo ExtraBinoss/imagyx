@@ -6,12 +6,41 @@ export interface VisionWorkerReady {
   accelerationActive: boolean
   accelerationLabel: string
   fallbackReason?: string
+  initProfile: {
+    processorLoadMs: number
+    modelLoadMs: number
+    warmupPreprocessMs: number
+    warmupModelMs: number
+    totalMs: number
+    hardwareConcurrency: number
+    webGpuExposed: boolean
+  }
+}
+
+export interface VisionInferenceProfile {
+  requestId: number
+  batchId: string
+  count: number
+  inputBytes: number
+  outputBytes: number
+  transferToWorkerMs: number
+  queueWaitMs: number
+  rawImageWrapMs: number
+  preprocessMs: number
+  modelAwaitMs: number
+  normalizeMs: number
+  readbackToListMs: number
+  flattenMs: number
+  workerTotalMs: number
+  returnToMainMs: number
+  roundTripMs: number
+  deserializeMs: number
+  clientTotalMs: number
 }
 
 export interface VisionInferenceResult {
   vectors: number[][]
-  preprocessMs: number
-  inferenceMs: number
+  profile: VisionInferenceProfile
 }
 
 type InitRequest = {
@@ -24,6 +53,8 @@ type InitRequest = {
 type InferRequest = {
   type: 'infer'
   requestId: number
+  batchId: string
+  sentAtEpochMs: number
   pixels: ArrayBuffer
   count: number
 }
@@ -35,14 +66,30 @@ type ReadyResponse = VisionWorkerReady & {
   requestId: number
 }
 
+type WorkerTimingProfile = {
+  batchId: string
+  inputBytes: number
+  outputBytes: number
+  workerReceivedAtEpochMs: number
+  workerRespondedAtEpochMs: number
+  transferToWorkerMs: number
+  queueWaitMs: number
+  rawImageWrapMs: number
+  preprocessMs: number
+  modelAwaitMs: number
+  normalizeMs: number
+  readbackToListMs: number
+  flattenMs: number
+  workerTotalMs: number
+}
+
 type ResultResponse = {
   type: 'result'
   requestId: number
   vectors: ArrayBuffer
   count: number
   dimension: number
-  preprocessMs: number
-  inferenceMs: number
+  profile: WorkerTimingProfile
 }
 
 type ErrorResponse = {
@@ -55,8 +102,15 @@ type WorkerResponse = ReadyResponse | ResultResponse | ErrorResponse
 
 type SuccessfulResponse = Exclude<WorkerResponse, ErrorResponse>
 
+type TimedResponse<T extends SuccessfulResponse> = {
+  response: T
+  roundTripMs: number
+  receivedAtEpochMs: number
+}
+
 type PendingRequest = {
-  resolve: (response: SuccessfulResponse) => void
+  sentAtPerfMs: number
+  resolve: (response: SuccessfulResponse, roundTripMs: number, receivedAtEpochMs: number) => void
   reject: (error: Error) => void
 }
 
@@ -73,20 +127,26 @@ export class VisionWorkerClient {
         requestId,
         modelId,
         localModelPath,
-      })).then(({ type: _type, requestId: _requestId, ...ready }) => ready)
+      })).then(({ response }) => {
+        const { type: _type, requestId: _requestId, ...ready } = response
+        console.info('[Imagyx][VisionWorker] runtime ready', ready)
+        return ready
+      })
     }
     return this.initialization
   }
 
-  async infer(pixels: ArrayBuffer, count: number): Promise<VisionInferenceResult> {
-    const response = await this.request<ResultResponse>(
-      (requestId) => ({ type: 'infer', requestId, pixels, count }),
+  async infer(pixels: ArrayBuffer, count: number, batchId: string): Promise<VisionInferenceResult> {
+    const sentAtEpochMs = Date.now()
+    const { response, roundTripMs, receivedAtEpochMs } = await this.request<ResultResponse>(
+      (requestId) => ({ type: 'infer', requestId, batchId, sentAtEpochMs, pixels, count }),
       [pixels],
     )
     if (response.count !== count || response.dimension <= 0) {
       throw new Error('Réponse invalide du worker vision')
     }
 
+    const deserializeStarted = performance.now()
     const flat = new Float32Array(response.vectors)
     const expectedLength = response.count * response.dimension
     if (flat.length !== expectedLength) {
@@ -97,24 +157,49 @@ export class VisionWorkerClient {
       const start = index * response.dimension
       return Array.from(flat.subarray(start, start + response.dimension))
     })
+    const deserializeMs = performance.now() - deserializeStarted
+    const returnToMainMs = Math.max(0, receivedAtEpochMs - response.profile.workerRespondedAtEpochMs)
     return {
       vectors,
-      preprocessMs: response.preprocessMs,
-      inferenceMs: response.inferenceMs,
+      profile: {
+        requestId: response.requestId,
+        batchId: response.profile.batchId,
+        count: response.count,
+        inputBytes: response.profile.inputBytes,
+        outputBytes: response.profile.outputBytes,
+        transferToWorkerMs: response.profile.transferToWorkerMs,
+        queueWaitMs: response.profile.queueWaitMs,
+        rawImageWrapMs: response.profile.rawImageWrapMs,
+        preprocessMs: response.profile.preprocessMs,
+        modelAwaitMs: response.profile.modelAwaitMs,
+        normalizeMs: response.profile.normalizeMs,
+        readbackToListMs: response.profile.readbackToListMs,
+        flattenMs: response.profile.flattenMs,
+        workerTotalMs: response.profile.workerTotalMs,
+        returnToMainMs,
+        roundTripMs,
+        deserializeMs,
+        clientTotalMs: roundTripMs + deserializeMs,
+      },
     }
   }
 
   private request<T extends SuccessfulResponse>(
     buildRequest: (requestId: number) => WorkerRequest,
     transfer: Transferable[] = [],
-  ): Promise<T> {
+  ): Promise<TimedResponse<T>> {
     const worker = this.ensureWorker()
     const requestId = this.nextRequestId
     this.nextRequestId += 1
 
-    return new Promise<T>((resolve, reject) => {
+    return new Promise<TimedResponse<T>>((resolve, reject) => {
       this.pending.set(requestId, {
-        resolve: (response) => resolve(response as T),
+        sentAtPerfMs: performance.now(),
+        resolve: (response, roundTripMs, receivedAtEpochMs) => resolve({
+          response: response as T,
+          roundTripMs,
+          receivedAtEpochMs,
+        }),
         reject,
       })
       worker.postMessage(buildRequest(requestId), transfer)
@@ -129,14 +214,16 @@ export class VisionWorkerClient {
       name: 'imagyx-vision',
     })
     worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+      const receivedAtEpochMs = Date.now()
       const response = event.data
       const pending = this.pending.get(response.requestId)
       if (!pending) return
       this.pending.delete(response.requestId)
+      const roundTripMs = performance.now() - pending.sentAtPerfMs
       if (response.type === 'error') {
         pending.reject(new Error(response.message))
       } else {
-        pending.resolve(response)
+        pending.resolve(response, roundTripMs, receivedAtEpochMs)
       }
     }
     worker.onerror = (event) => {
