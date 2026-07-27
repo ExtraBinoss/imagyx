@@ -18,6 +18,7 @@ import { useOnboardingStore } from "./stores/onboarding";
 import { usePlatformStore } from "./stores/platform";
 import { useShortcutStore } from "./stores/shortcut";
 import { useThemeStore } from "./stores/theme";
+import { semanticRuntime } from "./services/semantic";
 import { registerSemanticQueryProvider } from "./services/semantic-provider";
 import { capitalize, useTagTypewriter } from "./useTagTypewriter";
 import { debounce, perfLog } from "./utils";
@@ -118,6 +119,24 @@ async function openImageFromSpotlight(imageId: string) {
     store.images.find((image) => image.id === imageId) ?? null;
 }
 
+function scheduleEarlyTextWarmup() {
+  window.requestAnimationFrame(() =>
+    window.requestAnimationFrame(() => {
+      const started = performance.now();
+      void semanticRuntime
+        .prewarmText()
+        .then(() =>
+          perfLog(
+            "SemanticIA",
+            "early text warmup",
+            performance.now() - started,
+          ),
+        )
+        .catch(() => undefined);
+    }),
+  );
+}
+
 onMounted(async () => {
   const start = performance.now();
   theme.initialize();
@@ -125,7 +144,9 @@ onMounted(async () => {
   void platform.initialize();
   void shortcut.initialize();
   unlistenSemanticProvider = await registerSemanticQueryProvider();
-  void store.initialize().then(() => {
+  const initializePromise = store.initialize();
+  scheduleEarlyTextWarmup();
+  void initializePromise.then(() => {
     perfLog("App", "Full store initial load", performance.now() - start);
   });
   window.addEventListener("keydown", handleTypeToSearch);
