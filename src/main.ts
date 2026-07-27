@@ -1,6 +1,8 @@
-import { createApp, type Component } from "vue";
+import { createApp } from "vue";
 import { createPinia } from "pinia";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import App from "./App.vue";
+import SpotlightSearch from "./components/Spotlight/SpotlightSearch.vue";
 import { installPerformanceDiagnostics } from "./utils";
 import "./style.css";
 import "./virtual-grid.css";
@@ -38,5 +40,6 @@ document.documentElement.dataset.window = currentWindowLabel;
 document.documentElement.style.colorScheme = resolvedTheme;
 
 const RootComponent =
-  currentWindow.label === "spotlight" ? SpotlightSearch : App;
+  currentWindowLabel === "spotlight" ? SpotlightSearch : App;
 createApp(RootComponent).use(createPinia()).mount("#app");
+
