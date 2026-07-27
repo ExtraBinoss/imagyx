@@ -133,7 +133,6 @@ pub fn run() {
             commands::folders::remove_folder,
             commands::folders::index_folder,
             commands::folders::pending_images,
-            commands::semantic::prepare_ai_images,
             commands::semantic::save_embeddings,
             commands::semantic::explain_results,
             commands::semantic::top_image_tags,
