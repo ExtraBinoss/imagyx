@@ -5,6 +5,7 @@ mod folders;
 mod migrations;
 mod queries;
 mod rows;
+mod search;
 
 use std::path::{Path, PathBuf};
 
