@@ -115,6 +115,13 @@ pub fn run() {
             app.manage(Arc::clone(&state));
             tray::setup(app.handle(), indexed_images)?;
 
+            #[cfg(all(target_os = "macos", not(debug_assertions)))]
+            {
+                app.handle()
+                    .set_activation_policy(tauri::ActivationPolicy::Accessory)?;
+                app.handle().set_dock_visibility(false)?;
+            }
+
             if let Some(main) = app.get_webview_window("main") {
                 let window = main.clone();
                 main.on_window_event(move |event| {
