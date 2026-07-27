@@ -39,25 +39,22 @@ impl FolderWatcher {
     ) -> Result<Self, AppError> {
         let (sender, receiver) = channel();
         let callback_sender = sender.clone();
-        let mut watcher = notify::recommended_watcher(move |event| {
+        let watcher = notify::recommended_watcher(move |event| {
             let _ = callback_sender.send(WatchMessage::Event(event));
         })
         .map_err(|error| AppError::Watcher(error.to_string()))?;
 
-        let mut watched = HashMap::new();
-        for folder in initial_folders {
-            let path = PathBuf::from(&folder.path);
-            watcher
-                .watch(&path, RecursiveMode::Recursive)
-                .map_err(|error| AppError::Watcher(error.to_string()))?;
-            watched.insert(folder.id.clone(), folder);
-        }
-
         std::thread::Builder::new()
             .name("imagyx-folder-watcher".into())
-            .spawn(move || run_loop(watcher, receiver, app, state, watched))?;
+            .spawn(move || run_loop(watcher, receiver, app, state, HashMap::new()))?;
 
-        Ok(Self { sender })
+        let folder_watcher = Self { sender };
+        for folder in initial_folders {
+            folder_watcher
+                .watch(folder)
+                .map_err(AppError::Watcher)?;
+        }
+        Ok(folder_watcher)
     }
 
     pub fn watch(&self, folder: FollowedFolder) -> Result<(), String> {
