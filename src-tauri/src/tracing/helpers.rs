@@ -1,6 +1,5 @@
 pub(super) const MAX_SAMPLES_PER_SPAN: usize = 256;
 
-#[cfg(test)]
 pub(super) fn percentile(
     samples: &std::collections::VecDeque<u64>,
     percentile: f32,
