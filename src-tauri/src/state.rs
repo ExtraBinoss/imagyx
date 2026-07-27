@@ -1,4 +1,7 @@
+use std::sync::Arc;
+
 use parking_lot::{Mutex, MutexGuard, RwLock};
+use tokio::sync::Semaphore;
 
 use crate::{
     AppError,
@@ -16,6 +19,7 @@ pub struct AppState {
     pub paths: AppPaths,
     pub database: Database,
     pub thumbnails: ThumbnailCache,
+    pub thumbnail_workers: Arc<Semaphore>,
     pub vectors: RwLock<VectorStore>,
     pub model_progress: RwLock<ModelDownloadProgress>,
     pub runtime_stats: RwLock<RuntimeStats>,
@@ -27,14 +31,17 @@ pub struct AppState {
 impl AppState {
     pub fn new(paths: AppPaths) -> Result<Self, AppError> {
         let database = Database::new(paths.database.clone())?;
-        if let Err(error) = std::fs::remove_dir_all(&paths.thumbnails)
-            && error.kind() != std::io::ErrorKind::NotFound
-        {
-            tracing::event("thumbnail.legacy_cache.cleanup_failed", error);
-        }
+        let thumbnail_worker_count = std::thread::available_parallelism()
+            .map_or(4, std::num::NonZeroUsize::get)
+            .max(2);
+        tracing::event(
+            "thumbnail.workers.configured",
+            format_args!("workers={thumbnail_worker_count}"),
+        );
 
         Ok(Self {
-            thumbnails: ThumbnailCache::new(),
+            thumbnails: ThumbnailCache::new(paths.thumbnails.clone())?,
+            thumbnail_workers: Arc::new(Semaphore::new(thumbnail_worker_count)),
             paths,
             database,
             vectors: RwLock::new(VectorStore::default()),
