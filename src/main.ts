@@ -3,9 +3,12 @@ import { createPinia } from 'pinia'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import App from './App.vue'
 import SpotlightSearch from './components/Spotlight/SpotlightSearch.vue'
+import { installPerformanceDiagnostics } from './utils'
 import './style.css'
 import './virtual-grid.css'
 import './spotlight-window.css'
+
+installPerformanceDiagnostics()
 
 const currentWindow = getCurrentWindow()
 const savedTheme = localStorage.getItem('imagyx-theme')
