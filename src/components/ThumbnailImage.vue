@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Image as ImageIcon } from '@lucide/vue'
+import { imagyxApi } from '../api/tauri'
 import type { ImageAsset } from '../types'
 import { requestThumbnail } from '../services/thumbnails'
 
@@ -9,11 +10,18 @@ const props = defineProps<{
 }>()
 
 const host = ref<HTMLElement | null>(null)
-const source = ref<string | null>(null)
+const source = ref<string | null>(cachedSource())
 const failed = ref(false)
 const visible = ref(false)
 let requestVersion = 0
+let cachedSourceFailed = false
 let observer: IntersectionObserver | null = null
+
+function cachedSource(): string | null {
+  return props.image.thumbnailPath
+    ? imagyxApi.fileUrl(props.image.thumbnailPath)
+    : null
+}
 
 async function loadThumbnail() {
   if (!visible.value || source.value) return
@@ -27,11 +35,22 @@ async function loadThumbnail() {
   }
 }
 
+function handleImageError() {
+  if (!props.image.thumbnailPath || cachedSourceFailed) {
+    failed.value = true
+    return
+  }
+  cachedSourceFailed = true
+  source.value = null
+  void loadThumbnail()
+}
+
 watch(
-  () => [props.image.id, props.image.modifiedAt] as const,
+  () => [props.image.id, props.image.modifiedAt, props.image.thumbnailPath] as const,
   () => {
     requestVersion += 1
-    source.value = null
+    cachedSourceFailed = false
+    source.value = cachedSource()
     failed.value = false
     void loadThumbnail()
   },
@@ -72,6 +91,7 @@ onBeforeUnmount(() => {
       loading="lazy"
       decoding="async"
       draggable="false"
+      @error="handleImageError"
     />
     <span
       v-else
