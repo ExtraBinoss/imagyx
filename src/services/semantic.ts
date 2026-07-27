@@ -1,6 +1,6 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { imagyxApi } from '../api/tauri'
-import type { ModelDownloadProgress, QueryConcept, RuntimeStats } from '../types'
+import type { ImageAsset, ModelDownloadProgress, QueryConcept, RuntimeStats } from '../types'
 import { perfLog } from '../utils'
 import { requestSemanticEmbedding } from './semantic-channel'
 import { buildQueryPromptPlan, combinePromptVectors } from './query-prompts'
@@ -8,8 +8,14 @@ import { buildQueryPromptPlan, combinePromptVectors } from './query-prompts'
 const MODEL_ID = 'Xenova/mobileclip_s0'
 const MODEL_NAME = 'MobileCLIP-S0'
 const INDEX_PAUSED_KEY = 'imagyx.index-paused'
-const INITIAL_BATCH_SIZE = 4
+const INITIAL_WEBGPU_BATCH_SIZE = 8
+const MIN_WEBGPU_BATCH_SIZE = 8
+const INITIAL_WASM_BATCH_SIZE = 4
+const MIN_WASM_BATCH_SIZE = 2
 const MAX_BATCH_SIZE = 16
+const AI_IMAGE_EDGE = 224
+const AI_IMAGE_CHANNELS = 3
+const AI_IMAGE_BYTES = AI_IMAGE_EDGE * AI_IMAGE_EDGE * AI_IMAGE_CHANNELS
 const QUERY_CACHE_CAPACITY = 24
 const currentWindow = getCurrentWindow()
 const DEFAULT_IMAGE_LABELS = [
@@ -26,6 +32,12 @@ type TransformersModule = typeof import('@huggingface/transformers')
 type RuntimeCallbacks = {
   progress: (progress: ModelDownloadProgress) => void
   stats: (stats: RuntimeStats) => void
+}
+
+type PreparedBatch = {
+  batch: ImageAsset[]
+  inputs: any
+  prepareMs: number
 }
 
 let transformersLoading: Promise<TransformersModule> | null = null
@@ -112,6 +124,44 @@ class SemanticRuntime {
     try { await this.indexing } finally { this.indexing = null }
   }
 
+  private async prepareImageBatch(batch: ImageAsset[], RawImage: any): Promise<PreparedBatch> {
+    const started = performance.now()
+    const packed = await imagyxApi.prepareAiImages(batch.map((asset) => asset.id))
+    const expectedBytes = batch.length * AI_IMAGE_BYTES
+    if (packed.byteLength !== expectedBytes) {
+      throw new Error(`Batch RGB invalide: ${packed.byteLength} octets au lieu de ${expectedBytes}`)
+    }
+
+    const images = batch.map((_, index) => new RawImage(
+      new Uint8Array(packed, index * AI_IMAGE_BYTES, AI_IMAGE_BYTES),
+      AI_IMAGE_EDGE,
+      AI_IMAGE_EDGE,
+      AI_IMAGE_CHANNELS,
+    ))
+    const inputs = await this.processor(images.length === 1 ? images[0] : images)
+    return { batch, inputs, prepareMs: performance.now() - started }
+  }
+
+  private nextBatchSize(batchSize: number, inferenceMs: number, count: number): number {
+    const inferencePerImage = inferenceMs / Math.max(1, count)
+    if (this.device === 'webgpu') {
+      if (inferencePerImage < 500 && batchSize < MAX_BATCH_SIZE) {
+        return Math.min(MAX_BATCH_SIZE, batchSize * 2)
+      }
+      if (inferencePerImage > 1_200 && batchSize > MIN_WEBGPU_BATCH_SIZE) {
+        return Math.max(MIN_WEBGPU_BATCH_SIZE, Math.floor(batchSize / 2))
+      }
+      return batchSize
+    }
+    if (inferencePerImage < 300 && batchSize < MAX_BATCH_SIZE) {
+      return Math.min(MAX_BATCH_SIZE, batchSize * 2)
+    }
+    if (inferencePerImage > 900 && batchSize > MIN_WASM_BATCH_SIZE) {
+      return Math.max(MIN_WASM_BATCH_SIZE, Math.floor(batchSize / 2))
+    }
+    return batchSize
+  }
+
   private async runPendingIndex(folderId?: string) {
     const pending = await imagyxApi.pendingImages(folderId)
     if (pending.length === 0) {
@@ -123,7 +173,7 @@ class SemanticRuntime {
     const { RawImage } = await loadTransformers()
     const started = performance.now()
     let processed = 0
-    let batchSize = INITIAL_BATCH_SIZE
+    let batchSize = this.device === 'webgpu' ? INITIAL_WEBGPU_BATCH_SIZE : INITIAL_WASM_BATCH_SIZE
     let batchCurrent = 0
     let decodeMs = 0
     let inferenceMs = 0
@@ -137,29 +187,32 @@ class SemanticRuntime {
         this.patchStats({ stage: 'paused', current: processed, total: pending.length, imagesPerSecond: 0 })
         return
       }
+
       const batch = pending.slice(processed, processed + batchSize)
       batchCurrent += 1
       this.patchStats({ stage: 'decoding', batchCurrent, batchSize: batch.length })
-      const decodeStarted = performance.now()
-      const preparedPaths = await imagyxApi.prepareAiImages(batch.map((asset) => asset.id))
-      const images = await Promise.all(preparedPaths.map((path) => RawImage.read(imagyxApi.fileUrl(path))))
-      const imageInputs = await this.processor(images.length === 1 ? images[0] : images)
-      decodeMs += performance.now() - decodeStarted
+      const prepared = await this.prepareImageBatch(batch, RawImage)
+      decodeMs += prepared.prepareMs
+
       this.patchStats({ stage: 'inference' })
       const inferenceStarted = performance.now()
-      const output = await this.visionModel(imageInputs)
+      const output = await this.visionModel(prepared.inputs)
+      const currentInferenceMs = performance.now() - inferenceStarted
       const vectors = tensorRows(output.image_embeds)
-      inferenceMs += performance.now() - inferenceStarted
+      inferenceMs += currentInferenceMs
+
       this.patchStats({ stage: 'saving' })
       const saveStarted = performance.now()
-      await imagyxApi.saveEmbeddings(batch.map((asset, index) => ({ imageId: asset.id, vector: vectors[index] ?? [] })))
+      await imagyxApi.saveEmbeddings(prepared.batch.map((asset, index) => ({
+        imageId: asset.id,
+        vector: vectors[index] ?? [],
+      })))
       saveMs += performance.now() - saveStarted
-      processed += batch.length
+      processed += prepared.batch.length
+      batchSize = this.nextBatchSize(batchSize, currentInferenceMs, prepared.batch.length)
+
       const elapsedMs = performance.now() - started
       const imagesPerSecond = processed / Math.max(elapsedMs / 1000, 0.001)
-      const averageImageMs = (decodeMs + inferenceMs + saveMs) / processed
-      if (averageImageMs < 90 && batchSize < MAX_BATCH_SIZE) batchSize = Math.min(MAX_BATCH_SIZE, batchSize * 2)
-      if (averageImageMs > 450 && batchSize > 2) batchSize = Math.max(2, Math.floor(batchSize / 2))
       this.patchStats({ stage: 'indexing', current: processed, total: pending.length, batchCurrent,
         batchTotal: batchCurrent + Math.ceil((pending.length - processed) / batchSize), batchSize,
         decodeMs: Math.round(decodeMs), inferenceMs: Math.round(inferenceMs), saveMs: Math.round(saveMs),
@@ -378,7 +431,7 @@ function tensorRows(tensor: any): number[][] {
 
 function defaultStats(): RuntimeStats {
   return { modelName: MODEL_NAME, stage: 'idle', backendRequested: 'WebGPU', backendEffective: 'En attente', accelerationActive: false,
-    accelerationLabel: 'Non initialisée', batchSize: INITIAL_BATCH_SIZE, current: 0, total: 0, batchCurrent: 0, batchTotal: 0,
+    accelerationLabel: 'Non initialisée', batchSize: INITIAL_WEBGPU_BATCH_SIZE, current: 0, total: 0, batchCurrent: 0, batchTotal: 0,
     imagesPerSecond: 0, averageMsPerImage: 0, decodeMs: 0, inferenceMs: 0, saveMs: 0, elapsedMs: 0, systemCpuPercent: 0,
     processCpuPercent: 0, memoryUsedBytes: 0, memoryTotalBytes: 0, processMemoryBytes: 0, modelCacheBytes: 0, thumbnailCacheItems: 0, updatedAt: Date.now() }
 }
