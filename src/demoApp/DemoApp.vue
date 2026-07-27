@@ -132,13 +132,16 @@ const placeholder = computed(() => {
 const resultLabel = computed(() => `${results.value.length} résultat${results.value.length === 1 ? '' : 's'}`)
 
 let morphTimer: number | undefined
+let searchTimer: number | undefined
 
 watch(searchQuery, (q) => {
   selectedIndex.value = 0
   const query = q.trim().toLowerCase()
   if (!query) {
+    searching.value = false
     results.value = []
     resultsOpen.value = false
+    if (searchTimer) clearTimeout(searchTimer)
     if (morphTimer) clearTimeout(morphTimer)
     morphTimer = window.setTimeout(() => {
       shellMerged.value = false
@@ -147,16 +150,61 @@ watch(searchQuery, (q) => {
   }
 
   if (morphTimer) clearTimeout(morphTimer)
-  shellMerged.value = true
-  resultsOpen.value = true
+  if (searchTimer) clearTimeout(searchTimer)
 
-  results.value = allMockAssets.filter((asset) => {
-    return asset.name.toLowerCase().includes(query)
-  })
-  if (results.value.length === 0 && query.length > 0) {
-    // If no exact query match, return all raw mock assets for demo presentation
-    results.value = allMockAssets
-  }
+  searching.value = true
+  shellMerged.value = true
+
+  // Simulate a realistic AI semantic search latency (~280ms)
+  searchTimer = window.setTimeout(() => {
+    searching.value = false
+    resultsOpen.value = true
+
+    // Map specific demo query behaviors as requested
+    if (query.includes('woman') || query.includes('green')) {
+      // 1: girl_train_segmented.png (94%)
+      // 2: → ❛ 🕷 · 𝟎 ` 천사.jpg (88%)
+      // 3: karina armageddon.jpg (82%)
+      // 4: greenFashion (75%)
+      // 5: tribalPortrait (69%)
+      results.value = [
+        { ...allMockAssets[0], semanticScore: 0.94 }, // girl_train_segmented
+        { ...allMockAssets[4], semanticScore: 0.88 }, // → ❛ 🕷 · 𝟎 ` 천사.jpg
+        { ...allMockAssets[1], semanticScore: 0.82 }, // karina armageddon
+        { ...allMockAssets[3], semanticScore: 0.75 }, // téléchargement (2).jpg
+        { ...allMockAssets[2], semanticScore: 0.69 }, // 99003f6e5f...
+      ]
+    } else if (query.includes('star')) {
+      // 1: 99003f6e5f05348d1852c38ed196d988.jpg (95%)
+      // 2: karina armageddon (86%)
+      // 3: girl_train_segmented (79%)
+      // 4: → ❛ 🕷 · 𝟎 ` 천사.jpg (71%)
+      // 5: téléchargement (2).jpg (64%)
+      results.value = [
+        { ...allMockAssets[2], semanticScore: 0.95 }, // 99003f6e5f05348d1852c38ed196d988.jpg
+        { ...allMockAssets[1], semanticScore: 0.86 }, // karina armageddon
+        { ...allMockAssets[0], semanticScore: 0.79 },
+        { ...allMockAssets[4], semanticScore: 0.71 },
+        { ...allMockAssets[3], semanticScore: 0.64 },
+      ]
+    } else if (query.includes('flower')) {
+      // 1: téléchargement (2).jpg (green fashion/floral background) (93%)
+      // 2: girl_train_segmented (84%)
+      // 3: 99003f6e5f... (77%)
+      // 4: karina armageddon (70%)
+      // 5: → ❛ 🕷 · 𝟎 ` 천사.jpg (62%)
+      results.value = [
+        { ...allMockAssets[3], semanticScore: 0.93 }, // téléchargement (2).jpg
+        { ...allMockAssets[0], semanticScore: 0.84 },
+        { ...allMockAssets[2], semanticScore: 0.77 },
+        { ...allMockAssets[1], semanticScore: 0.70 },
+        { ...allMockAssets[4], semanticScore: 0.62 },
+      ]
+    } else {
+      const filtered = allMockAssets.filter((asset) => asset.name.toLowerCase().includes(query))
+      results.value = filtered.length > 0 ? filtered : allMockAssets
+    }
+  }, 280)
 })
 
 function handleCopy(img: ImageAsset) {
