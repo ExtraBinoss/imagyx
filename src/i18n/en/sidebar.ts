@@ -9,6 +9,7 @@ export default {
   'sidebar.reindex': 'Reindex',
   'sidebar.reindexing': 'Reindexing…',
   'sidebar.index_incomplete': 'Index incomplete',
+  'sidebar.index_coverage': '{embedded} of {total} images indexed',
   'sidebar.reindex_incomplete': 'Reindex incomplete folder',
   'sidebar.unfollow': 'Unfollow',
 } as const

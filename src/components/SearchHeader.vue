@@ -8,6 +8,8 @@ import TitleBar from './TitleBar.vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { usePlatformStore } from '../stores/platform'
 import { useTranslate } from '../i18n'
+import type { FollowedFolder } from '../types'
+import FolderQueryAutocomplete from './FolderQueryAutocomplete.vue'
 
 const props = defineProps<{
   modelReady: boolean
@@ -16,10 +18,14 @@ const props = defineProps<{
   searching?: boolean
   resultCount?: number
   placeholder?: string
+  folderSuggestions?: FollowedFolder[]
+  folderSuggestionIndex?: number
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
+  folderSelect: [folder: FollowedFolder]
+  folderNavigate: [delta: number]
 }>()
 
 const platform = usePlatformStore()
@@ -33,6 +39,18 @@ function focusSearch() {
 
 function selectSearch() {
   searchInput.value?.select()
+}
+function handleKeydown(event: KeyboardEvent) {
+  const folders = props.folderSuggestions ?? []
+  if (!folders.length) return
+  if (event.key === 'ArrowDown') { event.preventDefault(); emit('folderNavigate', 1) }
+  else if (event.key === 'ArrowUp') { event.preventDefault(); emit('folderNavigate', -1) }
+  else if (event.key === 'Tab' || event.key === 'Enter') {
+    const folder = folders[props.folderSuggestionIndex ?? 0]
+    if (!folder) return
+    event.preventDefault()
+    emit('folderSelect', folder)
+  }
 }
 
 defineExpose({ focusSearch, selectSearch })
@@ -59,6 +77,7 @@ defineExpose({ focusSearch, selectSearch })
           @focus="isFocused = true"
           @blur="isFocused = false"
           @update:model-value="emit('update:modelValue', $event)"
+          @keydown="handleKeydown"
         >
           <template #leading>
             <div class="header-icon-wrapper">
@@ -89,6 +108,12 @@ defineExpose({ focusSearch, selectSearch })
           </template>
         </Input>
       </MovingBorder>
+      <FolderQueryAutocomplete
+        :folders="folderSuggestions ?? []"
+        :active-index="folderSuggestionIndex ?? 0"
+        placement="below"
+        @select="emit('folderSelect', $event)"
+      />
     </div>
   </header>
 </template>
@@ -129,6 +154,7 @@ defineExpose({ focusSearch, selectSearch })
   -webkit-app-region: no-drag;
 }
 .search-field {
+  position: relative;
   width: 100%;
   max-width: 640px;
   pointer-events: auto;

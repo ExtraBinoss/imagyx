@@ -10,6 +10,7 @@ import { usePlatformStore } from '../../stores/platform'
 import { useShortcutStore } from '../../stores/shortcut'
 import { useThemeStore } from '../../stores/theme'
 import { debounce, perfLog } from '../../utils'
+import { folderQuerySuggestions, formatFolderQuery, parseFolderQuery } from '../../utils/folder-query'
 import { capitalize, useTagTypewriter } from '../../useTagTypewriter'
 import MovingBorder from '../ui/MovingBorder/MovingBorder.vue'
 import SpotlightInput from './SpotlightInput.vue'
@@ -41,6 +42,7 @@ const folders = ref<FollowedFolder[]>([])
 const indexCoverage = ref<FolderIndexCoverage[]>([])
 const libraryReady = ref(false)
 const selectedIndex = ref(0)
+const folderSuggestionIndex = ref(0)
 const searching = ref(false)
 const error = ref<string | null>(null)
 const visible = ref(false)
@@ -87,7 +89,9 @@ const activeQuery = computed({
 })
 const hasFolders = computed(() => folders.value.length > 0)
 const hasActiveJobs = computed(() => jobs.value.some((job) => !['complete', 'error'].includes(job.stage)))
-const hasSearchQuery = computed(() => searchQuery.value.trim().length > 0)
+const parsedFolderQuery = computed(() => parseFolderQuery(searchQuery.value, folders.value))
+const folderSuggestions = computed(() => folderQuerySuggestions(searchQuery.value, folders.value))
+const hasSearchQuery = computed(() => parsedFolderQuery.value.query.length > 0)
 const incompleteCoverage = computed(() => indexCoverage.value.filter((coverage) => {
   const job = jobs.value.find((item) => item.folderId === coverage.folderId)
   return coverage.embeddedCount < coverage.imageCount
@@ -118,6 +122,7 @@ const showAddAction = computed(() => {
 const searchLater = debounce(() => { void runSearch() }, SEARCH_DEBOUNCE_MS)
 
 watch(searchQuery, (value) => {
+  folderSuggestionIndex.value = 0
   selectedIndex.value = 0
   error.value = null
   searchSequence += 1
@@ -139,6 +144,17 @@ watch(searchQuery, (value) => {
   searchLater()
   void openPanel(request)
 })
+
+function selectFolderSuggestion(folder: FollowedFolder) {
+  searchQuery.value = formatFolderQuery(folder)
+  folderSuggestionIndex.value = 0
+}
+
+function navigateFolderSuggestions(delta: number) {
+  const count = folderSuggestions.value.length
+  if (!count) return
+  folderSuggestionIndex.value = (folderSuggestionIndex.value + delta + count) % count
+}
 
 watch(hasActiveJobs, (active) => {
   if (view.value !== 'search') return
@@ -226,8 +242,10 @@ async function backToSearch() {
 async function runSearch() {
   const sequence = ++searchSequence
   const startedAt = performance.now()
-  const text = searchQuery.value.trim()
-  const cacheKey = text.toLocaleLowerCase('en')
+  const parsed = parsedFolderQuery.value
+  const text = parsed.query
+  const folderId = parsed.folder?.id
+  const cacheKey = `${folderId ?? 'all'}:${text.toLocaleLowerCase('en')}`
   if (!text || !hasFolders.value) {
     searching.value = false
     return
@@ -242,13 +260,13 @@ async function runSearch() {
 
   searching.value = true
   const lexicalStartedAt = performance.now()
-  const lexicalPromise = imagyxApi.search({ query: text, limit: 60 })
+  const lexicalPromise = imagyxApi.search({ query: text, folderId, limit: 60 })
   const embeddingPromise = text.length >= 2
     ? semanticRuntime.embedQuery(text)
     : Promise.resolve(undefined)
   void lexicalPromise.then((images) => {
     perfLog('Spotlight', 'lexical IPC', performance.now() - lexicalStartedAt, { results: images.length })
-    if (sequence !== searchSequence || searchQuery.value.trim() !== text) return
+    if (!matchesActiveSearch(sequence, text, folderId)) return
     results.value = images
     void nextPaint().then(() => {
       perfLog('Spotlight', 'input to lexical paint', performance.now() - lastSearchInputAt, {
@@ -262,11 +280,11 @@ async function runSearch() {
     perfLog('Spotlight', 'semantic embedding', performance.now() - lexicalStartedAt, {
       vectorReady: Boolean(embedded?.queryVector),
     })
-    if (sequence !== searchSequence || searchQuery.value.trim() !== text) return
+    if (!matchesActiveSearch(sequence, text, folderId)) return
     const images = embedded?.queryVector
-      ? await imagyxApi.search({ query: text, queryVector: embedded.queryVector, limit: 60 })
+      ? await imagyxApi.search({ query: text, folderId, queryVector: embedded.queryVector, limit: 60 })
       : await lexicalPromise
-    if (sequence !== searchSequence || searchQuery.value.trim() !== text) return
+    if (!matchesActiveSearch(sequence, text, folderId)) return
     results.value = images
     rememberResults(cacheKey, images)
     perfLog('Spotlight', 'semantic search total', performance.now() - startedAt, { results: images.length })
@@ -278,6 +296,11 @@ async function runSearch() {
   } finally {
     if (sequence === searchSequence) searching.value = false
   }
+}
+
+function matchesActiveSearch(sequence: number, query: string, folderId?: string): boolean {
+  const active = parseFolderQuery(searchQuery.value, folders.value)
+  return sequence === searchSequence && active.query === query && active.folder?.id === folderId
 }
 
 function rememberResults(key: string, images: ImageAsset[]) {
@@ -423,6 +446,7 @@ function handleKeydown(event: KeyboardEvent) {
     return
   }
   if (view.value !== 'search') return
+  if (folderSuggestions.value.length && ['ArrowDown', 'ArrowUp', 'Enter', 'Tab'].includes(event.key)) return
   if (event.key === 'ArrowDown') { event.preventDefault(); moveSelection(1); return }
   if (event.key === 'ArrowUp') { event.preventDefault(); moveSelection(-1); return }
   if (event.key === 'Enter' && selectedImage.value) {
@@ -547,8 +571,12 @@ onBeforeUnmount(() => {
             :placeholder="placeholder"
             :searching="searching"
             :result-label="resultLabel"
+            :folder-suggestions="folderSuggestions"
+            :folder-suggestion-index="folderSuggestionIndex"
             @settings="openSettings"
             @back="backToSearch"
+            @folder-select="selectFolderSuggestion"
+            @folder-navigate="navigateFolderSuggestions"
           />
 
           <Transition name="panel-morph">

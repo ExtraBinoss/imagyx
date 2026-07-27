@@ -2,21 +2,30 @@
 import { ref } from 'vue'
 import { ArrowLeft, LoaderCircle, Search, Settings2, X } from '@lucide/vue'
 import Button from '../ui/Button/Button.vue'
+import type { FollowedFolder } from '../../types'
+import FolderQueryAutocomplete from '../FolderQueryAutocomplete.vue'
 import type { SpotlightView } from './types'
 import { useTranslate } from '../../i18n'
 
-defineProps<{
+const props = withDefaults(defineProps<{
   modelValue: string
   view: SpotlightView
   placeholder: string
   searching: boolean
   resultLabel: string
-}>()
+  folderSuggestions: FollowedFolder[]
+  folderSuggestionIndex: number
+}>(), {
+  folderSuggestions: () => [],
+  folderSuggestionIndex: 0,
+})
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   settings: []
   back: []
+  folderSelect: [folder: FollowedFolder]
+  folderNavigate: [delta: number]
 }>()
 
 const { t } = useTranslate()
@@ -26,6 +35,17 @@ function focus() { input.value?.focus() }
 function select() { input.value?.select() }
 function handleInput(event: Event) {
   emit('update:modelValue', (event.target as HTMLInputElement).value)
+}
+function handleKeydown(event: KeyboardEvent) {
+  if (!props.folderSuggestions.length) return
+  if (event.key === 'ArrowDown') { event.preventDefault(); emit('folderNavigate', 1) }
+  else if (event.key === 'ArrowUp') { event.preventDefault(); emit('folderNavigate', -1) }
+  else if (event.key === 'Tab' || event.key === 'Enter') {
+    const folder = props.folderSuggestions[props.folderSuggestionIndex]
+    if (!folder) return
+    event.preventDefault()
+    emit('folderSelect', folder)
+  }
 }
 
 defineExpose({ focus, select })
@@ -59,6 +79,7 @@ defineExpose({ focus, select })
       :placeholder="placeholder"
       :aria-label="view === 'settings' ? t('spotlight.search_in_settings') : t('spotlight.quick_search')"
       @input="handleInput"
+      @keydown="handleKeydown"
     />
 
     <span v-if="view === 'search' && modelValue.trim()" class="spotlight-input__count">
@@ -84,11 +105,20 @@ defineExpose({ focus, select })
     >
       <Settings2 :size="17" />
     </Button>
+    <FolderQueryAutocomplete
+      v-if="view === 'search'"
+      :folders="folderSuggestions"
+      :active-index="folderSuggestionIndex"
+      placement="below"
+      @select="emit('folderSelect', $event)"
+    />
   </div>
 </template>
 
 <style scoped>
 .spotlight-input {
+  position: relative;
+  z-index: 3;
   display: flex;
   align-items: center;
   gap: 12px;

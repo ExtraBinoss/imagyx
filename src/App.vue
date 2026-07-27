@@ -23,6 +23,7 @@ import { semanticRuntime } from "./services/semantic";
 import { registerSemanticQueryProvider } from "./services/semantic-provider";
 import { capitalize, useTagTypewriter } from "./useTagTypewriter";
 import { debounce, perfLog } from "./utils";
+import { folderQuerySuggestions, formatFolderQuery, parseFolderQuery } from "./utils/folder-query";
 import { useTranslate } from "./i18n";
 
 import AppSidebar from "./components/AppSidebar.vue";
@@ -46,6 +47,7 @@ const shortcut = useShortcutStore();
 const theme = useThemeStore();
 const { typedTag } = useTagTypewriter();
 const localQuery = ref("");
+const folderSuggestionIndex = ref(0);
 const previewImage = ref<ImageAsset | null>(null);
 const searchHeader = ref<{
   focusSearch: () => void;
@@ -68,12 +70,28 @@ const viewKey = computed(
   () => `${store.selectedFolderId ?? "all"}:${store.query}`,
 );
 
+const folderSuggestions = computed(() => folderQuerySuggestions(localQuery.value, store.folders));
+
 const searchLater = debounce(() => {
-  store.setQuery(localQuery.value.trim());
+  const parsed = parseFolderQuery(localQuery.value, store.folders);
+  store.selectedFolderId = parsed.folder?.id ?? null;
+  store.setQuery(parsed.query);
   void store.refreshImages();
 }, 180);
 
-watch(localQuery, searchLater);
+watch(localQuery, () => {
+  folderSuggestionIndex.value = 0;
+  searchLater();
+});
+
+function selectFolderSuggestion(folder: import('./types').FollowedFolder) {
+  localQuery.value = formatFolderQuery(folder);
+}
+
+function navigateFolderSuggestions(delta: number) {
+  const count = folderSuggestions.value.length;
+  if (count) folderSuggestionIndex.value = (folderSuggestionIndex.value + delta + count) % count;
+}
 
 async function addFolder() {
   const selected = await open({
@@ -233,6 +251,10 @@ onBeforeUnmount(() => {
         :model-backend="store.appInfo?.aiBackend ?? 'Automatic'"
         :searching="store.semanticSearching"
         :result-count="store.images.length"
+        :folder-suggestions="folderSuggestions"
+        :folder-suggestion-index="folderSuggestionIndex"
+        @folder-select="selectFolderSuggestion"
+        @folder-navigate="navigateFolderSuggestions"
       />
 
       <div v-if="store.error" class="error-banner" role="alert">

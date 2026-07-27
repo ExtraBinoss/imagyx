@@ -24,6 +24,7 @@ import SpotlightSettings from "@/components/Spotlight/SpotlightSettings.vue";
 import LocalAiStatus from "@/components/LocalAiStatus.vue";
 import Button from "@/components/ui/Button/Button.vue";
 import Popover from "@/components/ui/Popover/Popover.vue";
+import Tooltip from "@/components/ui/Tooltip/Tooltip.vue";
 import { useThemeStore } from "@/stores/theme";
 import { useShortcutStore } from "@/stores/shortcut";
 import { usePlatformStore } from "@/stores/platform";
@@ -70,8 +71,12 @@ function isFolderReindexing(folderId: string): boolean {
 }
 
 function isFolderIncomplete(folderId: string): boolean {
-  const coverage = props.indexCoverage.find((item) => item.folderId === folderId);
+  const coverage = coverageFor(folderId);
   return Boolean(coverage && coverage.embeddedCount < coverage.imageCount && !isFolderReindexing(folderId));
+}
+
+function coverageFor(folderId: string): FolderIndexCoverage | null {
+  return props.indexCoverage.find((item) => item.folderId === folderId) ?? null;
 }
 
 function openContextMenu(event: MouseEvent, folderId: string) {
@@ -170,17 +175,16 @@ onBeforeUnmount(() => {
           block
           @click="emit('select', folder.id)"
         >
-          <LoaderCircle
-            v-if="isFolderReindexing(folder.id)"
-            class="folder-index-spinner"
-            :size="17"
-          />
+          <LoaderCircle v-if="isFolderReindexing(folder.id)" class="folder-index-spinner" :size="17" />
+          <Tooltip
+            v-else-if="isFolderIncomplete(folder.id)"
+            :text="t('sidebar.index_coverage', { embedded: coverageFor(folder.id)?.embeddedCount, total: coverageFor(folder.id)?.imageCount })"
+          >
+            <TriangleAlert class="folder-index-warning" :size="17" />
+          </Tooltip>
           <Folder v-else :size="17" />
           <span class="folder-name">{{ folder.name }}</span>
           <span class="folder-count">{{ folder.imageCount }}</span>
-          <span v-if="isFolderIncomplete(folder.id)" class="folder-index-warning" :aria-label="t('sidebar.index_incomplete')">
-            <TriangleAlert :size="14" />
-          </span>
         </Button>
         <div class="folder-actions" @click.stop @pointerdown.stop>
           <Popover align="end" width="224px">
@@ -362,10 +366,6 @@ onBeforeUnmount(() => {
   animation: folder-index-spin 0.8s linear infinite;
 }
 .folder-index-warning {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  margin-left: var(--space-1);
   color: var(--warning-text);
 }
 .folder-actions {

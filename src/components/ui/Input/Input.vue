@@ -23,6 +23,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
   focus: [event: FocusEvent]
   blur: [event: FocusEvent]
+  keydown: [event: KeyboardEvent]
 }>()
 
 const input = ref<HTMLInputElement | null>(null)
@@ -52,6 +53,7 @@ defineExpose({ focus, select })
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
       @focus="emit('focus', $event)"
       @blur="emit('blur', $event)"
+      @keydown="emit('keydown', $event)"
     />
     <span v-if="$slots.trailing" class="ui-input__slot"><slot name="trailing" /></span>
   </label>

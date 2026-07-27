@@ -9,6 +9,7 @@ export default {
   'sidebar.reindex': 'إعادة الفهرسة',
   'sidebar.reindexing': 'جاري إعادة الفهرسة…',
   'sidebar.index_incomplete': 'الفهرسة غير مكتملة',
+  'sidebar.index_coverage': 'تمت فهرسة {embedded} من {total} صورة',
   'sidebar.reindex_incomplete': 'أعد فهرسة المجلد غير المكتمل',
   'sidebar.unfollow': 'إلغاء المتابعة',
 } as const

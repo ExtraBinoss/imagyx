@@ -9,6 +9,7 @@ export default {
   'sidebar.reindex': 'Переиндексировать',
   'sidebar.reindexing': 'Переиндексация…',
   'sidebar.index_incomplete': 'Индексация не завершена',
+  'sidebar.index_coverage': 'Проиндексировано {embedded} из {total} изображений',
   'sidebar.reindex_incomplete': 'Переиндексировать неполную папку',
   'sidebar.unfollow': 'Отписаться',
 } as const
