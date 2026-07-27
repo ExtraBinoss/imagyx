@@ -50,27 +50,10 @@ pub fn setup(app: &AppHandle, snapshot: LibrarySnapshot) -> tauri::Result<()> {
         false,
         None::<&str>,
     )?;
-    let add_folder = MenuItem::with_id(
-        app,
-        ID_ADD_FOLDER,
-        "Add folder…",
-        true,
-        None::<&str>,
-    )?;
-    let open_spotlight = MenuItem::with_id(
-        app,
-        ID_OPEN_SPOTLIGHT,
-        "Open Spotlight",
-        true,
-        None::<&str>,
-    )?;
-    let open_imagyx = MenuItem::with_id(
-        app,
-        ID_OPEN_IMAGYX,
-        "Open Imagyx",
-        true,
-        None::<&str>,
-    )?;
+    let add_folder = MenuItem::with_id(app, ID_ADD_FOLDER, "Add folder…", true, None::<&str>)?;
+    let open_spotlight =
+        MenuItem::with_id(app, ID_OPEN_SPOTLIGHT, "Open Spotlight", true, None::<&str>)?;
+    let open_imagyx = MenuItem::with_id(app, ID_OPEN_IMAGYX, "Open Imagyx", true, None::<&str>)?;
     let pause_item = MenuItem::with_id(
         app,
         ID_PAUSE_INDEXING,
@@ -141,7 +124,10 @@ pub fn update_index_progress(app: &AppHandle, progress: &IndexProgress) {
             app,
             progress.current,
             progress.total,
-            &format!("Reading metadata · {} of {}", progress.current, progress.total),
+            &format!(
+                "Reading metadata · {} of {}",
+                progress.current, progress.total
+            ),
         ),
         "queued" => set_indexing(
             app,
@@ -283,12 +269,7 @@ fn set_error(app: &AppHandle, folder_name: &str) {
     update_tray_visual(app, &controller, false, format!("Imagyx — {label}"));
 }
 
-fn update_tray_visual(
-    app: &AppHandle,
-    controller: &TrayController,
-    busy: bool,
-    tooltip: String,
-) {
+fn update_tray_visual(app: &AppHandle, controller: &TrayController, busy: bool, tooltip: String) {
     let was_busy = controller.busy.swap(busy, Ordering::AcqRel);
     if let Some(icon) = app.tray_by_id(TRAY_ID) {
         if was_busy != busy {

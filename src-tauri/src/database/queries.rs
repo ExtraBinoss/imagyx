@@ -17,9 +17,7 @@ impl Database {
         let placeholders = std::iter::repeat_n("?", ids.len())
             .collect::<Vec<_>>()
             .join(",");
-        let sql = format!(
-            "SELECT {IMAGE_COLUMNS} FROM images i WHERE i.id IN ({placeholders})"
-        );
+        let sql = format!("SELECT {IMAGE_COLUMNS} FROM images i WHERE i.id IN ({placeholders})");
         let values = ids.iter().cloned().map(Value::Text).collect::<Vec<_>>();
         let connection = self.connect()?;
         let mut statement = connection.prepare(&sql)?;

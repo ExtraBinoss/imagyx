@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    path::Path,
-    sync::Arc,
-    time::Instant,
-};
+use std::{collections::HashMap, path::Path, sync::Arc, time::Instant};
 
 use rayon::prelude::*;
 use serde::Serialize;
@@ -91,10 +86,8 @@ pub async fn prepare_ai_images(
                 .filter(|item| item.profile.cache_hit)
                 .count();
             let cache_misses = prepared.len().saturating_sub(cache_hits);
-            let cumulative_lock_wait_ms = prepared
-                .iter()
-                .map(|item| item.profile.lock_wait_ms)
-                .sum();
+            let cumulative_lock_wait_ms =
+                prepared.iter().map(|item| item.profile.lock_wait_ms).sum();
             let cumulative_cache_lookup_ms = prepared
                 .iter()
                 .map(|item| item.profile.cache_lookup_ms)
@@ -115,14 +108,9 @@ pub async fn prepare_ai_images(
                 .iter()
                 .map(|item| item.profile.thumbnail_encode_write_ms)
                 .sum();
-            let cumulative_ai_resize_ms = prepared
-                .iter()
-                .map(|item| item.profile.ai_resize_ms)
-                .sum();
-            let cumulative_image_total_ms = prepared
-                .iter()
-                .map(|item| item.profile.total_ms)
-                .sum();
+            let cumulative_ai_resize_ms =
+                prepared.iter().map(|item| item.profile.ai_resize_ms).sum();
+            let cumulative_image_total_ms = prepared.iter().map(|item| item.profile.total_ms).sum();
             let max_image_total_ms = prepared
                 .iter()
                 .map(|item| item.profile.total_ms)
@@ -191,12 +179,13 @@ pub fn save_embeddings(
         .database
         .save_embeddings(&rows)
         .map_err(|error| error.to_string())?;
-    state.vectors.write().upsert(rows.into_iter().filter_map(
-        |(image_id, vector)| {
+    state
+        .vectors
+        .write()
+        .upsert(rows.into_iter().filter_map(|(image_id, vector)| {
             let folder_id = folder_ids.get(&image_id)?.clone();
             Some((image_id, folder_id, vector))
-        },
-    ));
+        }));
     Ok(())
 }
 

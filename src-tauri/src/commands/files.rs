@@ -8,9 +8,7 @@ use std::{
 };
 
 use arboard::{Clipboard, ImageData};
-use image::{
-    codecs::jpeg::JpegEncoder, imageops, DynamicImage, ImageFormat, Rgba, RgbaImage,
-};
+use image::{DynamicImage, ImageFormat, Rgba, RgbaImage, codecs::jpeg::JpegEncoder, imageops};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -369,10 +367,7 @@ fn temporary_path(destination: &Path) -> PathBuf {
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("converted-image");
-    destination.with_file_name(format!(
-        ".{file_name}.imagyx-{}",
-        uuid::Uuid::new_v4()
-    ))
+    destination.with_file_name(format!(".{file_name}.imagyx-{}", uuid::Uuid::new_v4()))
 }
 
 fn normalized_extension(extension: &str) -> &str {
@@ -407,9 +402,7 @@ mod tests {
     use image::{DynamicImage, GenericImageView, Rgba, RgbaImage};
     use tempfile::tempdir;
 
-    use super::{
-        flatten_for_jpeg, prepare_icon, unique_destination, ImageConversionFormat,
-    };
+    use super::{ImageConversionFormat, flatten_for_jpeg, prepare_icon, unique_destination};
 
     #[test]
     fn destination_never_overwrites_an_existing_conversion() {
@@ -426,11 +419,8 @@ mod tests {
 
     #[test]
     fn icon_output_is_square_and_never_larger_than_256() {
-        let source = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
-            800,
-            320,
-            Rgba([20, 40, 60, 255]),
-        ));
+        let source =
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(800, 320, Rgba([20, 40, 60, 255])));
         let icon = prepare_icon(&source);
         let (width, height) = icon.dimensions();
         assert_eq!(width, height);
@@ -439,11 +429,7 @@ mod tests {
 
     #[test]
     fn jpeg_conversion_flattens_transparency_on_white() {
-        let source = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
-            1,
-            1,
-            Rgba([0, 0, 0, 0]),
-        ));
+        let source = DynamicImage::ImageRgba8(RgbaImage::from_pixel(1, 1, Rgba([0, 0, 0, 0])));
         let flattened = flatten_for_jpeg(&source);
         assert_eq!(flattened.get_pixel(0, 0).0, [255, 255, 255]);
     }

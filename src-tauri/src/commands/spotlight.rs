@@ -5,8 +5,7 @@ use std::{
 
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow,
-    WebviewWindowBuilder,
-    webview::PageLoadEvent,
+    WebviewWindowBuilder, webview::PageLoadEvent,
 };
 
 use crate::tracing;

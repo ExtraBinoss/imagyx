@@ -7,11 +7,7 @@ use std::{
     time::{Instant, UNIX_EPOCH},
 };
 
-use image::{
-    DynamicImage, ImageReader, RgbImage,
-    codecs::jpeg::JpegEncoder,
-    imageops::FilterType,
-};
+use image::{DynamicImage, ImageReader, RgbImage, codecs::jpeg::JpegEncoder, imageops::FilterType};
 use parking_lot::Mutex;
 use serde::Serialize;
 
@@ -240,21 +236,16 @@ impl ThumbnailCache {
         }
 
         let mut state = self.state.lock();
-        state.entries.insert(
-            cache_id.to_owned(),
-            CacheEntry {
-                path: path.clone(),
-            },
-        );
+        state
+            .entries
+            .insert(cache_id.to_owned(), CacheEntry { path: path.clone() });
         touch(&mut state.lru, cache_id);
         Some(path)
     }
 
     fn insert(&self, cache_id: String, path: PathBuf) {
         let mut state = self.state.lock();
-        state
-            .entries
-            .insert(cache_id.clone(), CacheEntry { path });
+        state.entries.insert(cache_id.clone(), CacheEntry { path });
         touch(&mut state.lru, &cache_id);
 
         while state.entries.len() > self.capacity {

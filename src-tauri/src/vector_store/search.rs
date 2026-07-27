@@ -8,12 +8,7 @@ use rayon::prelude::*;
 use super::{VectorMatch, VectorStore, maintenance::normalize_in_place};
 
 impl VectorStore {
-    pub fn top_k(
-        &self,
-        query: &[f32],
-        folder_id: Option<&str>,
-        limit: usize,
-    ) -> Vec<VectorMatch> {
+    pub fn top_k(&self, query: &[f32], folder_id: Option<&str>, limit: usize) -> Vec<VectorMatch> {
         if limit == 0 || query.len() != self.dimensions || self.dimensions == 0 {
             return Vec::new();
         }

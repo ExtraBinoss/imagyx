@@ -52,9 +52,7 @@ pub async fn get_index_coverage(
 }
 
 #[tauri::command]
-pub async fn get_runtime_stats(
-    state: State<'_, Arc<AppState>>,
-) -> Result<RuntimeStats, String> {
+pub async fn get_runtime_stats(state: State<'_, Arc<AppState>>) -> Result<RuntimeStats, String> {
     let state = Arc::clone(state.inner());
     tauri::async_runtime::spawn_blocking(move || {
         let _trace = tracing::span("runtime_stats.collect");
@@ -65,21 +63,14 @@ pub async fn get_runtime_stats(
 }
 
 #[tauri::command]
-pub fn update_runtime_stats(
-    stats: RuntimeStats,
-    app: AppHandle,
-    state: State<'_, Arc<AppState>>,
-) {
+pub fn update_runtime_stats(stats: RuntimeStats, app: AppHandle, state: State<'_, Arc<AppState>>) {
     *state.runtime_stats.write() = stats.clone();
     tray::update_runtime_stats(&app, &stats);
     let _ = app.emit("runtime-stats", stats);
 }
 
 #[tauri::command]
-pub fn update_model_progress(
-    progress: ModelDownloadProgress,
-    state: State<'_, Arc<AppState>>,
-) {
+pub fn update_model_progress(progress: ModelDownloadProgress, state: State<'_, Arc<AppState>>) {
     *state.model_progress.write() = progress;
 }
 

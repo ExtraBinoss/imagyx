@@ -39,7 +39,9 @@ pub fn search(
         .max(MIN_LEXICAL_CANDIDATES)
         .min(MAX_LEXICAL_CANDIDATES);
     let lexical = match fts_query(query) {
-        Some(query) => state.database.lexical_search(&query, folder_id, lexical_limit)?,
+        Some(query) => state
+            .database
+            .lexical_search(&query, folder_id, lexical_limit)?,
         None => Vec::new(),
     };
     let semantic = query_vector.map_or_else(Vec::new, |query_vector| {

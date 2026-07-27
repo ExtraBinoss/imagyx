@@ -46,6 +46,8 @@ impl SystemMonitor {
 
 impl std::fmt::Debug for SystemMonitor {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.debug_struct("SystemMonitor").finish_non_exhaustive()
+        formatter
+            .debug_struct("SystemMonitor")
+            .finish_non_exhaustive()
     }
 }

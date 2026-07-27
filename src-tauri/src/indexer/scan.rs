@@ -43,7 +43,14 @@ pub fn index_folder(
 
     if !changed.is_empty() {
         let total = changed.len();
-        progress::emit(app, folder, 0, total, "metadata", "Lecture des métadonnées…");
+        progress::emit(
+            app,
+            folder,
+            0,
+            total,
+            "metadata",
+            "Lecture des métadonnées…",
+        );
         let mut processed = 0;
         for batch in changed.chunks(METADATA_BATCH_SIZE) {
             let prepared = batch
@@ -89,7 +96,10 @@ pub fn index_folder(
             0,
             pending.len(),
             "queued",
-            &format!("{} images visibles · analyse WebGPU en attente", pending.len()),
+            &format!(
+                "{} images visibles · analyse WebGPU en attente",
+                pending.len()
+            ),
         );
     }
     Ok(())

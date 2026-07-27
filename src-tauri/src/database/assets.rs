@@ -13,9 +13,8 @@ impl Database {
         folder_id: &str,
     ) -> Result<HashMap<String, (i64, u64)>, AppError> {
         let connection = self.connect()?;
-        let mut statement = connection.prepare(
-            "SELECT path, modified_at, size_bytes FROM images WHERE folder_id = ?1",
-        )?;
+        let mut statement = connection
+            .prepare("SELECT path, modified_at, size_bytes FROM images WHERE folder_id = ?1")?;
         let rows = statement.query_map(params![folder_id], |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -114,8 +113,8 @@ impl Database {
              DELETE FROM current_scan_paths;",
         )?;
         {
-            let mut insert =
-                transaction.prepare("INSERT OR IGNORE INTO current_scan_paths(path) VALUES (?1)")?;
+            let mut insert = transaction
+                .prepare("INSERT OR IGNORE INTO current_scan_paths(path) VALUES (?1)")?;
             for path in current {
                 insert.execute(params![path])?;
             }

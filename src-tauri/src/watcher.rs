@@ -11,11 +11,7 @@ use std::{
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tauri::AppHandle;
 
-use crate::{
-    AppError, indexer,
-    models::FollowedFolder,
-    state::AppState,
-};
+use crate::{AppError, indexer, models::FollowedFolder, state::AppState};
 
 const DEBOUNCE_DELAY: Duration = Duration::from_millis(700);
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
@@ -50,9 +46,7 @@ impl FolderWatcher {
 
         let folder_watcher = Self { sender };
         for folder in initial_folders {
-            folder_watcher
-                .watch(folder)
-                .map_err(AppError::Watcher)?;
+            folder_watcher.watch(folder).map_err(AppError::Watcher)?;
         }
         Ok(folder_watcher)
     }

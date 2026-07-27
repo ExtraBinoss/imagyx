@@ -11,7 +11,10 @@ pub fn exact_name_bonus(asset: &ImageAsset, tokens: &[String]) -> f32 {
         return 0.0;
     }
     let name = asset.name.to_lowercase();
-    let matched = tokens.iter().filter(|token| name.contains(token.as_str())).count();
+    let matched = tokens
+        .iter()
+        .filter(|token| name.contains(token.as_str()))
+        .count();
     0.004 * matched as f32 / tokens.len() as f32
 }
 

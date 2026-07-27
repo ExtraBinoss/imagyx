@@ -13,9 +13,7 @@ use crate::{
 };
 
 #[tauri::command]
-pub fn list_folders(
-    state: State<'_, Arc<AppState>>,
-) -> Result<Vec<FollowedFolder>, String> {
+pub fn list_folders(state: State<'_, Arc<AppState>>) -> Result<Vec<FollowedFolder>, String> {
     state.database.folders().map_err(|error| error.to_string())
 }
 

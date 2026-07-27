@@ -26,6 +26,5 @@ pub(super) fn map_image(row: &rusqlite::Row<'_>) -> rusqlite::Result<ImageAsset>
     })
 }
 
-pub(super) const IMAGE_COLUMNS: &str =
-    "i.id, i.folder_id, i.path, i.name, i.extension, i.width, i.height, i.size_bytes, \
+pub(super) const IMAGE_COLUMNS: &str = "i.id, i.folder_id, i.path, i.name, i.extension, i.width, i.height, i.size_bytes, \
      i.modified_at, i.thumbnail_path";
