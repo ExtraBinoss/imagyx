@@ -30,6 +30,7 @@ export const imagyxApi = {
     invoke<void>('index_folder', { folderId, force }),
   pendingImages: (folderId?: string) =>
     invoke<ImageAsset[]>('pending_images', { folderId: folderId ?? null }),
+  prepareAiImages: (imageIds: string[]) => invoke<string[]>('prepare_ai_images', { imageIds }),
   saveEmbeddings: (embeddings: ImageEmbedding[]) =>
     invoke<void>('save_embeddings', { embeddings }),
   explainResults: (imageIds: string[], concepts: QueryConcept[]) =>
