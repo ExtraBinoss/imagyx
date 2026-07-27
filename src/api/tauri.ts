@@ -4,6 +4,8 @@ import type {
   FolderIndexCoverage,
   FollowedFolder,
   ImageAsset,
+  ImageConversionFormat,
+  ImageConversionResult,
   ImageEmbedding,
   ImageExplanation,
   ModelDownloadProgress,
@@ -60,6 +62,8 @@ export const imagyxApi = {
   openInFileManager: (path: string, reveal = false) =>
     invoke<void>('open_in_file_manager', { path, reveal }),
   copyImage: (path: string) => invoke<void>('copy_image_to_clipboard', { path }),
+  convertImage: (imageId: string, targetFormat: ImageConversionFormat) =>
+    invoke<ImageConversionResult>('convert_image', { imageId, targetFormat }),
   openInImagyx: (imageId: string) => invoke<void>('open_in_imagyx', { imageId }),
   openOnboarding: () => invoke<void>('open_onboarding'),
   setSpotlightExpanded: (expanded: boolean) =>
