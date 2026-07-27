@@ -48,6 +48,7 @@ export const imagyxApi = {
         query: request.query,
         folderId: request.folderId ?? null,
         limit: request.limit ?? 2_000,
+        offset: request.offset ?? 0,
         queryVector: request.queryVector ?? null,
       },
     }),
