@@ -1,0 +1,17 @@
+export default {
+  'sidebar.library': 'Библиотека',
+  'sidebar.watched_folders': 'Отслеживаемые папки',
+  'sidebar.no_watched_folders': 'Нет отслеживаемых папок',
+  'sidebar.all_images': 'Все изображения',
+  'sidebar.add_folder': 'Добавить папку',
+  'sidebar.folder_actions': 'Действия с папкой',
+  'sidebar.open': 'Открыть',
+  'sidebar.reindex': 'Переиндексировать',
+  'sidebar.reindexing': 'Переиндексация…',
+  'sidebar.index_incomplete': 'Индексация не завершена',
+  'sidebar.index_coverage': 'Проиндексировано {embedded} из {total} изображений',
+  'sidebar.reindex_incomplete': 'Переиндексировать неполную папку',
+  'sidebar.resume_indexing': 'Продолжить индексацию',
+  'sidebar.reindex_full': 'Переиндексировать полностью',
+  'sidebar.unfollow': 'Отписаться',
+} as const

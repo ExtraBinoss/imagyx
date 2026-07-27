@@ -1,0 +1,31 @@
+:root[data-window='spotlight'],
+:root[data-window='spotlight'] body,
+:root[data-window='spotlight'] #app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+:root[data-window='spotlight'] body {
+  user-select: none;
+}
+
+:root[data-window='spotlight'] input,
+:root[data-window='spotlight'] button {
+  user-select: text;
+}
+
+:root[data-window='spotlight'] .spotlight-loading-list {
+  opacity: 0;
+  visibility: hidden;
+  animation: spotlight-loading-reveal 0s linear 300ms forwards !important;
+}
+
+@keyframes spotlight-loading-reveal {
+  to {
+    opacity: 1;
+    visibility: visible;
+  }
+}
