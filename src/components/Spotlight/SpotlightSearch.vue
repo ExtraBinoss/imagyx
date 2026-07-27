@@ -262,6 +262,29 @@ function moveSelection(delta: number) {
 }
 
 function handleKeydown(event: KeyboardEvent) {
+  if (view.value === 'search' && (event.ctrlKey || event.metaKey) && selectedImage.value) {
+    const keyLower = (event.key || '').toLocaleLowerCase()
+    const code = event.code || ''
+    if (keyLower === 'c' || code === 'KeyC') {
+      event.preventDefault()
+      event.stopPropagation()
+      void copyImage(selectedImage.value)
+      return
+    }
+    if (keyLower === 'e' || code === 'KeyE') {
+      event.preventDefault()
+      event.stopPropagation()
+      void revealImage(selectedImage.value)
+      return
+    }
+    if (keyLower === 'i' || code === 'KeyI') {
+      event.preventDefault()
+      event.stopPropagation()
+      void openImage(selectedImage.value)
+      return
+    }
+  }
+
   if (event.key === 'Escape') {
     event.preventDefault()
     if (view.value === 'settings') void backToSearch()
@@ -269,28 +292,6 @@ function handleKeydown(event: KeyboardEvent) {
     return
   }
   if (view.value !== 'search') return
-
-  const target = event.target as HTMLElement | null
-  const isTyping = target?.matches('input, textarea')
-
-  if ((event.ctrlKey || event.metaKey) && selectedImage.value) {
-    const keyLower = event.key.toLocaleLowerCase()
-    if (keyLower === 'c') {
-      event.preventDefault()
-      void copyImage(selectedImage.value)
-      return
-    }
-    if (keyLower === 'e') {
-      event.preventDefault()
-      void revealImage(selectedImage.value)
-      return
-    }
-    if (keyLower === 'i') {
-      event.preventDefault()
-      void openImage(selectedImage.value)
-      return
-    }
-  }
 
   if (event.key === 'ArrowDown') { event.preventDefault(); moveSelection(1); return }
   if (event.key === 'ArrowUp') { event.preventDefault(); moveSelection(-1); return }
@@ -340,7 +341,7 @@ onMounted(async () => {
   theme.initialize()
   void platform.initialize()
   void shortcut.initialize()
-  window.addEventListener('keydown', handleKeydown)
+  window.addEventListener('keydown', handleKeydown, { capture: true })
   unlistenWillOpen = await listen('spotlight-will-open', prepareOpen)
   unlistenOpened = await listen('spotlight-opened', animateOpen)
   unlistenWillHide = await listen('spotlight-will-hide', prepareHide)
@@ -350,7 +351,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', handleKeydown)
+  window.removeEventListener('keydown', handleKeydown, { capture: true })
   unlistenWillOpen?.(); unlistenOpened?.(); unlistenWillHide?.(); unlistenFocus?.(); unlistenIndex?.(); unlistenRuntime?.()
   if (copyTimer) window.clearTimeout(copyTimer)
   if (collapseTimer) window.clearTimeout(collapseTimer)

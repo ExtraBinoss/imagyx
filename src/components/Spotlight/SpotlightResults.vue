@@ -5,6 +5,7 @@ import type { ImageAsset } from '../../types'
 import ThumbnailImage from '../ThumbnailImage.vue'
 import Button from '../ui/Button/Button.vue'
 import CopyButton from '../ui/Button/CopyButton.vue'
+import KbdChip from '../ui/KbdChip/KbdChip.vue'
 import SpotlightIndexProgress from './SpotlightIndexProgress.vue'
 import type { SpotlightIndexJob } from './types'
 
@@ -105,17 +106,17 @@ defineExpose({ scrollToIndex })
             class="spotlight-action-button"
             @copy="emit('copy', image)"
           >
-            <template #trailing><kbd class="shortcut-kbd">Ctrl+C</kbd></template>
+            <template #trailing><KbdChip shortcut="Ctrl+C" size="sm" /></template>
           </CopyButton>
           <Button class="spotlight-action-button" variant="secondary" size="sm" :aria-label="`Open in ${fileManagerName}`" @click.stop="emit('reveal', image)">
             <template #leading><FolderOpen :size="14" /></template>
             {{ fileManagerName }}
-            <template #trailing><kbd class="shortcut-kbd">Ctrl+E</kbd></template>
+            <template #trailing><KbdChip shortcut="Ctrl+E" size="sm" /></template>
           </Button>
           <Button class="spotlight-action-button" variant="primary" size="sm" aria-label="Open in Imagyx" @click.stop="emit('open', image)">
             <template #leading><ExternalLink :size="14" /></template>
             Imagyx
-            <template #trailing><kbd class="shortcut-kbd">Ctrl+I</kbd></template>
+            <template #trailing><KbdChip shortcut="Ctrl+I" size="sm" /></template>
           </Button>
         </span>
       </div>
@@ -209,40 +210,25 @@ defineExpose({ scrollToIndex })
 .spotlight-result--selected .spotlight-score { opacity: 0; transform: translateX(7px); pointer-events: none; }
 .spotlight-actions {
   position: absolute;
-  right: 10px;
+  right: 8px;
   top: 50%;
   z-index: 2;
   display: flex;
   align-items: center;
   gap: 5px;
-  padding-left: 42px;
+  padding-left: 28px;
   opacity: 0;
-  transform: translate(10px, -50%) scale(0.97);
+  transform: translateY(-50%);
   pointer-events: none;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary-soft) 93%, var(--surface)) 32%);
-  transition: opacity 150ms ease, transform 190ms cubic-bezier(0.16, 1, 0.3, 1);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary-soft) 85%, var(--surface)) 28%);
+  border-radius: var(--radius-md);
+  will-change: opacity;
+  transition: opacity 80ms ease;
 }
 .spotlight-result:hover .spotlight-actions,
 .spotlight-result--selected .spotlight-actions,
-.spotlight-result:focus-within .spotlight-actions { opacity: 1; transform: translate(0, -50%) scale(1); pointer-events: auto; }
+.spotlight-result:focus-within .spotlight-actions { opacity: 1; pointer-events: auto; }
 .spotlight-action-button { min-height: 31px; padding-inline: 9px; border-radius: 9px; font-size: 10px; }
-.shortcut-kbd {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 4px;
-  margin-left: 3px;
-  border-radius: 4px;
-  font-family: inherit;
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 1;
-  background: color-mix(in srgb, var(--surface) 80%, black 20%);
-  color: var(--text-muted);
-  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
-}
 .spotlight-loading-list { display: grid; gap: 8px; padding: 4px; }
 .spotlight-loading-list span {
   height: 70px;

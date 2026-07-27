@@ -55,12 +55,16 @@ defineExpose({ triggerCopied, copied })
     class="copy-button"
     @click="handleClick"
   >
-    <template v-if="!iconOnly" #leading>
+    <template v-if="!iconOnly && $slots.leading" #leading>
+      <slot name="leading" />
+    </template>
+    <template v-else-if="!iconOnly" #leading>
       <Transition name="copy-icon" mode="out-in">
         <Check v-if="copied" key="check" :size="14" class="copy-icon-check" />
         <Copy v-else key="copy" :size="14" />
       </Transition>
     </template>
+
     <template v-if="iconOnly">
       <Transition name="copy-icon" mode="out-in">
         <Check v-if="copied" key="check" :size="14" class="copy-icon-check" />
@@ -70,6 +74,10 @@ defineExpose({ triggerCopied, copied })
     <span v-else>
       {{ copied ? copiedText : idleText }}
     </span>
+
+    <template v-if="$slots.trailing" #trailing>
+      <slot name="trailing" />
+    </template>
   </Button>
 </template>
 
