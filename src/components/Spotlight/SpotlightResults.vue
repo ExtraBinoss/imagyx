@@ -43,7 +43,7 @@ const emit = defineEmits<{
   copy: [image: ImageAsset]
   reveal: [image: ImageAsset]
   addFolder: []
-  reindex: [folderIds: string[]]
+  resume: [folderIds: string[]]
 }>()
 
 const { t } = useTranslate()
@@ -164,7 +164,7 @@ defineExpose({ scrollToIndex })
         <SpotlightIndexCoverageNotice
           v-if="incompleteCoverage.length"
           :coverage="incompleteCoverage"
-          @reindex="emit('reindex', $event)"
+          @resume="emit('resume', $event)"
         />
         <Button
           v-if="showAddAction"

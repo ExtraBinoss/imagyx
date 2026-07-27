@@ -9,7 +9,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  reindex: [folderIds: string[]]
+  resume: [folderIds: string[]]
 }>()
 
 const { t } = useTranslate()
@@ -26,9 +26,9 @@ const { t } = useTranslate()
       class="index-coverage-notice__action"
       variant="secondary"
       size="sm"
-      @click="emit('reindex', coverage.map((item) => item.folderId))"
+      @click="emit('resume', coverage.map((item) => item.folderId))"
     >
-      {{ t('spotlight.reindex_incomplete') }}
+      {{ t('sidebar.resume_indexing') }}
     </Button>
   </aside>
 </template>

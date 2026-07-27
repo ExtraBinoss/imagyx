@@ -337,7 +337,7 @@ async function addFolder() {
   }
 }
 
-function reindexIncompleteFolders(folderIds: string[]) {
+async function resumeIncompleteFolders(folderIds: string[]) {
   resultCache.clear()
   for (const folderId of folderIds) {
     const folder = folders.value.find((item) => item.id === folderId)
@@ -347,10 +347,12 @@ function reindexIncompleteFolders(folderIds: string[]) {
       folderName: folder.name,
       current: 0,
       total: folder.imageCount,
-      stage: 'discovering',
-      message: t('spotlight.index_message.scanning'),
+      stage: 'queued',
+      message: t('spotlight.index_message.queued', { total: folder.imageCount }),
     })
-    void imagyxApi.indexFolder(folderId).catch((reason) => {
+    try {
+      await imagyxApi.indexFolder(folderId, false)
+    } catch (reason) {
       upsertJob({
         folderId: folder.id,
         folderName: folder.name,
@@ -359,8 +361,9 @@ function reindexIncompleteFolders(folderIds: string[]) {
         stage: 'error',
         message: String(reason),
       })
-    })
+    }
   }
+  void syncFolders()
 }
 
 function indexProgressMessage(progress: IndexProgress, stage: SpotlightIndexJob['stage']): string {
@@ -619,7 +622,7 @@ onBeforeUnmount(() => {
                   @copy="copyImage"
                   @reveal="revealImage"
                   @add-folder="addFolder"
-                  @reindex="reindexIncompleteFolders"
+                  @resume="resumeIncompleteFolders"
                 />
               </Transition>
             </div>
