@@ -8,12 +8,13 @@ use crate::{
     models::{AppInfo, ModelDownloadProgress, RuntimeStats},
     preferences::ShortcutPreferences,
     state::AppState,
+    tracing,
 };
 
 #[tauri::command]
 pub fn get_app_info(state: State<'_, Arc<AppState>>) -> AppInfo {
     let model_progress = state.model_progress.read().clone();
-    let runtime_stats = collect_runtime_stats(&state);
+    let runtime_stats = state.runtime_stats.read().clone();
     AppInfo {
         root_dir: state.paths.root.to_string_lossy().into_owned(),
         models_dir: state.paths.models.to_string_lossy().into_owned(),
@@ -32,8 +33,16 @@ pub fn get_platform() -> String {
 }
 
 #[tauri::command]
-pub fn get_runtime_stats(state: State<'_, Arc<AppState>>) -> RuntimeStats {
-    collect_runtime_stats(&state)
+pub async fn get_runtime_stats(
+    state: State<'_, Arc<AppState>>,
+) -> Result<RuntimeStats, String> {
+    let state = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        let _trace = tracing::span("runtime_stats.collect");
+        collect_runtime_stats(&state)
+    })
+    .await
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
