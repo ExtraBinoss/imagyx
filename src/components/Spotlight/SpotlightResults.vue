@@ -190,7 +190,7 @@ defineExpose({ scrollToIndex })
         >
           <div
             class="spotlight-result-list__items"
-            :style="{ transform: `translateY(${visibleResults[0]?.index * RESULT_ROW_HEIGHT ?? 0}px)` }"
+            :style="{ transform: `translateY(${(visibleResults[0]?.index ?? 0) * RESULT_ROW_HEIGHT}px)` }"
           >
         <div
           v-for="{ image, index } in visibleResults"

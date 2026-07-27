@@ -193,17 +193,6 @@ export const useLibraryStore = defineStore("library", {
               "text runtime prewarm",
               performance.now() - started,
             );
-            const indexPending = () => {
-              void semanticRuntime
-                .indexPending()
-                .then(() => this.scheduleRefresh())
-                .catch((error) => this.reportError(error));
-            };
-            if (idleWindow.requestIdleCallback) {
-              idleWindow.requestIdleCallback(indexPending, { timeout: 2500 });
-            } else {
-              window.setTimeout(indexPending, 1200);
-            }
           })
           .catch((error) => this.reportError(error));
       };
