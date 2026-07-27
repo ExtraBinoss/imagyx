@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use rayon::prelude::*;
 use tauri::State;
@@ -27,10 +27,14 @@ pub async fn prepare_ai_images(
         image_ids
             .par_iter()
             .map(|image_id| {
-                by_id
+                let image = by_id
                     .get(image_id)
-                    .map(|image| image.path.clone())
-                    .ok_or_else(|| format!("Image inconnue: {image_id}"))
+                    .ok_or_else(|| format!("Image inconnue: {image_id}"))?;
+                state
+                    .thumbnails
+                    .get_or_create(&image.id, Path::new(&image.path), image.modified_at)
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .map_err(|error| error.to_string())
             })
             .collect::<Result<Vec<String>, String>>()
     })
