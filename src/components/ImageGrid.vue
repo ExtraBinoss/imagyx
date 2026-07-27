@@ -15,18 +15,26 @@ const emit = defineEmits<{ explain: [imageId: string]; preview: [image: ImageAss
 const GAP = 16
 const MIN_CARD_WIDTH = 180
 const META_HEIGHT = 66
-const OVERSCAN_ROWS = 3
+const IDLE_OVERSCAN_ROWS = 4
+const AHEAD_OVERSCAN_ROWS = 7
+const BEHIND_OVERSCAN_ROWS = 2
 const viewport = ref<HTMLElement | null>(null)
 const viewportWidth = ref(0)
 const viewportHeight = ref(0)
-const scrollTop = ref(0)
+const windowStartRow = ref(0)
+const windowEndRow = ref(0)
+const viewportFirstRow = ref(0)
+const viewportLastRow = ref(0)
+const scrollDirection = ref<-1 | 0 | 1>(0)
 const activeImageId = ref<string | null>(null)
 const selectedImageId = ref<string | null>(null)
-const isScrolling = ref<boolean>(false)
-const copyBtnRefs = ref<Map<string, InstanceType<typeof CopyButton>>>(new Map())
+const isScrolling = ref(false)
+const copyBtnRefs = new Map<string, InstanceType<typeof CopyButton>>()
 let resizeObserver: ResizeObserver | null = null
 let scrollFrame = 0
 let scrollTimeout: number | undefined
+let latestScrollTop = 0
+let lastVirtualScrollTop = 0
 let lastLoadMore = 0
 
 const availableWidth = computed(() => Math.max(0, viewportWidth.value - 48))
@@ -34,17 +42,30 @@ const columns = computed(() => Math.max(1, Math.floor((availableWidth.value + GA
 const cardWidth = computed(() => availableWidth.value <= 0 ? MIN_CARD_WIDTH : (availableWidth.value - GAP * (columns.value - 1)) / columns.value)
 const rowStride = computed(() => cardWidth.value / 1.08 + META_HEIGHT + GAP)
 const totalRows = computed(() => Math.ceil(props.images.length / columns.value))
-const startRow = computed(() => Math.max(0, Math.floor(scrollTop.value / rowStride.value) - OVERSCAN_ROWS))
-const endRow = computed(() => Math.min(totalRows.value, Math.ceil((scrollTop.value + viewportHeight.value) / rowStride.value) + OVERSCAN_ROWS))
-const startIndex = computed(() => startRow.value * columns.value)
-const endIndex = computed(() => Math.min(props.images.length, endRow.value * columns.value))
-const visibleEntries = computed(() => props.images.slice(startIndex.value, endIndex.value).map((image, offset) => ({ image, index: startIndex.value + offset })))
+const startIndex = computed(() => windowStartRow.value * columns.value)
+const endIndex = computed(() => Math.min(props.images.length, windowEndRow.value * columns.value))
+const visibleEntries = computed(() => {
+  const firstVisible = viewportFirstRow.value
+  const lastVisible = viewportLastRow.value
+  const direction = scrollDirection.value
+  return props.images.slice(startIndex.value, endIndex.value).map((image, offset) => {
+    const index = startIndex.value + offset
+    const row = Math.floor(index / columns.value)
+    let priority = Math.abs(row - firstVisible)
+    if (row < firstVisible) {
+      priority = (firstVisible - row) * 8 + (direction >= 0 ? 64 : 16)
+    } else if (row >= lastVisible) {
+      priority = (row - lastVisible + 1) * 8 + (direction <= 0 ? 64 : 16)
+    }
+    return { image, index, priority }
+  })
+})
 const spacerHeight = computed(() => Math.max(0, totalRows.value * rowStride.value - GAP))
-const windowOffset = computed(() => startRow.value * rowStride.value)
+const windowOffset = computed(() => windowStartRow.value * rowStride.value)
 
 function registerCopyBtn(id: string, el: unknown) {
-  if (el) copyBtnRefs.value.set(id, el as InstanceType<typeof CopyButton>)
-  else copyBtnRefs.value.delete(id)
+  if (el) copyBtnRefs.set(id, el as InstanceType<typeof CopyButton>)
+  else copyBtnRefs.delete(id)
 }
 
 function activate(image: ImageAsset) {
@@ -74,8 +95,7 @@ function scrollToImage(id: string) {
 }
 
 async function copySelectedImage(image: ImageAsset) {
-  const btn = copyBtnRefs.value.get(image.id)
-  btn?.triggerCopied()
+  copyBtnRefs.get(image.id)?.triggerCopied()
   try {
     await imagyxApi.copyImage(image.path)
   } catch {
@@ -119,45 +139,71 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   }
 
   if (event.code !== 'Space' && event.key !== ' ') return
-
-  // Prevent browser window scrolling on Space
   event.preventDefault()
   event.stopPropagation()
 
   const imageId = selectedImageId.value ?? activeImageId.value
   if (!imageId) return
   const image = props.images.find((item) => item.id === imageId)
-  if (!image) return
-  emit('preview', image)
+  if (image) emit('preview', image)
+}
+
+function updateVirtualWindow(scrollTop: number, force = false) {
+  const stride = Math.max(1, rowStride.value)
+  const nextDirection = scrollTop > lastVirtualScrollTop + 1
+    ? 1
+    : scrollTop < lastVirtualScrollTop - 1
+      ? -1
+      : scrollDirection.value
+  const firstVisible = Math.max(0, Math.floor(scrollTop / stride))
+  const lastVisible = Math.min(totalRows.value, Math.ceil((scrollTop + viewportHeight.value) / stride))
+  const before = nextDirection < 0 ? AHEAD_OVERSCAN_ROWS : nextDirection > 0 ? BEHIND_OVERSCAN_ROWS : IDLE_OVERSCAN_ROWS
+  const after = nextDirection > 0 ? AHEAD_OVERSCAN_ROWS : nextDirection < 0 ? BEHIND_OVERSCAN_ROWS : IDLE_OVERSCAN_ROWS
+  const nextStart = Math.max(0, firstVisible - before)
+  const nextEnd = Math.min(totalRows.value, lastVisible + after)
+
+  if (force || scrollDirection.value !== nextDirection) scrollDirection.value = nextDirection
+  if (force || viewportFirstRow.value !== firstVisible) viewportFirstRow.value = firstVisible
+  if (force || viewportLastRow.value !== lastVisible) viewportLastRow.value = lastVisible
+  if (force || windowStartRow.value !== nextStart) windowStartRow.value = nextStart
+  if (force || windowEndRow.value !== nextEnd) windowEndRow.value = nextEnd
+  lastVirtualScrollTop = scrollTop
 }
 
 function measure() {
   if (!viewport.value) return
-  viewportWidth.value = viewport.value.clientWidth
-  viewportHeight.value = viewport.value.clientHeight
-  scrollTop.value = viewport.value.scrollTop
+  const nextWidth = viewport.value.clientWidth
+  const nextHeight = viewport.value.clientHeight
+  if (viewportWidth.value !== nextWidth) viewportWidth.value = nextWidth
+  if (viewportHeight.value !== nextHeight) viewportHeight.value = nextHeight
+  latestScrollTop = viewport.value.scrollTop
+  updateVirtualWindow(latestScrollTop, true)
 }
 
 function handleScroll() {
-  isScrolling.value = true
+  if (!isScrolling.value) isScrolling.value = true
   if (scrollTimeout) window.clearTimeout(scrollTimeout)
   scrollTimeout = window.setTimeout(() => {
     isScrolling.value = false
+    scrollDirection.value = 0
+    updateVirtualWindow(latestScrollTop, true)
   }, 120)
 
   if (scrollFrame) return
   scrollFrame = requestAnimationFrame(() => {
     scrollFrame = 0
-    if (viewport.value) {
-      scrollTop.value = viewport.value.scrollTop
-      const distanceToBottom = spacerHeight.value - (scrollTop.value + viewportHeight.value)
-      if (distanceToBottom < 600) {
-        const now = performance.now()
-        if (now - lastLoadMore > 300) {
-          lastLoadMore = now
-          perfLog('ImageGrid', 'LoadMore triggered', 0, { displayed: props.images.length })
-          emit('loadMore')
-        }
+    const element = viewport.value
+    if (!element) return
+
+    latestScrollTop = element.scrollTop
+    updateVirtualWindow(latestScrollTop)
+    const distanceToBottom = spacerHeight.value - (latestScrollTop + viewportHeight.value)
+    if (distanceToBottom < 600) {
+      const now = performance.now()
+      if (now - lastLoadMore > 300) {
+        lastLoadMore = now
+        perfLog('ImageGrid', 'LoadMore triggered', 0, { displayed: props.images.length })
+        emit('loadMore')
       }
     }
   })
@@ -180,18 +226,28 @@ onBeforeUnmount(() => {
 watch(() => props.viewKey, async () => {
   await nextTick()
   if (viewport.value) viewport.value.scrollTop = 0
-  scrollTop.value = 0
+  latestScrollTop = 0
+  lastVirtualScrollTop = 0
+  scrollDirection.value = 0
+  updateVirtualWindow(0, true)
   activeImageId.value = null
   selectedImageId.value = null
 })
 
+watch([columns, rowStride, totalRows], () => {
+  updateVirtualWindow(latestScrollTop, true)
+})
+
 watch(() => props.images.length, () => {
   const maximum = Math.max(0, spacerHeight.value - viewportHeight.value)
-  if (scrollTop.value > maximum && viewport.value) {
+  if (latestScrollTop > maximum && viewport.value) {
+    latestScrollTop = maximum
     viewport.value.scrollTop = maximum
-    scrollTop.value = maximum
+    updateVirtualWindow(maximum, true)
   }
-  if (selectedImageId.value && !props.images.some((image) => image.id === selectedImageId.value)) selectedImageId.value = null
+  if (selectedImageId.value && !props.images.some((image) => image.id === selectedImageId.value)) {
+    selectedImageId.value = null
+  }
 })
 </script>
 
@@ -205,7 +261,7 @@ watch(() => props.images.length, () => {
       <div
         class="virtual-grid-window"
         :class="{ 'is-scrolling': isScrolling }"
-        :style="{ transform: `translateY(${windowOffset}px)`, gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }"
+        :style="{ transform: `translate3d(0, ${windowOffset}px, 0)`, gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }"
       >
         <article
           v-for="entry in visibleEntries"
@@ -217,18 +273,16 @@ watch(() => props.images.length, () => {
           :aria-selected="selectedImageId === entry.image.id"
           :aria-posinset="entry.index + 1"
           :aria-setsize="images.length"
-          :style="{ animationDelay: `${(entry.index % columns) * 25}ms` }"
           @click="selectImage(entry.image)"
           @mouseenter="activate(entry.image)"
           @focusin="activate(entry.image)"
         >
           <div class="image-frame">
-            <ThumbnailImage :image="entry.image" />
+            <ThumbnailImage :image="entry.image" :priority="entry.priority" />
             <Badge v-if="entry.image.semanticScore" class="score-badge" variant="primary">
               {{ Math.round(entry.image.semanticScore * 100) }}%
             </Badge>
 
-            <!-- Card Hover Quick Actions -->
             <div class="card-hover-actions">
               <CopyButton
                 :ref="(el: unknown) => registerCopyBtn(entry.image.id, el)"
@@ -289,12 +343,16 @@ watch(() => props.images.length, () => {
 
 <style scoped>
 .virtual-grid-window {
-  will-change: transform;
+  contain: layout style;
+  transform-origin: top left;
+  will-change: auto;
 }
 .virtual-grid-window.is-scrolling {
   pointer-events: none;
+  will-change: transform;
 }
 .image-card {
+  contain: layout paint style;
   min-width: 0;
   padding: 3px;
   border: 2px solid transparent;
@@ -302,12 +360,20 @@ watch(() => props.images.length, () => {
   outline: none;
   background: transparent;
   cursor: default;
-  animation: grid-card-fade 220ms ease-out both;
   transition:
     border-color var(--transition-fast),
     background-color var(--transition-fast),
-    box-shadow var(--transition-fast),
-    transform var(--transition-fast);
+    box-shadow var(--transition-fast);
+}
+.virtual-grid-window.is-scrolling .image-card {
+  transition: none;
+}
+.virtual-grid-window.is-scrolling :deep(.thumbnail-loader > img) {
+  transform: none !important;
+  transition: none !important;
+}
+.virtual-grid-window.is-scrolling :deep(.thumbnail-placeholder::after) {
+  animation: none !important;
 }
 .image-card:hover { background: color-mix(in srgb, var(--surface-hover) 58%, transparent); }
 .image-card--selected {
@@ -346,6 +412,10 @@ watch(() => props.images.length, () => {
   backdrop-filter: blur(8px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
 }
+.virtual-grid-window.is-scrolling .card-action-btn {
+  backdrop-filter: none;
+  box-shadow: none !important;
+}
 
 .semantic-overlay {
   position: absolute;
@@ -382,7 +452,8 @@ watch(() => props.images.length, () => {
   gap: var(--space-2);
   padding-inline: var(--space-3);
 }
-.semantic-marquee--animated .semantic-marquee__track {
+.image-card:hover .semantic-marquee--animated .semantic-marquee__track,
+.image-card:focus-within .semantic-marquee--animated .semantic-marquee__track {
   animation: semantic-marquee 10s linear infinite;
 }
 .semantic-marquee:hover .semantic-marquee__track {
@@ -412,18 +483,7 @@ watch(() => props.images.length, () => {
   box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 40%, transparent);
 }
 @keyframes semantic-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-@keyframes grid-card-fade {
-  0% {
-    opacity: 0;
-    transform: translateX(-6px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
 @media (prefers-reduced-motion: reduce) {
-  .image-card { animation: none; }
-  .semantic-marquee__track { animation: none; }
+  .semantic-marquee__track { animation: none !important; }
 }
 </style>
