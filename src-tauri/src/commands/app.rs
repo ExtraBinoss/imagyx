@@ -8,7 +8,7 @@ use crate::{
     models::{AppInfo, ModelDownloadProgress, RuntimeStats},
     preferences::ShortcutPreferences,
     state::AppState,
-    tracing,
+    tracing, tray,
 };
 
 #[tauri::command]
@@ -20,6 +20,7 @@ pub fn get_app_info(state: State<'_, Arc<AppState>>, app: AppHandle) -> AppInfo 
         let _trace = tracing::span("runtime_stats.initial_collect");
         let stats = collect_runtime_stats(&background_state);
         *background_state.runtime_stats.write() = stats.clone();
+        tray::update_runtime_stats(&app, &stats);
         let _ = app.emit("runtime-stats", stats);
     });
     AppInfo {
@@ -59,6 +60,7 @@ pub fn update_runtime_stats(
     state: State<'_, Arc<AppState>>,
 ) {
     *state.runtime_stats.write() = stats.clone();
+    tray::update_runtime_stats(&app, &stats);
     let _ = app.emit("runtime-stats", stats);
 }
 
