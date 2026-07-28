@@ -8,6 +8,7 @@ use std::time::Instant;
 
 use rayon::prelude::*;
 
+#[cfg(debug_assertions)]
 use crate::tracing;
 
 use super::{VectorMatch, VectorStore, maintenance::normalize_in_place};
