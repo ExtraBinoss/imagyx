@@ -96,8 +96,19 @@ async function invokeSearchPage(
     offset: sessionRequest.offset ?? 0,
     diagnosticId,
   }
+  // Spotlight keeps the synthetic visual token as its cache/session identity,
+  // while carrying the resolved vector and native mode for deeper pages.
+  const paginationRequest: SearchRequest = {
+    ...request,
+    limit: normalizedRequest.limit,
+    offset: normalizedRequest.offset,
+    diagnosticId,
+    queryVector: normalizedRequest.queryVector,
+    mode: normalizedRequest.mode,
+    excludeImageId: normalizedRequest.excludeImageId,
+  }
   const paginationContext = trackAsInitialSearch
-    ? spotlightSearchPagination.beginInitialSearch(normalizedRequest)
+    ? spotlightSearchPagination.beginInitialSearch(paginationRequest)
     : null
   const startedAt = import.meta.env.DEV ? performance.now() : 0
 
@@ -105,6 +116,7 @@ async function invokeSearchPage(
     console.info(`[Imagyx][Search][${diagnosticId}] start`, {
       mode,
       query: normalizedRequest.query,
+      sessionQuery: request.query,
       folderId: normalizedRequest.folderId ?? null,
       limit: normalizedRequest.limit,
       offset: normalizedRequest.offset,
@@ -134,7 +146,7 @@ async function invokeSearchPage(
     if (paginationContext) {
       spotlightSearchPagination.completeInitialSearch(
         paginationContext,
-        normalizedRequest,
+        paginationRequest,
         normalizedPage,
         items,
       )
@@ -145,6 +157,7 @@ async function invokeSearchPage(
       perfLog('SearchIPC', `${mode} Rust round trip`, durationMs, {
         diagnosticId,
         query: normalizedRequest.query,
+        sessionQuery: request.query,
         offset: normalizedRequest.offset,
         results: items.length,
         total: normalizedPage.total,
@@ -167,6 +180,7 @@ async function invokeSearchPage(
       console.error(`[Imagyx][Search][${diagnosticId ?? 'unknown'}] failed after ${durationMs.toFixed(1)} ms`, {
         mode,
         query: normalizedRequest.query,
+        sessionQuery: request.query,
         offset: normalizedRequest.offset,
         error,
       })
