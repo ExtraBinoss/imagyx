@@ -52,11 +52,11 @@ pub fn search_page_with_diagnostics(
         let vector_lock_wait_ms = vector_lock_started_at.elapsed().as_secs_f64() * 1_000.0;
         let excluded_in_scope = exclude_image_id
             .is_some_and(|image_id| vectors.contains_in_scope(image_id, folder_id));
-        let total = vectors
-            .count(folder_id)
-            .saturating_sub(usize::from(excluded_in_scope));
+        let excluded_count = if excluded_in_scope { 1 } else { 0 };
+        let total = vectors.count(folder_id).saturating_sub(excluded_count);
+        let exclusion_overscan = if exclude_image_id.is_some() { 1 } else { 0 };
         let candidate_limit = window_end
-            .saturating_add(usize::from(exclude_image_id.is_some()))
+            .saturating_add(exclusion_overscan)
             .min(MAX_SEARCH_WINDOW);
 
         #[cfg(debug_assertions)]
