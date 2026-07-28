@@ -1,11 +1,15 @@
 use std::{path::PathBuf, sync::Arc};
 
+#[cfg(debug_assertions)]
+use std::time::Instant;
+
 use tauri::State;
 
 use crate::{
     indexer,
     models::{ImageAsset, SearchRequest},
     state::AppState,
+    tracing,
 };
 
 #[tauri::command(rename_all = "camelCase")]
@@ -42,21 +46,69 @@ pub async fn get_thumbnail(
     .map_err(|error| error.to_string())?
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn search_images(
     request: SearchRequest,
+    diagnostic_id: Option<String>,
     state: State<'_, Arc<AppState>>,
 ) -> Result<Vec<ImageAsset>, String> {
+    #[cfg(debug_assertions)]
+    let received_at = Instant::now();
+
     let state = Arc::clone(state.inner());
     tauri::async_runtime::spawn_blocking(move || {
-        indexer::search(
+        #[cfg(debug_assertions)]
+        let queue_wait_ms = received_at.elapsed().as_secs_f64() * 1_000.0;
+        #[cfg(debug_assertions)]
+        let execution_started_at = Instant::now();
+
+        let mode = if request.query.trim().is_empty() {
+            "browse"
+        } else if request.query_vector.is_some() {
+            "hybrid"
+        } else {
+            "lexical"
+        };
+        let limit = request.limit.unwrap_or(2_000).min(50_000);
+        let offset = request.offset.unwrap_or(0);
+
+        #[cfg(debug_assertions)]
+        tracing::event(
+            "search.command.start",
+            format!(
+                "id={} mode={mode} query={:?} folder_id={:?} limit={limit} offset={offset} vector_dimensions={} spawn_blocking_queue_ms={queue_wait_ms:.2}",
+                diagnostic_id.as_deref().unwrap_or("-"),
+                request.query,
+                request.folder_id,
+                request.query_vector.as_ref().map_or(0, Vec::len),
+            ),
+        );
+
+        let result = indexer::search_with_diagnostics(
             &state,
             &request.query,
             request.query_vector.as_deref(),
             request.folder_id.as_deref(),
-            request.limit.unwrap_or(2_000).min(50_000),
-            request.offset.unwrap_or(0),
-        )
+            limit,
+            offset,
+            diagnostic_id.as_deref(),
+        );
+
+        #[cfg(debug_assertions)]
+        tracing::event(
+            "search.command.complete",
+            format!(
+                "id={} mode={mode} query={:?} results={} success={} rust_execution_ms={:.2} command_total_ms={:.2}",
+                diagnostic_id.as_deref().unwrap_or("-"),
+                request.query,
+                result.as_ref().map_or(0, Vec::len),
+                result.is_ok(),
+                execution_started_at.elapsed().as_secs_f64() * 1_000.0,
+                received_at.elapsed().as_secs_f64() * 1_000.0,
+            ),
+        );
+
+        result
     })
     .await
     .map_err(|error| error.to_string())?
