@@ -414,8 +414,9 @@ defineExpose({ scrollToIndex })
         <Button
           class="spotlight-dock-button spotlight-dock-button--copy"
           :class="{ 'spotlight-dock-button--success': copiedImageId === selectedImage.id }"
-          :variant="copiedImageId === selectedImage.id ? 'primary' : 'secondary'"
-          size="sm"
+          :variant="copiedImageId === selectedImage.id ? 'primary' : 'ghost'"
+          size="md"
+          :depth="false"
           :loading="copyingImageId === selectedImage.id"
           :aria-label="t('copy_image')"
           @click="copySelected"
@@ -436,51 +437,81 @@ defineExpose({ scrollToIndex })
               role="menu"
               :aria-label="t('spotlight.actions.more')"
             >
-              <button
-                class="spotlight-action-popover__featured"
-                type="button"
-                role="menuitem"
+              <Button
+                class="spotlight-action-menu-button spotlight-action-menu-button--featured"
+                variant="ghost"
+                size="md"
+                :depth="false"
                 :disabled="findingSimilar"
+                role="menuitem"
                 @click="findSimilarSelected"
               >
-                <span class="spotlight-action-popover__preview">
-                  <ThumbnailImage
-                    class="spotlight-action-popover__preview-image"
-                    :image="selectedImage"
-                    :priority="0"
-                  />
-                  <span v-if="findingSimilar" class="spotlight-action-popover__preview-loading">
-                    <LoaderCircle class="spin" :size="15" />
+                <template #leading>
+                  <span class="spotlight-action-popover__preview">
+                    <ThumbnailImage
+                      class="spotlight-action-popover__preview-image"
+                      :image="selectedImage"
+                      :priority="0"
+                    />
+                    <span v-if="findingSimilar" class="spotlight-action-popover__preview-loading">
+                      <LoaderCircle class="spin" :size="15" />
+                    </span>
                   </span>
-                </span>
+                </template>
                 <span class="spotlight-action-popover__copy">
                   <strong>{{ t('search.visual.find_similar') }}</strong>
                   <small>{{ t('search.visual.find_similar_desc') }}</small>
                 </span>
-                <KbdChip shortcut="Ctrl+Shift+S" size="sm" />
-              </button>
-              <button type="button" role="menuitem" @click="convertSelected">
-                <span class="spotlight-action-popover__icon"><RefreshCw :size="16" /></span>
-                <strong>{{ t('spotlight.convert.action') }}</strong>
-                <KbdChip shortcut="Ctrl+Shift+C" size="sm" />
-              </button>
-              <button type="button" role="menuitem" @click="revealSelected">
-                <span class="spotlight-action-popover__icon"><FolderOpen :size="16" /></span>
-                <strong>{{ t('open_in_file_manager', { name: fileManagerName }) }}</strong>
-                <KbdChip shortcut="Ctrl+E" size="sm" />
-              </button>
-              <button type="button" role="menuitem" @click="openSelected">
-                <span class="spotlight-action-popover__icon"><ExternalLink :size="16" /></span>
-                <strong>{{ t('open_in_imagyx') }}</strong>
-                <KbdChip shortcut="Ctrl+I" size="sm" />
-              </button>
+                <template #trailing><KbdChip shortcut="Ctrl+Shift+S" size="sm" /></template>
+              </Button>
+
+              <Button
+                class="spotlight-action-menu-button"
+                variant="ghost"
+                size="md"
+                :depth="false"
+                role="menuitem"
+                @click="convertSelected"
+              >
+                <template #leading><RefreshCw :size="16" /></template>
+                {{ t('spotlight.convert.action') }}
+                <template #trailing><KbdChip shortcut="Ctrl+Shift+C" size="sm" /></template>
+              </Button>
+
+              <Button
+                class="spotlight-action-menu-button"
+                variant="ghost"
+                size="md"
+                :depth="false"
+                role="menuitem"
+                @click="revealSelected"
+              >
+                <template #leading><FolderOpen :size="16" /></template>
+                {{ t('open_in_file_manager', { name: fileManagerName }) }}
+                <template #trailing><KbdChip shortcut="Ctrl+E" size="sm" /></template>
+              </Button>
+
+              <Button
+                class="spotlight-action-menu-button"
+                variant="ghost"
+                size="md"
+                :depth="false"
+                role="menuitem"
+                @click="openSelected"
+              >
+                <template #leading><ExternalLink :size="16" /></template>
+                {{ t('open_in_imagyx') }}
+                <template #trailing><KbdChip shortcut="Ctrl+I" size="sm" /></template>
+              </Button>
             </div>
           </Transition>
 
           <Button
             class="spotlight-dock-button spotlight-dock-button--more"
-            variant="secondary"
-            size="sm"
+            variant="ghost"
+            size="md"
+            :depth="false"
+            :pressed="actionsOpen"
             :aria-label="t('spotlight.actions.more')"
             :aria-expanded="actionsOpen"
             aria-haspopup="menu"
@@ -507,7 +538,7 @@ defineExpose({ scrollToIndex })
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--border-strong) 78%, transparent) transparent;
 }
-.spotlight-results--with-actions { padding-bottom: 76px; }
+.spotlight-results--with-actions { padding-bottom: 58px; }
 .spotlight-library-loading {
   display: grid;
   place-items: center;
@@ -629,18 +660,13 @@ defineExpose({ scrollToIndex })
   bottom: 0;
   left: 0;
   z-index: 6;
-  padding: 24px 12px 9px;
+  padding: 7px 10px 8px;
   pointer-events: none;
-  border-top: 1px solid color-mix(in srgb, var(--border-strong) 42%, transparent);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--surface-elevated) 18%, transparent) 0%,
-    color-mix(in srgb, var(--surface-elevated) 66%, transparent) 38%,
-    color-mix(in srgb, var(--surface-elevated) 88%, transparent) 100%
-  );
-  box-shadow: 0 -24px 38px -34px rgb(2 6 23 / 0.72), inset 0 1px rgb(255 255 255 / 0.06);
-  backdrop-filter: blur(24px) saturate(1.14);
-  -webkit-backdrop-filter: blur(24px) saturate(1.14);
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 34%, transparent);
+  background: color-mix(in srgb, var(--surface-elevated) 82%, transparent);
+  box-shadow: 0 -8px 22px -17px rgb(2 6 23 / 0.42), inset 0 1px rgb(255 255 255 / 0.055);
+  backdrop-filter: blur(18px) saturate(1.1);
+  -webkit-backdrop-filter: blur(18px) saturate(1.1);
 }
 .spotlight-action-dock__bar {
   display: flex;
@@ -648,30 +674,14 @@ defineExpose({ scrollToIndex })
   justify-content: flex-end;
   gap: 2px;
   width: 100%;
-  min-height: 38px;
+  min-height: 36px;
   pointer-events: auto;
 }
 .spotlight-dock-button {
-  min-height: 36px;
-  padding-inline: 10px;
-  border-color: transparent !important;
-  border-radius: 9px;
-  background: transparent !important;
-  box-shadow: none !important;
+  flex: 0 0 auto;
   font-size: 10px;
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
 }
-.spotlight-dock-button:hover,
-.spotlight-dock-button:focus-visible {
-  border-color: transparent !important;
-  background: color-mix(in srgb, var(--surface-hover) 58%, transparent) !important;
-  box-shadow: none !important;
-}
-.spotlight-dock-button--success {
-  background: color-mix(in srgb, var(--primary-soft) 72%, transparent) !important;
-  animation: action-success 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
+.spotlight-dock-button--success { animation: action-success 280ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 .spotlight-action-hub { position: relative; display: flex; }
 .spotlight-action-popover {
   position: absolute;
@@ -687,33 +697,23 @@ defineExpose({ scrollToIndex })
   backdrop-filter: blur(28px) saturate(1.18);
   transform-origin: calc(100% - 34px) 100%;
 }
-.spotlight-action-popover button {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
+.spotlight-action-menu-button {
   width: 100%;
   min-height: 43px;
-  padding: 6px 8px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--text);
+  justify-content: flex-start;
+  padding-inline: 8px;
   text-align: left;
-  cursor: default;
-  transition: background-color 120ms ease, transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-.spotlight-action-popover button:hover,
-.spotlight-action-popover button:focus-visible {
-  outline: none;
-  background: color-mix(in srgb, var(--primary-soft) 68%, var(--surface));
-  transform: translate3d(2px, 0, 0);
+.spotlight-action-menu-button + .spotlight-action-menu-button { margin-top: 2px; }
+.spotlight-action-menu-button--featured { min-height: 48px; margin-bottom: 4px; }
+.spotlight-action-menu-button :deep(.ui-button__content) {
+  flex: 1;
+  justify-content: flex-start;
+  min-width: 0;
+  text-align: left;
 }
-.spotlight-action-popover button:disabled { opacity: 0.66; pointer-events: none; }
-.spotlight-action-popover__featured { margin-bottom: 4px; }
-.spotlight-action-popover button > strong,
-.spotlight-action-popover__copy { min-width: 0; }
-.spotlight-action-popover button > strong,
+.spotlight-action-menu-button :deep(.ui-button__icon:last-child) { margin-left: auto; }
+.spotlight-action-popover__copy { display: block; min-width: 0; }
 .spotlight-action-popover__copy strong,
 .spotlight-action-popover__copy small {
   display: block;
@@ -721,10 +721,8 @@ defineExpose({ scrollToIndex })
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.spotlight-action-popover button > strong,
 .spotlight-action-popover__copy strong { font-size: 11px; font-weight: 650; }
 .spotlight-action-popover__copy small { margin-top: 2px; color: var(--text-muted); font-size: 9px; }
-.spotlight-action-popover__icon,
 .spotlight-action-popover__preview {
   position: relative;
   display: grid;
@@ -732,9 +730,9 @@ defineExpose({ scrollToIndex })
   width: 34px;
   height: 34px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  border: 1px solid var(--border);
   border-radius: 9px;
-  background: color-mix(in srgb, var(--primary-soft) 48%, var(--surface));
+  background: var(--surface-hover);
   color: var(--primary-text);
 }
 .spotlight-action-popover__preview-image,
