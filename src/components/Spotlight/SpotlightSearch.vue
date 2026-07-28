@@ -19,9 +19,11 @@ import SpotlightSettings from './SpotlightSettings.vue'
 import type { SpotlightIndexJob, SpotlightView } from './types'
 import { useSpotlightResultActions } from './useSpotlightResultActions'
 import { useTranslate } from '../../i18n'
+import { spotlightSearchTiming } from '../../config/spotlight-search'
 
 const CACHE_TTL_MS = 2_000
-const SEARCH_DEBOUNCE_MS = 140
+const SEARCH_DEBOUNCE_MS = spotlightSearchTiming.lexicalDebounceMs
+const SEMANTIC_DEBOUNCE_MS = spotlightSearchTiming.semanticDebounceMs
 
 interface CachedResults {
   images: ImageAsset[]
@@ -125,6 +127,11 @@ const showAddAction = computed(() => {
 
 const searchLater = debounce(() => { void runSearch() }, SEARCH_DEBOUNCE_MS)
 
+function waitForDelay(delayMs: number): Promise<void> {
+  if (delayMs <= 0) return Promise.resolve()
+  return new Promise((resolve) => window.setTimeout(resolve, delayMs))
+}
+
 function nextSearchDiagnosticId(): string | undefined {
   if (!import.meta.env.DEV) return undefined
   searchDiagnosticSequence += 1
@@ -183,7 +190,7 @@ watch(searchQuery, (value) => {
     return
   }
 
-  lastSearchInputAt = import.meta.env.DEV ? performance.now() : 0
+  lastSearchInputAt = performance.now()
   pendingSearchDiagnosticId = nextSearchDiagnosticId()
   searching.value = true
   if (import.meta.env.DEV && pendingSearchDiagnosticId) {
@@ -192,7 +199,8 @@ watch(searchQuery, (value) => {
       rawQuery: value,
       query: parsed.query,
       folderId: parsed.folder?.id ?? null,
-      debounceMs: SEARCH_DEBOUNCE_MS,
+      lexicalDebounceMs: SEARCH_DEBOUNCE_MS,
+      semanticDebounceMs: SEMANTIC_DEBOUNCE_MS,
       cacheTtlMs: CACHE_TTL_MS,
     })
   }
@@ -296,14 +304,14 @@ async function backToSearch() {
   if (!searchQuery.value.trim() && hasFolders.value && !hasActiveJobs.value) await closePanel(++morphSequence)
   else await openPanel(++morphSequence)
 }
-
 async function runSearch() {
   const sequence = ++searchSequence
   const diagnosticId = pendingSearchDiagnosticId ?? nextSearchDiagnosticId()
   pendingSearchDiagnosticId = undefined
-  const startedAt = import.meta.env.DEV ? performance.now() : 0
+  const runStartedAt = performance.now()
+  const startedAt = import.meta.env.DEV ? runStartedAt : 0
   const inputStartedAt = lastSearchInputAt
-  const inputToRunMs = import.meta.env.DEV && inputStartedAt > 0 ? startedAt - inputStartedAt : 0
+  const inputToRunMs = inputStartedAt > 0 ? runStartedAt - inputStartedAt : 0
   const parsed = parsedFolderQuery.value
   const text = parsed.query
   const folderId = parsed.folder?.id
@@ -317,6 +325,7 @@ async function runSearch() {
       query: text,
       folderId: folderId ?? null,
       configuredDebounceMs: SEARCH_DEBOUNCE_MS,
+      configuredSemanticDebounceMs: SEMANTIC_DEBOUNCE_MS,
     })
     console.info(`[Imagyx][SpotlightSearch][${diagnosticId ?? '-'}] run`, {
       sequence,
@@ -326,6 +335,7 @@ async function runSearch() {
       folderId: folderId ?? null,
       inputToRunMs: Number(inputToRunMs.toFixed(2)),
       configuredDebounceMs: SEARCH_DEBOUNCE_MS,
+      configuredSemanticDebounceMs: SEMANTIC_DEBOUNCE_MS,
     })
   }
 
@@ -409,9 +419,6 @@ async function runSearch() {
     return
   }
 
-  const embeddingPromise = text.length >= 2
-    ? semanticRuntime.embedQuery(text)
-    : Promise.resolve(undefined)
   void lexicalPromise.then((images) => {
     const lexicalMs = import.meta.env.DEV ? performance.now() - lexicalStartedAt : 0
     if (import.meta.env.DEV) {
@@ -455,8 +462,31 @@ async function runSearch() {
   })
 
   try {
+    const shouldEmbed = text.length >= 2
+    let semanticWaitMs = 0
+    if (shouldEmbed) {
+      const semanticWaitStartedAt = performance.now()
+      const elapsedSinceInputMs = inputStartedAt > 0
+        ? semanticWaitStartedAt - inputStartedAt
+        : inputToRunMs
+      const remainingSemanticDelayMs = Math.max(0, SEMANTIC_DEBOUNCE_MS - elapsedSinceInputMs)
+      if (remainingSemanticDelayMs > 0) await waitForDelay(remainingSemanticDelayMs)
+      semanticWaitMs = performance.now() - semanticWaitStartedAt
+      if (import.meta.env.DEV) {
+        perfLog('Spotlight', 'semantic debounce wait', semanticWaitMs, {
+          diagnosticId,
+          query: text,
+          folderId: folderId ?? null,
+          configuredSemanticDebounceMs: SEMANTIC_DEBOUNCE_MS,
+          elapsedSinceInputMs,
+          remainingSemanticDelayMs,
+        })
+      }
+    }
+    if (!matchesActiveSearch(sequence, text, folderId, diagnosticId)) return
+
     const embeddingStartedAt = import.meta.env.DEV ? performance.now() : 0
-    const embedded = await embeddingPromise
+    const embedded = shouldEmbed ? await semanticRuntime.embedQuery(text) : undefined
     const embeddingMs = import.meta.env.DEV ? performance.now() - embeddingStartedAt : 0
     if (import.meta.env.DEV) {
       perfLog('Spotlight', 'semantic embedding', embeddingMs, {
@@ -491,6 +521,7 @@ async function runSearch() {
         query: text,
         folderId: folderId ?? null,
         inputToRunMs,
+        semanticWaitMs,
         embeddingMs,
         hybridRustIpcMs: hybridMs,
         results: images.length,
@@ -499,7 +530,9 @@ async function runSearch() {
         query: text,
         folderId: folderId ?? null,
         configuredDebounceMs: SEARCH_DEBOUNCE_MS,
+        configuredSemanticDebounceMs: SEMANTIC_DEBOUNCE_MS,
         inputToRunMs: Number(inputToRunMs.toFixed(2)),
+        semanticWaitMs: Number(semanticWaitMs.toFixed(2)),
         embeddingMs: Number(embeddingMs.toFixed(2)),
         hybridRustIpcMs: Number(hybridMs.toFixed(2)),
         runSearchMs: Number(totalMs.toFixed(2)),
@@ -588,6 +621,7 @@ async function resumeIncompleteFolders(folderIds: string[]) {
     upsertJob({
       folderId: folder.id,
       folderName: folder.name,
+
       current: 0,
       total: folder.imageCount,
       stage: 'queued',
@@ -761,11 +795,12 @@ onMounted(async () => {
   void syncFolders()
   if (import.meta.env.DEV) {
     console.info('[Imagyx][SpotlightSearch] development diagnostics enabled', {
-      debounceMs: SEARCH_DEBOUNCE_MS,
+      lexicalDebounceMs: SEARCH_DEBOUNCE_MS,
+      semanticDebounceMs: SEMANTIC_DEBOUNCE_MS,
       cacheTtlMs: CACHE_TTL_MS,
       targetFirstResultMs: 100,
       targetFinalResultMs: 200,
-      note: 'Le debounce est inclus dans input-to-paint et constitue actuellement un plancher de latence.',
+      note: 'Le lexical part rapidement; le sémantique attend une courte période de calme et vérifie la requête active avant l’embedding.',
     })
   }
   window.addEventListener('keydown', handleKeydown, { capture: true })
