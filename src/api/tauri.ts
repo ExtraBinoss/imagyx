@@ -33,6 +33,13 @@ function nextSearchDiagnosticId(mode: SearchMode): string | undefined {
   return `${surface}-${mode}-${Date.now().toString(36)}-${searchDiagnosticSequence}`
 }
 
+function deferSearchResultLog(callback: () => void): void {
+  if (!import.meta.env.DEV) return
+  window.requestAnimationFrame(() => {
+    window.setTimeout(callback, 0)
+  })
+}
+
 function logSearchResults(
   diagnosticId: string,
   mode: SearchMode,
@@ -100,7 +107,9 @@ async function searchImages(request: SearchRequest): Promise<ImageAsset[]> {
       results: results.length,
       queryVectorDimensions: request.queryVector?.length ?? 0,
     })
-    if (diagnosticId) logSearchResults(diagnosticId, mode, request, results, durationMs)
+    if (diagnosticId) {
+      deferSearchResultLog(() => logSearchResults(diagnosticId, mode, request, results, durationMs))
+    }
     return results
   } catch (error) {
     const durationMs = performance.now() - startedAt
