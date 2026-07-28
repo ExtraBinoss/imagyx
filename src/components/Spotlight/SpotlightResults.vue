@@ -39,10 +39,12 @@ const props = defineProps<{
   incompleteCoverage: FolderIndexCoverage[]
   jobs: SpotlightIndexJob[]
   fileManagerName: string
+  performanceMode: boolean
 }>()
 
 const emit = defineEmits<{
   select: [index: number]
+  scrollState: [scrolling: boolean]
   open: [image: ImageAsset]
   copy: [image: ImageAsset]
   reveal: [image: ImageAsset]
@@ -129,9 +131,15 @@ function scheduleScrollState() {
 }
 
 function handleScroll() {
-  isScrolling.value = true
+  if (!isScrolling.value) {
+    isScrolling.value = true
+    emit('scrollState', true)
+  }
   if (scrollEndTimer) window.clearTimeout(scrollEndTimer)
-  scrollEndTimer = window.setTimeout(() => { isScrolling.value = false }, 80)
+  scrollEndTimer = window.setTimeout(() => {
+    isScrolling.value = false
+    emit('scrollState', false)
+  }, 120)
   scheduleScrollState()
 }
 
@@ -275,6 +283,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (scrollFrame) window.cancelAnimationFrame(scrollFrame)
   if (scrollEndTimer) window.clearTimeout(scrollEndTimer)
+  if (isScrolling.value) emit('scrollState', false)
   resizeObserver?.disconnect()
   window.removeEventListener('keydown', handleWindowKeydown, { capture: true })
   document.removeEventListener('pointerdown', handleDocumentPointerDown, { capture: true })
@@ -284,7 +293,10 @@ defineExpose({ scrollToIndex })
 </script>
 
 <template>
-  <div class="spotlight-results-shell">
+  <div
+    class="spotlight-results-shell"
+    :class="{ 'spotlight-results-shell--scrolling': performanceMode }"
+  >
     <SpotlightConverter
       v-if="converterSource"
       ref="converterView"
@@ -388,7 +400,11 @@ defineExpose({ scrollToIndex })
               @dblclick="emit('open', image)"
             >
               <span class="spotlight-thumb">
-                <ThumbnailImage class="spotlight-thumbnail-image" :image="image" />
+                <ThumbnailImage
+                  class="spotlight-thumbnail-image"
+                  :image="image"
+                  :priority="isScrolling ? 3 : index === selectedIndex ? 0 : 1"
+                />
               </span>
               <span class="spotlight-copy">
                 <strong>{{ image.name }}</strong>
@@ -547,6 +563,13 @@ defineExpose({ scrollToIndex })
 
 <style scoped>
 .spotlight-results-shell { position: relative; height: 100%; min-height: 0; overflow: hidden; }
+.spotlight-results-shell--scrolling .spotlight-action-dock,
+.spotlight-results-shell--scrolling .spotlight-action-popover {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.spotlight-results-shell--scrolling .spotlight-result,
+.spotlight-results-shell--scrolling .spotlight-thumb { transition: none; }
 .spotlight-results {
   height: 100%;
   overflow-y: auto;

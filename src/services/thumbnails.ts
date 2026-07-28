@@ -5,7 +5,9 @@ import { perfSample } from '../utils'
 const HARDWARE_CONCURRENCY = typeof navigator === 'undefined'
   ? 4
   : navigator.hardwareConcurrency || 4
-const MAX_CONCURRENT_REQUESTS = Math.max(2, HARDWARE_CONCURRENCY)
+// Generating thumbnails competes with the webview's paint thread. More than
+// four simultaneous native jobs makes fast virtual scrolling visibly stutter.
+const MAX_CONCURRENT_REQUESTS = Math.min(4, Math.max(2, HARDWARE_CONCURRENCY))
 const MAX_QUEUED_REQUESTS = MAX_CONCURRENT_REQUESTS * 8
 const MEMORY_CACHE_MAX_ITEMS = 64
 

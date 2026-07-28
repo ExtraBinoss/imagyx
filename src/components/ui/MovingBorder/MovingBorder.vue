@@ -6,11 +6,13 @@ const props = withDefaults(
     borderRadius?: string
     duration?: number
     active?: boolean
+    paused?: boolean
   }>(),
   {
     borderRadius: '20px',
     duration: 4200,
     active: true,
+    paused: false,
   },
 )
 
@@ -23,7 +25,10 @@ const styleVariables = computed(() => ({
 <template>
   <div
     class="moving-border"
-    :class="{ 'moving-border--active': active }"
+    :class="{
+      'moving-border--active': active,
+      'moving-border--paused': paused,
+    }"
     :style="styleVariables"
   >
     <svg
@@ -124,6 +129,15 @@ const styleVariables = computed(() => ({
   opacity: 0;
   pointer-events: none;
 }
+
+.moving-border--paused .moving-border__aura,
+.moving-border--paused .moving-border__beam,
+.moving-border--paused .moving-border__spark {
+  animation-play-state: paused;
+  will-change: auto;
+}
+
+.moving-border--paused .moving-border__aura { opacity: 0; }
 
 @keyframes moving-border-travel {
   to { stroke-dashoffset: -100; }

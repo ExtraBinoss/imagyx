@@ -53,6 +53,7 @@ const resultsOpen = ref(false)
 const shellMerged = ref(false)
 const dialogOpen = ref(false)
 const previewImage = ref<ImageAsset | null>(null)
+const resultsScrolling = ref(false)
 const jobs = ref<SpotlightIndexJob[]>([])
 const inputView = ref<InstanceType<typeof SpotlightInput> | null>(null)
 const resultsView = ref<InstanceType<typeof SpotlightResults> | null>(null)
@@ -708,7 +709,15 @@ function moveSelection(delta: number) {
 }
 
 function handleKeydown(event: KeyboardEvent) {
-  if (previewImage.value) return
+  const isSpace = event.code === 'Space' || event.key === ' '
+  if (previewImage.value) {
+    if (isSpace) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      previewImage.value = null
+    }
+    return
+  }
   if (view.value === 'search' && (event.ctrlKey || event.metaKey) && selectedImage.value) {
     const key = event.key.toLocaleLowerCase()
     if (key === 'c' || event.code === 'KeyC') {
@@ -737,13 +746,14 @@ function handleKeydown(event: KeyboardEvent) {
     void openImage(selectedImage.value)
     return
   }
-  if ((event.code === 'Space' || event.key === ' ') && selectedImage.value) {
+  if (isSpace && selectedImage.value) {
     event.preventDefault()
     previewImage.value = selectedImage.value
   }
 }
 
 function prepareOpen() {
+  resultsScrolling.value = false
   visible.value = false
   view.value = 'search'
   searchQuery.value = ''
@@ -768,6 +778,7 @@ function animateOpen() {
 }
 
 function prepareHide() {
+  resultsScrolling.value = false
   previewImage.value = null
   visible.value = false
   searchQuery.value = ''
@@ -851,7 +862,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="spotlight-root">
+  <main class="spotlight-root" :class="{ 'spotlight-root--scrolling': resultsScrolling }">
     <section
       class="spotlight-stage"
       :class="{ 'spotlight-stage--visible': visible }"
@@ -862,6 +873,7 @@ onBeforeUnmount(() => {
         border-radius="22px"
         :duration="searching || hasActiveJobs ? 2600 : 4400"
         :active="visible"
+        :paused="resultsScrolling"
       >
         <div
           class="spotlight-surface"
@@ -917,7 +929,9 @@ onBeforeUnmount(() => {
                   :incomplete-coverage="incompleteCoverage"
                   :jobs="jobs"
                   :file-manager-name="platform.fileManagerName"
+                  :performance-mode="resultsScrolling"
                   @select="selectedIndex = $event"
+                  @scroll-state="resultsScrolling = $event"
                   @open="openImage"
                   @copy="copyImage"
                   @reveal="revealImage"
@@ -971,6 +985,11 @@ onBeforeUnmount(() => {
 .spotlight-surface--expanded {
   box-shadow: inset 0 1px rgb(255 255 255 / 0.1), 0 18px 38px -28px rgb(15 23 42 / 0.42);
 }
+.spotlight-root--scrolling .spotlight-surface {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.spotlight-root--scrolling .spotlight-surface { transition: none; }
 .spotlight-panel {
   height: var(--spotlight-panel-height);
   min-height: 0;
