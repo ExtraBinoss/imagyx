@@ -59,6 +59,26 @@ async function inferPixels(pixels: ArrayBuffer): Promise<number[]> {
   return vector
 }
 
+function rgbPreviewUrl(pixels: ArrayBuffer): string {
+  if (pixels.byteLength !== IMAGE_BYTES) return ''
+  const rgb = new Uint8Array(pixels)
+  const rgba = new Uint8ClampedArray(IMAGE_EDGE * IMAGE_EDGE * 4)
+  for (let source = 0, target = 0; source < rgb.length; source += 3) {
+    rgba[target] = rgb[source] ?? 0
+    rgba[target + 1] = rgb[source + 1] ?? 0
+    rgba[target + 2] = rgb[source + 2] ?? 0
+    rgba[target + 3] = 255
+    target += 4
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = IMAGE_EDGE
+  canvas.height = IMAGE_EDGE
+  const context = canvas.getContext('2d')
+  if (!context) return ''
+  context.putImageData(new ImageData(rgba, IMAGE_EDGE, IMAGE_EDGE), 0, 0)
+  return canvas.toDataURL('image/jpeg', 0.88)
+}
+
 async function blobPixels(blob: Blob): Promise<ArrayBuffer> {
   const bitmap = await createImageBitmap(blob)
   try {
@@ -124,10 +144,10 @@ async function findSimilar(image: ImageAsset): Promise<string> {
 
 async function searchPath(path: string, sourceKind: VisualSearchSourceKind = 'file'): Promise<string> {
   const label = filename(path)
-  const previewUrl = convertFileSrc(path)
-  visualSearchSession.begin(sourceKind, label, { previewUrl })
+  visualSearchSession.begin(sourceKind, label)
   try {
     const pixels = await invoke<ArrayBuffer>('prepare_visual_query_image', { path })
+    const previewUrl = rgbPreviewUrl(pixels)
     const vector = await inferPixels(pixels)
     return visualSearchSession.activate(vector, {
       sourceKind,
