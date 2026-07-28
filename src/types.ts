@@ -141,4 +141,5 @@ export interface SearchRequest {
   limit?: number
   offset?: number
   queryVector?: number[]
+  diagnosticId?: string
 }
