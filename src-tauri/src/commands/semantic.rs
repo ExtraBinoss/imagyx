@@ -171,6 +171,24 @@ pub async fn prepare_ai_images(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+pub async fn prepare_visual_query_image(path: String) -> Result<Response, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let image = image::open(Path::new(&path)).map_err(|error| error.to_string())?;
+        let pixels = image
+            .resize_to_fill(
+                AI_IMAGE_EDGE,
+                AI_IMAGE_EDGE,
+                image::imageops::FilterType::Triangle,
+            )
+            .to_rgb8()
+            .into_raw();
+        Ok(Response::new(pixels))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command(rename_all = "camelCase")]
 pub fn get_image_embedding(
     image_id: String,
     state: State<'_, Arc<AppState>>,
