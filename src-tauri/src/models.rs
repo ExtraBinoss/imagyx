@@ -75,6 +75,13 @@ pub struct SearchRequest {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SearchPage {
+    pub items: Vec<ImageAsset>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppInfo {
     pub root_dir: String,
     pub models_dir: String,
