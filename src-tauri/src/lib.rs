@@ -162,6 +162,7 @@ pub fn run() {
             commands::folders::index_folder,
             commands::folders::pending_images,
             commands::semantic::prepare_ai_images,
+            commands::semantic::prepare_visual_query_image,
             commands::semantic::get_image_embedding,
             commands::semantic::save_embeddings,
             commands::semantic::explain_results,
