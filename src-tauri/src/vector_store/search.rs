@@ -30,6 +30,8 @@ impl VectorStore {
         limit: usize,
         diagnostic_id: Option<&str>,
     ) -> Vec<VectorMatch> {
+        #[cfg(not(debug_assertions))]
+        let _ = diagnostic_id;
         #[cfg(debug_assertions)]
         let total_started_at = Instant::now();
 
