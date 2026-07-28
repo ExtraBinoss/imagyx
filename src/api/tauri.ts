@@ -17,12 +17,14 @@ import type {
 } from '../types'
 import { perfLog } from '../utils'
 import { spotlightSearchPagination } from '../services/spotlight-search-pagination'
+import { visualSearchSession } from '../services/visual-search-session'
 
-type SearchMode = 'browse' | 'lexical' | 'hybrid'
+type SearchMode = 'browse' | 'lexical' | 'hybrid' | 'visual'
 
 let searchDiagnosticSequence = 0
 
 function searchMode(request: SearchRequest): SearchMode {
+  if (request.mode === 'visual') return 'visual'
   if (!request.query.trim()) return 'browse'
   return request.queryVector?.length ? 'hybrid' : 'lexical'
 }
@@ -62,6 +64,7 @@ function logSearchResults(
     limit: request.limit ?? 2_000,
     offset: request.offset ?? 0,
     queryVectorDimensions: request.queryVector?.length ?? 0,
+    excludeImageId: request.excludeImageId ?? null,
     returned: page.items.length,
     total: page.total,
   })
@@ -82,14 +85,15 @@ async function invokeSearchPage(
   request: SearchRequest,
   trackAsInitialSearch: boolean,
 ): Promise<SearchPage> {
-  const mode = searchMode(request)
+  const sessionRequest = visualSearchSession.requestForActiveSession(request)
+  const mode = searchMode(sessionRequest)
   const diagnosticId = import.meta.env.DEV
-    ? request.diagnosticId ?? nextSearchDiagnosticId(mode)
+    ? sessionRequest.diagnosticId ?? nextSearchDiagnosticId(mode)
     : undefined
   const normalizedRequest: SearchRequest = {
-    ...request,
-    limit: request.limit ?? 2_000,
-    offset: request.offset ?? 0,
+    ...sessionRequest,
+    limit: sessionRequest.limit ?? 2_000,
+    offset: sessionRequest.offset ?? 0,
     diagnosticId,
   }
   const paginationContext = trackAsInitialSearch
@@ -105,6 +109,7 @@ async function invokeSearchPage(
       limit: normalizedRequest.limit,
       offset: normalizedRequest.offset,
       queryVectorDimensions: normalizedRequest.queryVector?.length ?? 0,
+      excludeImageId: normalizedRequest.excludeImageId ?? null,
     })
   }
 
@@ -116,6 +121,8 @@ async function invokeSearchPage(
         limit: normalizedRequest.limit,
         offset: normalizedRequest.offset,
         queryVector: normalizedRequest.queryVector ?? null,
+        mode: normalizedRequest.mode ?? null,
+        excludeImageId: normalizedRequest.excludeImageId ?? null,
       },
       diagnosticId: import.meta.env.DEV ? diagnosticId ?? null : null,
     })
@@ -199,6 +206,10 @@ export const imagyxApi = {
     invoke<ImageAsset[]>('pending_images', { folderId: folderId ?? null }),
   prepareAiImages: (imageIds: string[], batchId: string) =>
     invoke<ArrayBuffer>('prepare_ai_images', { imageIds, batchId }),
+  prepareVisualQueryImage: (path: string) =>
+    invoke<ArrayBuffer>('prepare_visual_query_image', { path }),
+  imageEmbedding: (imageId: string) =>
+    invoke<number[]>('get_image_embedding', { imageId }),
   saveEmbeddings: (embeddings: ImageEmbedding[]) =>
     invoke<void>('save_embeddings', { embeddings }),
   explainResults: (imageIds: string[], concepts: QueryConcept[]) =>
