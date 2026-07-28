@@ -130,7 +130,12 @@ pub fn search_with_diagnostics(
         }
         #[cfg(debug_assertions)]
         let vector_scan_started_at = Instant::now();
-        let matches = vectors.top_k(query_vector, folder_id, SEMANTIC_CANDIDATES);
+        let matches = vectors.top_k_with_diagnostics(
+            query_vector,
+            folder_id,
+            SEMANTIC_CANDIDATES,
+            diagnostic_id,
+        );
         #[cfg(debug_assertions)]
         {
             vector_scan_ms = vector_scan_started_at.elapsed().as_secs_f64() * 1_000.0;
