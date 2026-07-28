@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ArrowLeft, LoaderCircle, Search, Settings2, X } from '@lucide/vue'
 import Button from '../ui/Button/Button.vue'
 import type { FollowedFolder } from '../../types'
 import FolderQueryAutocomplete from '../FolderQueryAutocomplete.vue'
 import type { SpotlightView } from './types'
 import { useTranslate } from '../../i18n'
+import { imagyxApi } from '../../api/tauri'
+import { spotlightSearchPagination } from '../../services/spotlight-search-pagination'
 
 const props = withDefaults(defineProps<{
   modelValue: string
@@ -30,6 +32,22 @@ const emit = defineEmits<{
 
 const { t } = useTranslate()
 const input = ref<HTMLInputElement | null>(null)
+const displayedResultLabel = computed(() => {
+  if (
+    props.view !== 'search'
+    || !props.modelValue.trim()
+    || !spotlightSearchPagination.hasKnownTotal.value
+  ) return props.resultLabel
+  return t('spotlight.result_count', { count: spotlightSearchPagination.totalResults.value })
+})
+
+watch(
+  () => [props.view, props.modelValue] as const,
+  ([view, value]) => {
+    spotlightSearchPagination.setRawQuery(view === 'search' ? value : '')
+  },
+  { immediate: true },
+)
 
 function focus() { input.value?.focus() }
 function select() { input.value?.select() }
@@ -47,6 +65,23 @@ function handleKeydown(event: KeyboardEvent) {
     emit('folderSelect', folder)
   }
 }
+
+function handleDocumentScroll(event: Event): void {
+  if (props.view !== 'search' || !props.modelValue.trim()) return
+  const target = event.target
+  if (!(target instanceof HTMLElement) || !target.classList.contains('spotlight-results')) return
+  const remainingPx = target.scrollHeight - target.scrollTop - target.clientHeight
+  if (remainingPx > 72 * 8) return
+  void spotlightSearchPagination.loadMore(imagyxApi.searchPage)
+}
+
+onMounted(() => {
+  document.addEventListener('scroll', handleDocumentScroll, true)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('scroll', handleDocumentScroll, true)
+})
 
 defineExpose({ focus, select })
 </script>
@@ -83,7 +118,7 @@ defineExpose({ focus, select })
     />
 
     <span v-if="view === 'search' && modelValue.trim()" class="spotlight-input__count">
-      {{ resultLabel }}
+      {{ displayedResultLabel }}
     </span>
     <Button
       v-if="modelValue"
