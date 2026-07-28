@@ -9,8 +9,9 @@ use crate::{
     indexer,
     models::{ImageAsset, SearchRequest},
     state::AppState,
-    tracing,
 };
+#[cfg(debug_assertions)]
+use crate::tracing;
 
 #[tauri::command(rename_all = "camelCase")]
 pub async fn get_thumbnail(
@@ -61,7 +62,7 @@ pub async fn search_images(
         let queue_wait_ms = received_at.elapsed().as_secs_f64() * 1_000.0;
         #[cfg(debug_assertions)]
         let execution_started_at = Instant::now();
-
+        #[cfg(debug_assertions)]
         let mode = if request.query.trim().is_empty() {
             "browse"
         } else if request.query_vector.is_some() {
@@ -69,6 +70,7 @@ pub async fn search_images(
         } else {
             "lexical"
         };
+
         let limit = request.limit.unwrap_or(2_000).min(50_000);
         let offset = request.offset.unwrap_or(0);
 
