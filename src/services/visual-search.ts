@@ -110,7 +110,7 @@ async function blobPixels(blob: Blob): Promise<ArrayBuffer> {
 }
 
 async function findSimilar(image: ImageAsset): Promise<string> {
-  visualSearchSession.begin('indexed', image.name, { sourceImage: image })
+  const operationId = visualSearchSession.begin('indexed', image.name, { sourceImage: image })
   try {
     const vector = await invoke<number[]>('get_image_embedding', { imageId: image.id })
     return visualSearchSession.activate(vector, {
@@ -118,16 +118,16 @@ async function findSimilar(image: ImageAsset): Promise<string> {
       label: image.name,
       sourceImage: image,
       excludeImageId: image.id,
-    })
+    }, operationId)
   } catch (error) {
-    visualSearchSession.fail(error)
+    visualSearchSession.fail(error, operationId)
     return ''
   }
 }
 
 async function searchPath(path: string, sourceKind: VisualSearchSourceKind = 'file'): Promise<string> {
   const label = filename(path)
-  visualSearchSession.begin(sourceKind, label)
+  const operationId = visualSearchSession.begin(sourceKind, label)
   try {
     const pixels = await invoke<ArrayBuffer>('prepare_visual_query_image', { path })
     const previewUrl = rgbPreviewUrl(pixels)
@@ -136,9 +136,9 @@ async function searchPath(path: string, sourceKind: VisualSearchSourceKind = 'fi
       sourceKind,
       label,
       previewUrl,
-    })
+    }, operationId)
   } catch (error) {
-    visualSearchSession.fail(error)
+    visualSearchSession.fail(error, operationId)
     return ''
   }
 }
@@ -148,24 +148,25 @@ async function searchBlob(
   label: string,
   sourceKind: Extract<VisualSearchSourceKind, 'clipboard' | 'drop'>,
 ): Promise<string> {
+  const operationId = visualSearchSession.begin(sourceKind, label)
   if (blob.type && !blob.type.startsWith('image/')) {
-    visualSearchSession.begin(sourceKind, label)
-    visualSearchSession.fail('The dropped or pasted file is not an image')
+    visualSearchSession.fail('The dropped or pasted file is not an image', operationId)
     return ''
   }
   const previewUrl = URL.createObjectURL(blob)
-  visualSearchSession.begin(sourceKind, label, { previewUrl })
   try {
     const vector = await inferPixels(await blobPixels(blob))
-    return visualSearchSession.activate(vector, {
+    const token = visualSearchSession.activate(vector, {
       sourceKind,
       label,
       previewUrl,
       ownsPreviewUrl: true,
-    })
+    }, operationId)
+    if (!token) URL.revokeObjectURL(previewUrl)
+    return token
   } catch (error) {
     URL.revokeObjectURL(previewUrl)
-    visualSearchSession.fail(error)
+    visualSearchSession.fail(error, operationId)
     return ''
   }
 }
