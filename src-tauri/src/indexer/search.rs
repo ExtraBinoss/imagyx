@@ -21,6 +21,8 @@ pub fn search_page_with_diagnostics(
     query: &str,
     query_vector: Option<&[f32]>,
     folder_id: Option<&str>,
+    requested_mode: Option<&str>,
+    exclude_image_id: Option<&str>,
     requested_limit: usize,
     requested_offset: usize,
     _diagnostic_id: Option<&str>,
@@ -29,11 +31,87 @@ pub fn search_page_with_diagnostics(
     let diagnostic_id = _diagnostic_id;
     #[cfg(debug_assertions)]
     let total_started_at = Instant::now();
+
+    let visual_mode = requested_mode == Some("visual")
+        || (query.trim().is_empty() && query_vector.is_some());
+    if visual_mode {
+        let limit = requested_limit.clamp(1, MAX_QUERY_PAGE_SIZE);
+        let offset = requested_offset.min(MAX_SEARCH_WINDOW);
+        let window_end = offset.saturating_add(limit).min(MAX_SEARCH_WINDOW);
+        let Some(query_vector) = query_vector else {
+            return Ok(SearchPage {
+                items: Vec::new(),
+                total: 0,
+            });
+        };
+
+        #[cfg(debug_assertions)]
+        let vector_lock_started_at = Instant::now();
+        let vectors = state.vectors.read();
+        #[cfg(debug_assertions)]
+        let vector_lock_wait_ms = vector_lock_started_at.elapsed().as_secs_f64() * 1_000.0;
+        let excluded_in_scope = exclude_image_id
+            .is_some_and(|image_id| vectors.contains_in_scope(image_id, folder_id));
+        let total = vectors
+            .count(folder_id)
+            .saturating_sub(usize::from(excluded_in_scope));
+        let candidate_limit = window_end
+            .saturating_add(usize::from(exclude_image_id.is_some()))
+            .min(MAX_SEARCH_WINDOW);
+
+        #[cfg(debug_assertions)]
+        let vector_scan_started_at = Instant::now();
+        let matches = vectors
+            .top_k_with_diagnostics(query_vector, folder_id, candidate_limit, _diagnostic_id)
+            .into_iter()
+            .filter(|item| exclude_image_id != Some(item.image_id.as_str()))
+            .skip(offset)
+            .take(limit)
+            .collect::<Vec<_>>();
+        #[cfg(debug_assertions)]
+        let vector_scan_ms = vector_scan_started_at.elapsed().as_secs_f64() * 1_000.0;
+        drop(vectors);
+
+        let ordered_ids = matches
+            .iter()
+            .map(|item| item.image_id.clone())
+            .collect::<Vec<_>>();
+        #[cfg(debug_assertions)]
+        let database_started_at = Instant::now();
+        let by_id = state
+            .database
+            .images_by_ids(&ordered_ids)?
+            .into_iter()
+            .map(|image| (image.id.clone(), image))
+            .collect::<HashMap<_, _>>();
+        let items = matches
+            .into_iter()
+            .filter_map(|item| {
+                let mut image = by_id.get(&item.image_id)?.clone();
+                image.semantic_score = Some(item.score);
+                Some(image)
+            })
+            .collect::<Vec<_>>();
+        #[cfg(debug_assertions)]
+        let database_ms = database_started_at.elapsed().as_secs_f64() * 1_000.0;
+
+        #[cfg(debug_assertions)]
+        tracing::event(
+            "search.pipeline",
+            format!(
+                "id={} mode=visual folder_id={folder_id:?} exclude_image_id={exclude_image_id:?} requested_limit={requested_limit} effective_limit={limit} offset={offset} window_end={window_end} total_available={total} query_vector_dimensions={} vector_lock_wait_ms={vector_lock_wait_ms:.2} vector_scan_ms={vector_scan_ms:.2} database_ms={database_ms:.2} results={} total_ms={:.2}",
+                diagnostic_id.unwrap_or("-"),
+                query_vector.len(),
+                items.len(),
+                total_started_at.elapsed().as_secs_f64() * 1_000.0,
+            ),
+        );
+        return Ok(SearchPage { items, total });
+    }
+
     #[cfg(debug_assertions)]
     let normalize_started_at = Instant::now();
-
     let tokens = normalize_query(query);
-
     #[cfg(debug_assertions)]
     let normalize_ms = normalize_started_at.elapsed().as_secs_f64() * 1_000.0;
 
