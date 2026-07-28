@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App.vue";
 import SpotlightSearch from "./components/Spotlight/SpotlightSearch.vue";
 import { installSpotlightConverterKeyboardGuard } from "./services/spotlight-converter-keyboard";
+import { installUnifiedSearchEngine } from "./services/unified-search-engine";
 import { installPerformanceDiagnostics } from "./utils";
 import { initI18n } from "./i18n";
 import "./style.css";
@@ -41,6 +42,7 @@ document.documentElement.dataset.theme = resolvedTheme;
 document.documentElement.dataset.window = currentWindowLabel;
 document.documentElement.style.colorScheme = resolvedTheme;
 
+installUnifiedSearchEngine();
 if (currentWindowLabel === "spotlight") {
   installSpotlightConverterKeyboardGuard();
 }
