@@ -99,7 +99,6 @@ type ErrorResponse = {
 }
 
 type WorkerResponse = ReadyResponse | ResultResponse | ErrorResponse
-
 type SuccessfulResponse = Exclude<WorkerResponse, ErrorResponse>
 
 type TimedResponse<T extends SuccessfulResponse> = {
@@ -114,15 +113,17 @@ type PendingRequest = {
   reject: (error: Error) => void
 }
 
-export class VisionWorkerClient {
-  private worker: Worker | null = null
-  private initialization: Promise<VisionWorkerReady> | null = null
-  private readonly pending = new Map<number, PendingRequest>()
-  private nextRequestId = 1
+// Every surface and feature uses this shared module-level worker. Creating a
+// client is cheap and never loads a second MobileCLIP model into memory.
+let sharedWorker: Worker | null = null
+let sharedInitialization: Promise<VisionWorkerReady> | null = null
+const sharedPending = new Map<number, PendingRequest>()
+let sharedNextRequestId = 1
 
+export class VisionWorkerClient {
   initialize(modelId: string, localModelPath: string): Promise<VisionWorkerReady> {
-    if (!this.initialization) {
-      this.initialization = this.request<ReadyResponse>((requestId) => ({
+    if (!sharedInitialization) {
+      sharedInitialization = this.request<ReadyResponse>((requestId) => ({
         type: 'init',
         requestId,
         modelId,
@@ -133,7 +134,7 @@ export class VisionWorkerClient {
         return ready
       })
     }
-    return this.initialization
+    return sharedInitialization
   }
 
   async infer(pixels: ArrayBuffer, count: number, batchId: string): Promise<VisionInferenceResult> {
@@ -189,11 +190,11 @@ export class VisionWorkerClient {
     transfer: Transferable[] = [],
   ): Promise<TimedResponse<T>> {
     const worker = this.ensureWorker()
-    const requestId = this.nextRequestId
-    this.nextRequestId += 1
+    const requestId = sharedNextRequestId
+    sharedNextRequestId += 1
 
     return new Promise<TimedResponse<T>>((resolve, reject) => {
-      this.pending.set(requestId, {
+      sharedPending.set(requestId, {
         sentAtPerfMs: performance.now(),
         resolve: (response, roundTripMs, receivedAtEpochMs) => resolve({
           response: response as T,
@@ -207,7 +208,7 @@ export class VisionWorkerClient {
   }
 
   private ensureWorker(): Worker {
-    if (this.worker) return this.worker
+    if (sharedWorker) return sharedWorker
 
     const worker = new Worker(new URL('../workers/vision-worker.ts', import.meta.url), {
       type: 'module',
@@ -216,9 +217,9 @@ export class VisionWorkerClient {
     worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
       const receivedAtEpochMs = Date.now()
       const response = event.data
-      const pending = this.pending.get(response.requestId)
+      const pending = sharedPending.get(response.requestId)
       if (!pending) return
-      this.pending.delete(response.requestId)
+      sharedPending.delete(response.requestId)
       const roundTripMs = performance.now() - pending.sentAtPerfMs
       if (response.type === 'error') {
         pending.reject(new Error(response.message))
@@ -232,15 +233,15 @@ export class VisionWorkerClient {
     worker.onmessageerror = () => {
       this.failWorker(new Error('Message invalide reçu du worker vision'))
     }
-    this.worker = worker
+    sharedWorker = worker
     return worker
   }
 
   private failWorker(error: Error) {
-    for (const pending of this.pending.values()) pending.reject(error)
-    this.pending.clear()
-    this.worker?.terminate()
-    this.worker = null
-    this.initialization = null
+    for (const pending of sharedPending.values()) pending.reject(error)
+    sharedPending.clear()
+    sharedWorker?.terminate()
+    sharedWorker = null
+    sharedInitialization = null
   }
 }
