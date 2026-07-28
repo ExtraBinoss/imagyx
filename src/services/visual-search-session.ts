@@ -1,4 +1,4 @@
-import { reactive, readonly } from 'vue'
+import { readonly, shallowReactive } from 'vue'
 import type { ImageAsset, SearchRequest } from '../types'
 
 const VISUAL_QUERY_PREFIX = '\u2063imagyx-visual:'
@@ -19,7 +19,7 @@ interface VisualSearchState {
   error: string | null
 }
 
-const state = reactive<VisualSearchState>({
+const state = shallowReactive<VisualSearchState>({
   status: 'idle',
   token: '',
   sourceKind: null,
@@ -32,6 +32,7 @@ const state = reactive<VisualSearchState>({
 })
 
 let sessionSequence = 0
+let operationSequence = 0
 let ownedPreviewUrl: string | null = null
 
 function dispatchSessionEvent() {
@@ -54,7 +55,8 @@ function begin(
   sourceKind: VisualSearchSourceKind,
   label: string,
   options: { previewUrl?: string | null; sourceImage?: ImageAsset | null } = {},
-) {
+): number {
+  operationSequence += 1
   releaseOwnedPreview()
   state.status = 'loading'
   state.token = ''
@@ -66,6 +68,7 @@ function begin(
   state.excludeImageId = null
   state.error = null
   dispatchSessionEvent()
+  return operationSequence
 }
 
 function activate(
@@ -78,7 +81,9 @@ function activate(
     excludeImageId?: string | null
     ownsPreviewUrl?: boolean
   },
+  operationId = operationSequence,
 ): string {
+  if (operationId !== operationSequence) return ''
   if (!vector.length) throw new Error('Visual search embedding is empty')
   if (options.ownsPreviewUrl && options.previewUrl) ownedPreviewUrl = options.previewUrl
   sessionSequence += 1
@@ -95,7 +100,8 @@ function activate(
   return state.token
 }
 
-function fail(reason: unknown) {
+function fail(reason: unknown, operationId = operationSequence) {
+  if (operationId !== operationSequence) return
   state.status = 'error'
   state.vector = null
   state.token = ''
@@ -104,6 +110,7 @@ function fail(reason: unknown) {
 }
 
 function clear() {
+  operationSequence += 1
   releaseOwnedPreview()
   state.status = 'idle'
   state.token = ''
