@@ -1,3 +1,4 @@
+import { reactive } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import type {
   AppInfo,
@@ -11,9 +12,11 @@ import type {
   ModelDownloadProgress,
   QueryConcept,
   RuntimeStats,
+  SearchPage,
   SearchRequest,
 } from '../types'
 import { perfLog } from '../utils'
+import { spotlightSearchPagination } from '../services/spotlight-search-pagination'
 
 type SearchMode = 'browse' | 'lexical' | 'hybrid'
 
@@ -44,12 +47,12 @@ function logSearchResults(
   diagnosticId: string,
   mode: SearchMode,
   request: SearchRequest,
-  results: ImageAsset[],
+  page: SearchPage,
   durationMs: number,
 ): void {
   if (!import.meta.env.DEV) return
   console.groupCollapsed(
-    `[Imagyx][Search][${diagnosticId}] ${mode} · ${results.length} résultat(s) · ${durationMs.toFixed(1)} ms`,
+    `[Imagyx][Search][${diagnosticId}] ${mode} · ${page.items.length}/${page.total} résultat(s) · ${durationMs.toFixed(1)} ms`,
   )
   console.log('Request', {
     diagnosticId,
@@ -59,9 +62,11 @@ function logSearchResults(
     limit: request.limit ?? 2_000,
     offset: request.offset ?? 0,
     queryVectorDimensions: request.queryVector?.length ?? 0,
+    returned: page.items.length,
+    total: page.total,
   })
-  console.table(results.map((image, index) => ({
-    rank: index + 1,
+  console.table(page.items.map((image, index) => ({
+    rank: (request.offset ?? 0) + index + 1,
     id: image.id,
     name: image.name,
     format: image.extension.toLocaleUpperCase(),
@@ -73,59 +78,102 @@ function logSearchResults(
   console.groupEnd()
 }
 
-async function searchImages(request: SearchRequest): Promise<ImageAsset[]> {
+async function invokeSearchPage(
+  request: SearchRequest,
+  trackAsInitialSearch: boolean,
+): Promise<SearchPage> {
   const mode = searchMode(request)
   const diagnosticId = import.meta.env.DEV
     ? request.diagnosticId ?? nextSearchDiagnosticId(mode)
     : undefined
+  const normalizedRequest: SearchRequest = {
+    ...request,
+    limit: request.limit ?? 2_000,
+    offset: request.offset ?? 0,
+    diagnosticId,
+  }
+  const paginationContext = trackAsInitialSearch
+    ? spotlightSearchPagination.beginInitialSearch(normalizedRequest)
+    : null
   const startedAt = import.meta.env.DEV ? performance.now() : 0
 
   if (import.meta.env.DEV && diagnosticId) {
     console.info(`[Imagyx][Search][${diagnosticId}] start`, {
       mode,
-      query: request.query,
-      folderId: request.folderId ?? null,
-      limit: request.limit ?? 2_000,
-      offset: request.offset ?? 0,
-      queryVectorDimensions: request.queryVector?.length ?? 0,
+      query: normalizedRequest.query,
+      folderId: normalizedRequest.folderId ?? null,
+      limit: normalizedRequest.limit,
+      offset: normalizedRequest.offset,
+      queryVectorDimensions: normalizedRequest.queryVector?.length ?? 0,
     })
   }
 
   try {
-    const results = await invoke<ImageAsset[]>('search_images', {
+    const page = await invoke<SearchPage>('search_image_page', {
       request: {
-        query: request.query,
-        folderId: request.folderId ?? null,
-        limit: request.limit ?? 2_000,
-        offset: request.offset ?? 0,
-        queryVector: request.queryVector ?? null,
+        query: normalizedRequest.query,
+        folderId: normalizedRequest.folderId ?? null,
+        limit: normalizedRequest.limit,
+        offset: normalizedRequest.offset,
+        queryVector: normalizedRequest.queryVector ?? null,
       },
       diagnosticId: import.meta.env.DEV ? diagnosticId ?? null : null,
     })
+    const items = paginationContext
+      ? reactive(page.items) as ImageAsset[]
+      : page.items
+    const normalizedPage = { items, total: page.total }
+
+    if (paginationContext) {
+      spotlightSearchPagination.completeInitialSearch(
+        paginationContext,
+        normalizedRequest,
+        normalizedPage,
+        items,
+      )
+    }
+
     if (import.meta.env.DEV) {
       const durationMs = performance.now() - startedAt
       perfLog('SearchIPC', `${mode} Rust round trip`, durationMs, {
         diagnosticId,
-        query: request.query,
-        results: results.length,
-        queryVectorDimensions: request.queryVector?.length ?? 0,
+        query: normalizedRequest.query,
+        offset: normalizedRequest.offset,
+        results: items.length,
+        total: normalizedPage.total,
+        queryVectorDimensions: normalizedRequest.queryVector?.length ?? 0,
       })
       if (diagnosticId) {
-        deferSearchResultLog(() => logSearchResults(diagnosticId, mode, request, results, durationMs))
+        deferSearchResultLog(() => logSearchResults(
+          diagnosticId,
+          mode,
+          normalizedRequest,
+          normalizedPage,
+          durationMs,
+        ))
       }
     }
-    return results
+    return normalizedPage
   } catch (error) {
     if (import.meta.env.DEV) {
       const durationMs = performance.now() - startedAt
       console.error(`[Imagyx][Search][${diagnosticId ?? 'unknown'}] failed after ${durationMs.toFixed(1)} ms`, {
         mode,
-        query: request.query,
+        query: normalizedRequest.query,
+        offset: normalizedRequest.offset,
         error,
       })
     }
     throw error
   }
+}
+
+async function searchImages(request: SearchRequest): Promise<ImageAsset[]> {
+  return (await invokeSearchPage(request, true)).items
+}
+
+async function searchImagePage(request: SearchRequest): Promise<SearchPage> {
+  return invokeSearchPage(request, false)
 }
 
 export const imagyxApi = {
@@ -164,6 +212,7 @@ export const imagyxApi = {
       modifiedAt: image.modifiedAt,
     }),
   search: searchImages,
+  searchPage: searchImagePage,
   openInFileManager: (path: string, reveal = false) =>
     invoke<void>('open_in_file_manager', { path, reveal }),
   copyImage: (path: string) => invoke<void>('copy_image_to_clipboard', { path }),
