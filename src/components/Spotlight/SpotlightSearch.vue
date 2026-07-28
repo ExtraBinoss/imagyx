@@ -86,6 +86,7 @@ let unlistenFocus: UnlistenFn | null = null
 let unlistenIndex: UnlistenFn | null = null
 let unlistenRuntime: UnlistenFn | null = null
 let unlistenLibrary: UnlistenFn | null = null
+let spacePressed = false
 
 const activeQuery = computed({
   get: () => view.value === 'settings' ? settingsQuery.value : searchQuery.value,
@@ -710,8 +711,14 @@ function moveSelection(delta: number) {
 
 function handleKeydown(event: KeyboardEvent) {
   const isSpace = event.code === 'Space' || event.key === ' '
+  if (isSpace && (spacePressed || event.repeat)) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    return
+  }
+  if (isSpace) spacePressed = true
   if (previewImage.value) {
-    if (isSpace) {
+    if (isSpace || event.key === 'Escape') {
       event.preventDefault()
       event.stopImmediatePropagation()
       previewImage.value = null
@@ -752,8 +759,13 @@ function handleKeydown(event: KeyboardEvent) {
   }
 }
 
+function handleKeyup(event: KeyboardEvent) {
+  if (event.code === 'Space' || event.key === ' ') spacePressed = false
+}
+
 function prepareOpen() {
   resultsScrolling.value = false
+  spacePressed = false
   visible.value = false
   view.value = 'search'
   searchQuery.value = ''
@@ -779,6 +791,7 @@ function animateOpen() {
 
 function prepareHide() {
   resultsScrolling.value = false
+  spacePressed = false
   previewImage.value = null
   visible.value = false
   searchQuery.value = ''
@@ -824,6 +837,7 @@ onMounted(async () => {
     })
   }
   window.addEventListener('keydown', handleKeydown, { capture: true })
+  window.addEventListener('keyup', handleKeyup, { capture: true })
   const unlisteners = await Promise.all([
     listen('spotlight-will-open', prepareOpen),
     listen('spotlight-opened', animateOpen),
@@ -847,6 +861,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeydown, { capture: true })
+  window.removeEventListener('keyup', handleKeyup, { capture: true })
   unlistenWillOpen?.()
   unlistenOpened?.()
   unlistenWillHide?.()
@@ -873,7 +888,6 @@ onBeforeUnmount(() => {
         border-radius="22px"
         :duration="searching || hasActiveJobs ? 2600 : 4400"
         :active="visible"
-        :paused="resultsScrolling"
       >
         <div
           class="spotlight-surface"
@@ -944,7 +958,11 @@ onBeforeUnmount(() => {
         </div>
       </MovingBorder>
     </section>
-    <ImagePreviewDialog :image="previewImage" @close="previewImage = null" />
+    <ImagePreviewDialog
+      :image="previewImage"
+      :keyboard-shortcuts="false"
+      @close="previewImage = null"
+    />
   </main>
 </template>
 

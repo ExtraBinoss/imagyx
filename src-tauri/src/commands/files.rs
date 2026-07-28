@@ -71,11 +71,12 @@ pub fn open_in_file_manager(
     let canonical = managed_path(&state, &path)?;
     #[cfg(target_os = "windows")]
     {
-        let mut command = Command::new("explorer");
+        let explorer_path = windows_explorer_path(&canonical);
+        let mut command = Command::new("explorer.exe");
         if reveal && canonical.is_file() {
-            command.arg(format!("/select,{}", canonical.display()));
+            command.arg("/select,").arg(&explorer_path);
         } else {
-            command.arg(&canonical);
+            command.arg(&explorer_path);
         }
         command
             .spawn()
@@ -105,6 +106,16 @@ pub fn open_in_file_manager(
             .map_err(|error| format!("Impossible d’ouvrir le gestionnaire de fichiers: {error}"))?;
     }
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_explorer_path(path: &Path) -> PathBuf {
+    let path = path.to_string_lossy();
+    if let Some(unc) = path.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{unc}"));
+    }
+    let normalized = path.strip_prefix(r"\\?\").unwrap_or(path.as_ref());
+    PathBuf::from(normalized)
 }
 
 #[tauri::command(rename_all = "camelCase")]

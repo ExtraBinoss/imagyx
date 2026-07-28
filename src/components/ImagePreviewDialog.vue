@@ -12,7 +12,12 @@ import Badge from './ui/Badge/Badge.vue'
 
 const { t } = useTranslate()
 
-const props = defineProps<{ image: ImageAsset | null }>()
+const props = withDefaults(defineProps<{
+  image: ImageAsset | null
+  keyboardShortcuts?: boolean
+}>(), {
+  keyboardShortcuts: true,
+})
 const emit = defineEmits<{ close: [] }>()
 
 const platform = usePlatformStore()
@@ -61,8 +66,12 @@ async function openFile() {
   await imagyxApi.openInFileManager(cleanPath.value, false)
 }
 
-onMounted(() => window.addEventListener('keydown', handleKeydown, true))
-onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown, true))
+onMounted(() => {
+  if (props.keyboardShortcuts) window.addEventListener('keydown', handleKeydown, true)
+})
+onBeforeUnmount(() => {
+  if (props.keyboardShortcuts) window.removeEventListener('keydown', handleKeydown, true)
+})
 </script>
 
 <template>

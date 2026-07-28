@@ -6,13 +6,11 @@ const props = withDefaults(
     borderRadius?: string
     duration?: number
     active?: boolean
-    paused?: boolean
   }>(),
   {
     borderRadius: '20px',
     duration: 4200,
     active: true,
-    paused: false,
   },
 )
 
@@ -25,10 +23,7 @@ const styleVariables = computed(() => ({
 <template>
   <div
     class="moving-border"
-    :class="{
-      'moving-border--active': active,
-      'moving-border--paused': paused,
-    }"
+    :class="{ 'moving-border--active': active }"
     :style="styleVariables"
   >
     <svg
@@ -39,9 +34,7 @@ const styleVariables = computed(() => ({
       aria-hidden="true"
     >
       <rect class="moving-border__rect moving-border__track" pathLength="100" />
-      <rect class="moving-border__rect moving-border__aura" pathLength="100" />
       <rect class="moving-border__rect moving-border__beam" pathLength="100" />
-      <rect class="moving-border__rect moving-border__spark" pathLength="100" />
     </svg>
     <div class="moving-border__surface">
       <slot />
@@ -91,62 +84,31 @@ const styleVariables = computed(() => ({
   opacity: 0.8;
 }
 
-.moving-border__aura,
-.moving-border__beam,
-.moving-border__spark {
+.moving-border__beam {
   stroke-dashoffset: 0;
   animation: moving-border-travel var(--moving-border-duration) linear infinite;
-  will-change: stroke-dashoffset, opacity;
+  will-change: stroke-dashoffset;
   transition: opacity 220ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.moving-border__aura {
-  stroke: var(--primary);
-  stroke-width: 8;
-  stroke-dasharray: 20 80;
-  filter: blur(5px);
-  opacity: 0.35;
 }
 
 .moving-border__beam {
   stroke: var(--primary);
-  stroke-width: 3.5;
-  stroke-dasharray: 20 80;
-  opacity: 0.95;
+  stroke-width: 2.5;
+  stroke-dasharray: 16 84;
+  opacity: 0.82;
 }
 
-.moving-border__spark {
-  stroke: var(--primary-text);
-  stroke-width: 2.8;
-  stroke-dasharray: 10 90;
-  animation-delay: calc(var(--moving-border-duration) * -0.02);
-  opacity: 0.95;
-}
-
-.moving-border:not(.moving-border--active) .moving-border__aura,
-.moving-border:not(.moving-border--active) .moving-border__beam,
-.moving-border:not(.moving-border--active) .moving-border__spark {
+.moving-border:not(.moving-border--active) .moving-border__beam {
   opacity: 0;
   pointer-events: none;
 }
-
-.moving-border--paused .moving-border__aura,
-.moving-border--paused .moving-border__beam,
-.moving-border--paused .moving-border__spark {
-  animation-play-state: paused;
-  will-change: auto;
-}
-
-.moving-border--paused .moving-border__aura { opacity: 0; }
 
 @keyframes moving-border-travel {
   to { stroke-dashoffset: -100; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .moving-border__aura,
-  .moving-border__beam,
-  .moving-border__spark {
+  .moving-border__beam {
     animation: none;
   }
 }
