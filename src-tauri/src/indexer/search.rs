@@ -6,15 +6,15 @@ use std::time::Instant;
 use crate::{
     AppError,
     fuzzy::{exact_name_bonus, fts_query, normalize_query, reciprocal_rank},
-    models::ImageAsset,
+    models::{ImageAsset, SearchPage},
     state::AppState,
     tracing,
 };
 
-const MAX_SEARCH_RESULTS: usize = 60;
-const MIN_LEXICAL_CANDIDATES: usize = 200;
-const MAX_LEXICAL_CANDIDATES: usize = 500;
-const SEMANTIC_CANDIDATES: usize = 200;
+const MAX_QUERY_PAGE_SIZE: usize = 200;
+const MAX_SEARCH_WINDOW: usize = 50_000;
+const MIN_SEARCH_CANDIDATES: usize = 200;
+const CANDIDATE_OVERSAMPLE: usize = 4;
 
 pub fn search(
     state: &AppState,
@@ -24,7 +24,47 @@ pub fn search(
     requested_limit: usize,
     requested_offset: usize,
 ) -> Result<Vec<ImageAsset>, AppError> {
-    search_with_diagnostics(
+    search_page(
+        state,
+        query,
+        query_vector,
+        folder_id,
+        requested_limit,
+        requested_offset,
+    )
+    .map(|page| page.items)
+}
+
+pub fn search_with_diagnostics(
+    state: &AppState,
+    query: &str,
+    query_vector: Option<&[f32]>,
+    folder_id: Option<&str>,
+    requested_limit: usize,
+    requested_offset: usize,
+    diagnostic_id: Option<&str>,
+) -> Result<Vec<ImageAsset>, AppError> {
+    search_page_with_diagnostics(
+        state,
+        query,
+        query_vector,
+        folder_id,
+        requested_limit,
+        requested_offset,
+        diagnostic_id,
+    )
+    .map(|page| page.items)
+}
+
+pub fn search_page(
+    state: &AppState,
+    query: &str,
+    query_vector: Option<&[f32]>,
+    folder_id: Option<&str>,
+    requested_limit: usize,
+    requested_offset: usize,
+) -> Result<SearchPage, AppError> {
+    search_page_with_diagnostics(
         state,
         query,
         query_vector,
@@ -35,7 +75,7 @@ pub fn search(
     )
 }
 
-pub fn search_with_diagnostics(
+pub fn search_page_with_diagnostics(
     state: &AppState,
     query: &str,
     query_vector: Option<&[f32]>,
@@ -43,7 +83,7 @@ pub fn search_with_diagnostics(
     requested_limit: usize,
     requested_offset: usize,
     _diagnostic_id: Option<&str>,
-) -> Result<Vec<ImageAsset>, AppError> {
+) -> Result<SearchPage, AppError> {
     #[cfg(debug_assertions)]
     let diagnostic_id = _diagnostic_id;
     #[cfg(debug_assertions)]
@@ -58,24 +98,29 @@ pub fn search_with_diagnostics(
 
     if tokens.is_empty() {
         let _trace = tracing::span("search.browse");
+        let limit = requested_limit.max(1).min(MAX_SEARCH_WINDOW);
+        let offset = requested_offset.min(MAX_SEARCH_WINDOW);
+        #[cfg(debug_assertions)]
+        let count_started_at = Instant::now();
+        let total = state.database.image_count(folder_id)?;
+        #[cfg(debug_assertions)]
+        let count_ms = count_started_at.elapsed().as_secs_f64() * 1_000.0;
         #[cfg(debug_assertions)]
         let database_started_at = Instant::now();
-        let results = state
-            .database
-            .recent_images(folder_id, requested_limit, requested_offset);
+        let items = state.database.recent_images(folder_id, limit, offset)?;
 
         #[cfg(debug_assertions)]
         tracing::event(
             "search.pipeline",
             format!(
-                "id={} mode=browse query={query:?} folder_id={folder_id:?} requested_limit={requested_limit} offset={requested_offset} normalize_ms={normalize_ms:.2} database_ms={:.2} results={} total_ms={:.2}",
+                "id={} mode=browse query={query:?} folder_id={folder_id:?} requested_limit={requested_limit} effective_limit={limit} offset={offset} normalize_ms={normalize_ms:.2} count_ms={count_ms:.2} database_ms={:.2} results={} total_available={total} total_ms={:.2}",
                 diagnostic_id.unwrap_or("-"),
                 database_started_at.elapsed().as_secs_f64() * 1_000.0,
-                results.as_ref().map_or(0, Vec::len),
+                items.len(),
                 total_started_at.elapsed().as_secs_f64() * 1_000.0,
             ),
         );
-        return results;
+        return Ok(SearchPage { items, total });
     }
 
     #[cfg(debug_assertions)]
@@ -89,10 +134,14 @@ pub fn search_with_diagnostics(
     } else {
         tracing::span("search.lexical")
     };
-    let limit = requested_limit.clamp(1, MAX_SEARCH_RESULTS);
-    let lexical_limit = (limit * 4)
-        .max(MIN_LEXICAL_CANDIDATES)
-        .min(MAX_LEXICAL_CANDIDATES);
+
+    let limit = requested_limit.clamp(1, MAX_QUERY_PAGE_SIZE);
+    let offset = requested_offset.min(MAX_SEARCH_WINDOW);
+    let window_end = offset.saturating_add(limit).min(MAX_SEARCH_WINDOW);
+    let candidate_limit = window_end
+        .saturating_mul(CANDIDATE_OVERSAMPLE)
+        .max(MIN_SEARCH_CANDIDATES)
+        .min(MAX_SEARCH_WINDOW);
 
     #[cfg(debug_assertions)]
     let fts_started_at = Instant::now();
@@ -101,13 +150,26 @@ pub fn search_with_diagnostics(
     let fts_prepare_ms = fts_started_at.elapsed().as_secs_f64() * 1_000.0;
 
     #[cfg(debug_assertions)]
+    let count_started_at = Instant::now();
+    let total = if query_vector.is_some() {
+        state
+            .database
+            .hybrid_search_count(prepared_fts_query.as_deref(), folder_id)?
+    } else {
+        match prepared_fts_query.as_deref() {
+            Some(prepared_query) => state.database.lexical_search_count(prepared_query, folder_id)?,
+            None => 0,
+        }
+    };
+    #[cfg(debug_assertions)]
+    let count_ms = count_started_at.elapsed().as_secs_f64() * 1_000.0;
+
+    #[cfg(debug_assertions)]
     let lexical_started_at = Instant::now();
     let lexical = match prepared_fts_query.as_deref() {
-        Some(prepared_query) => {
-            state
-                .database
-                .lexical_search(prepared_query, folder_id, lexical_limit)?
-        }
+        Some(prepared_query) => state
+            .database
+            .lexical_search(prepared_query, folder_id, candidate_limit)?,
         None => Vec::new(),
     };
     #[cfg(debug_assertions)]
@@ -136,7 +198,7 @@ pub fn search_with_diagnostics(
         let matches = vectors.top_k_with_diagnostics(
             query_vector,
             folder_id,
-            SEMANTIC_CANDIDATES,
+            candidate_limit,
             _diagnostic_id,
         );
         #[cfg(debug_assertions)]
@@ -210,42 +272,43 @@ pub fn search_with_diagnostics(
             .total_cmp(left_score)
             .then_with(|| right_asset.modified_at.cmp(&left_asset.modified_at))
     });
-    ranked.truncate(limit);
+    let items = ranked
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .map(|(asset, _)| asset)
+        .collect::<Vec<_>>();
     #[cfg(debug_assertions)]
     let sort_ms = sort_started_at.elapsed().as_secs_f64() * 1_000.0;
 
     #[cfg(debug_assertions)]
-    let top_results = ranked
+    let top_results = items
         .iter()
         .take(8)
         .enumerate()
-        .map(|(index, (asset, score))| {
+        .map(|(index, asset)| {
             format!(
-                "{}:{}:{}:{score:.4}",
-                index + 1,
+                "{}:{}:{}:{:.4}",
+                offset + index + 1,
                 asset.id,
-                asset.name
+                asset.name,
+                asset.semantic_score.unwrap_or_default(),
             )
         })
         .collect::<Vec<_>>()
         .join(" | ");
 
-    let results = ranked
-        .into_iter()
-        .map(|(asset, _)| asset)
-        .collect::<Vec<_>>();
-
     #[cfg(debug_assertions)]
     tracing::event(
         "search.pipeline",
         format!(
-            "id={} mode={mode} query={query:?} folder_id={folder_id:?} requested_limit={requested_limit} effective_limit={limit} offset={requested_offset} query_vector_dimensions={} normalize_ms={normalize_ms:.2} fts_prepare_ms={fts_prepare_ms:.2} lexical_db_ms={lexical_ms:.2} lexical_candidates={lexical_count} vector_lock_wait_ms={vector_lock_wait_ms:.2} vector_scan_ms={vector_scan_ms:.2} vector_store_len={vector_store_len} semantic_candidates={semantic_count} rank_maps_ms={rank_maps_ms:.2} missing_semantic_ids={missing_count} missing_lookup_ms={missing_lookup_ms:.2} merged_candidates={candidate_count} ranking_ms={ranking_ms:.2} sort_truncate_ms={sort_ms:.2} results={} total_ms={:.2} top_results={top_results:?}",
+            "id={} mode={mode} query={query:?} folder_id={folder_id:?} requested_limit={requested_limit} effective_limit={limit} offset={offset} window_end={window_end} candidate_limit={candidate_limit} total_available={total} query_vector_dimensions={} normalize_ms={normalize_ms:.2} fts_prepare_ms={fts_prepare_ms:.2} count_ms={count_ms:.2} lexical_db_ms={lexical_ms:.2} lexical_candidates={lexical_count} vector_lock_wait_ms={vector_lock_wait_ms:.2} vector_scan_ms={vector_scan_ms:.2} vector_store_len={vector_store_len} semantic_candidates={semantic_count} rank_maps_ms={rank_maps_ms:.2} missing_semantic_ids={missing_count} missing_lookup_ms={missing_lookup_ms:.2} merged_candidates={candidate_count} ranking_ms={ranking_ms:.2} sort_page_ms={sort_ms:.2} results={} total_ms={:.2} top_results={top_results:?}",
             diagnostic_id.unwrap_or("-"),
             query_vector.map_or(0, |vector| vector.len()),
-            results.len(),
+            items.len(),
             total_started_at.elapsed().as_secs_f64() * 1_000.0,
         ),
     );
 
-    Ok(results)
+    Ok(SearchPage { items, total })
 }
