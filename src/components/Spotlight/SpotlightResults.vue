@@ -10,7 +10,6 @@ import {
   LoaderCircle,
   RefreshCw,
   Search,
-  Sparkles,
 } from '@lucide/vue'
 import type { FolderIndexCoverage, ImageAsset } from '../../types'
 import { visualSearch } from '../../services/visual-search'
@@ -233,10 +232,18 @@ function handleWindowKeydown(event: KeyboardEvent) {
     return
   }
 
-  if (!primaryModifier || !event.shiftKey) return
-  if (key !== 'c' && event.code !== 'KeyC') return
+  if (!primaryModifier || !event.shiftKey || event.altKey) return
   const image = selectedImage.value
   if (!image) return
+
+  if (key === 's' || event.code === 'KeyS') {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    void findSimilarSelected()
+    return
+  }
+
+  if (key !== 'c' && event.code !== 'KeyC') return
   event.preventDefault()
   event.stopImmediatePropagation()
   openConverter(image)
@@ -436,15 +443,21 @@ defineExpose({ scrollToIndex })
                 :disabled="findingSimilar"
                 @click="findSimilarSelected"
               >
-                <span class="spotlight-action-popover__icon">
-                  <LoaderCircle v-if="findingSimilar" class="spin" :size="16" />
-                  <Sparkles v-else :size="16" />
+                <span class="spotlight-action-popover__preview">
+                  <ThumbnailImage
+                    class="spotlight-action-popover__preview-image"
+                    :image="selectedImage"
+                    :priority="0"
+                  />
+                  <span v-if="findingSimilar" class="spotlight-action-popover__preview-loading">
+                    <LoaderCircle class="spin" :size="15" />
+                  </span>
                 </span>
                 <span class="spotlight-action-popover__copy">
                   <strong>{{ t('search.visual.find_similar') }}</strong>
                   <small>{{ t('search.visual.find_similar_desc') }}</small>
                 </span>
-                <span class="spotlight-action-popover__ai">AI</span>
+                <KbdChip shortcut="Ctrl+Shift+S" size="sm" />
               </button>
               <button type="button" role="menuitem" @click="convertSelected">
                 <span class="spotlight-action-popover__icon"><RefreshCw :size="16" /></span>
@@ -494,7 +507,7 @@ defineExpose({ scrollToIndex })
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--border-strong) 78%, transparent) transparent;
 }
-.spotlight-results--with-actions { padding-bottom: 86px; }
+.spotlight-results--with-actions { padding-bottom: 76px; }
 .spotlight-library-loading {
   display: grid;
   place-items: center;
@@ -616,47 +629,55 @@ defineExpose({ scrollToIndex })
   bottom: 0;
   left: 0;
   z-index: 6;
-  padding: 30px 13px 10px;
+  padding: 24px 12px 9px;
   pointer-events: none;
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 42%, transparent);
   background: linear-gradient(
     180deg,
-    transparent 0%,
-    color-mix(in srgb, var(--surface-elevated) 60%, transparent) 34%,
-    color-mix(in srgb, var(--surface-elevated) 97%, transparent) 78%
+    color-mix(in srgb, var(--surface-elevated) 18%, transparent) 0%,
+    color-mix(in srgb, var(--surface-elevated) 66%, transparent) 38%,
+    color-mix(in srgb, var(--surface-elevated) 88%, transparent) 100%
   );
-  box-shadow: inset 0 -13px 17px -17px rgb(2 6 23 / 0.32);
-  backdrop-filter: blur(13px) saturate(1.08);
+  box-shadow: 0 -24px 38px -34px rgb(2 6 23 / 0.72), inset 0 1px rgb(255 255 255 / 0.06);
+  backdrop-filter: blur(24px) saturate(1.14);
+  -webkit-backdrop-filter: blur(24px) saturate(1.14);
 }
 .spotlight-action-dock__bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-end;
+  gap: 2px;
   width: 100%;
-  min-height: 48px;
-  padding: 6px;
+  min-height: 38px;
   pointer-events: auto;
-  border: 1px solid color-mix(in srgb, var(--border-strong) 76%, transparent);
-  border-radius: 15px;
-  background: color-mix(in srgb, var(--surface-elevated) 88%, transparent);
-  box-shadow: inset 0 1px rgb(255 255 255 / 0.09), 0 14px 30px -24px rgb(2 6 23 / 0.68);
-  backdrop-filter: blur(24px) saturate(1.16);
 }
 .spotlight-dock-button {
-  min-height: 35px;
+  min-height: 36px;
   padding-inline: 10px;
-  border-radius: 10px;
+  border-color: transparent !important;
+  border-radius: 9px;
+  background: transparent !important;
+  box-shadow: none !important;
   font-size: 10px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
-.spotlight-dock-button--copy { min-width: 126px; }
-.spotlight-dock-button--more { min-width: 151px; }
-.spotlight-dock-button--success { animation: action-success 280ms cubic-bezier(0.16, 1, 0.3, 1) both; }
-.spotlight-action-hub { position: relative; }
+.spotlight-dock-button:hover,
+.spotlight-dock-button:focus-visible {
+  border-color: transparent !important;
+  background: color-mix(in srgb, var(--surface-hover) 58%, transparent) !important;
+  box-shadow: none !important;
+}
+.spotlight-dock-button--success {
+  background: color-mix(in srgb, var(--primary-soft) 72%, transparent) !important;
+  animation: action-success 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.spotlight-action-hub { position: relative; display: flex; }
 .spotlight-action-popover {
   position: absolute;
   right: 0;
-  bottom: calc(100% + 12px);
-  width: 304px;
+  bottom: calc(100% + 10px);
+  width: 316px;
   padding: 6px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--border-strong) 82%, transparent);
@@ -668,7 +689,7 @@ defineExpose({ scrollToIndex })
 }
 .spotlight-action-popover button {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   width: 100%;
@@ -689,11 +710,7 @@ defineExpose({ scrollToIndex })
   transform: translate3d(2px, 0, 0);
 }
 .spotlight-action-popover button:disabled { opacity: 0.66; pointer-events: none; }
-.spotlight-action-popover__featured {
-  margin-bottom: 4px;
-  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border)) !important;
-  background: linear-gradient(120deg, color-mix(in srgb, var(--primary-soft) 76%, var(--surface)), transparent) !important;
-}
+.spotlight-action-popover__featured { margin-bottom: 4px; }
 .spotlight-action-popover button > strong,
 .spotlight-action-popover__copy { min-width: 0; }
 .spotlight-action-popover button > strong,
@@ -707,24 +724,33 @@ defineExpose({ scrollToIndex })
 .spotlight-action-popover button > strong,
 .spotlight-action-popover__copy strong { font-size: 11px; font-weight: 650; }
 .spotlight-action-popover__copy small { margin-top: 2px; color: var(--text-muted); font-size: 9px; }
-.spotlight-action-popover__icon {
+.spotlight-action-popover__icon,
+.spotlight-action-popover__preview {
+  position: relative;
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
+  overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
   border-radius: 9px;
   background: color-mix(in srgb, var(--primary-soft) 48%, var(--surface));
   color: var(--primary-text);
 }
-.spotlight-action-popover__ai {
-  padding: 3px 6px;
-  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border));
-  border-radius: var(--radius-full);
+.spotlight-action-popover__preview-image,
+.spotlight-action-popover__preview :deep(.thumbnail-loader) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.spotlight-action-popover__preview-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--surface-elevated) 68%, transparent);
   color: var(--primary-text);
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  backdrop-filter: blur(5px);
 }
 .action-popover-enter-active,
 .action-popover-leave-active { transition: opacity 130ms ease, transform 170ms cubic-bezier(0.16, 1, 0.3, 1), filter 130ms ease; }
