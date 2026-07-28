@@ -63,13 +63,15 @@ async fn execute_search_page(
         #[cfg(debug_assertions)]
         let execution_started_at = Instant::now();
         #[cfg(debug_assertions)]
-        let mode = if request.query.trim().is_empty() {
-            "browse"
-        } else if request.query_vector.is_some() {
-            "hybrid"
-        } else {
-            "lexical"
-        };
+        let mode = request.mode.as_deref().unwrap_or_else(|| {
+            if request.query.trim().is_empty() {
+                "browse"
+            } else if request.query_vector.is_some() {
+                "hybrid"
+            } else {
+                "lexical"
+            }
+        });
 
         let limit = request.limit.unwrap_or(2_000).min(50_000);
         let offset = request.offset.unwrap_or(0).min(50_000);
@@ -78,9 +80,10 @@ async fn execute_search_page(
         tracing::event(
             "search.command.start",
             format!(
-                "id={diagnostic_label} mode={mode} query={:?} folder_id={:?} limit={limit} offset={offset} vector_dimensions={} spawn_blocking_queue_ms={queue_wait_ms:.2}",
+                "id={diagnostic_label} mode={mode} query={:?} folder_id={:?} exclude_image_id={:?} limit={limit} offset={offset} vector_dimensions={} spawn_blocking_queue_ms={queue_wait_ms:.2}",
                 request.query,
                 request.folder_id,
+                request.exclude_image_id,
                 request.query_vector.as_ref().map_or(0, Vec::len),
             ),
         );
@@ -90,6 +93,8 @@ async fn execute_search_page(
             &request.query,
             request.query_vector.as_deref(),
             request.folder_id.as_deref(),
+            request.mode.as_deref(),
+            request.exclude_image_id.as_deref(),
             limit,
             offset,
             diagnostic_id.as_deref(),
