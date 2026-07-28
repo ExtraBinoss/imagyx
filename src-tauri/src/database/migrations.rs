@@ -41,6 +41,14 @@ pub(super) fn migrate(database: &Database) -> Result<(), AppError> {
             updated_at INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings(model);
+        CREATE TABLE IF NOT EXISTS image_derivatives (
+            image_id TEXT PRIMARY KEY REFERENCES images(id) ON DELETE CASCADE,
+            source_image_id TEXT NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+            conversion_format TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_image_derivatives_source
+            ON image_derivatives(source_image_id, created_at DESC);
         CREATE VIRTUAL TABLE IF NOT EXISTS images_fts USING fts5(
             name,
             path,
@@ -81,11 +89,8 @@ pub(super) fn migrate(database: &Database) -> Result<(), AppError> {
         params![MODEL_ID],
     )?;
 
-    let schema_version: i64 = connection.query_row(
-        "PRAGMA user_version",
-        [],
-        |row| row.get::<_, i64>(0),
-    )?;
+    let schema_version: i64 =
+        connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?;
     if schema_version < FTS_SCHEMA_VERSION {
         connection.execute("INSERT INTO images_fts(images_fts) VALUES('rebuild')", [])?;
         connection.pragma_update(None, "user_version", FTS_SCHEMA_VERSION)?;

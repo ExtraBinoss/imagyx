@@ -32,10 +32,7 @@ pub(super) fn is_changed(path: &Path, existing: &HashMap<String, (i64, u64)>) ->
         .is_none_or(|existing| *existing != fingerprint)
 }
 
-pub(super) fn prepare_asset(
-    folder: &FollowedFolder,
-    path: &Path,
-) -> Result<ImageAsset, AppError> {
+pub(crate) fn prepare_asset(folder: &FollowedFolder, path: &Path) -> Result<ImageAsset, AppError> {
     let metadata = path.metadata()?;
     let file_name = path
         .file_name()
@@ -81,7 +78,7 @@ pub fn is_supported_image(path: &Path) -> bool {
         .is_some_and(|extension| {
             matches!(
                 extension.as_str(),
-                "jpg" | "jpeg" | "png" | "webp" | "gif" | "bmp" | "tif" | "tiff" | "ico"
+                "avif" | "jpg" | "jpeg" | "png" | "webp" | "gif" | "bmp" | "tif" | "tiff" | "ico"
             )
         })
 }
@@ -96,6 +93,7 @@ mod tests {
 
     #[test]
     fn recognises_supported_extensions_case_insensitively() {
+        assert!(is_supported_image(Path::new("photo.AVIF")));
         assert!(is_supported_image(Path::new("photo.JPEG")));
         assert!(is_supported_image(Path::new("icon.ico")));
         assert!(!is_supported_image(Path::new("notes.txt")));

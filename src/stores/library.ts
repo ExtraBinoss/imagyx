@@ -56,8 +56,10 @@ interface LibraryState {
   folders: FollowedFolder[];
   indexCoverage: FolderIndexCoverage[];
   images: ImageAsset[];
+  totalResults: number;
   selectedFolderId: string | null;
   query: string;
+  activeQueryVector: number[] | null;
   activeConcepts: QueryConcept[];
   loading: boolean;
   loadingMore: boolean;
@@ -80,8 +82,10 @@ export const useLibraryStore = defineStore("library", {
     folders: [],
     indexCoverage: [],
     images: [],
+    totalResults: 0,
     selectedFolderId: null,
     query: "",
+    activeQueryVector: null,
     activeConcepts: [],
     loading: false,
     loadingMore: false,
@@ -403,6 +407,7 @@ export const useLibraryStore = defineStore("library", {
       const query = this.query.trim();
       const folderId = this.selectedFolderId ?? undefined;
       this.error = null;
+      this.activeQueryVector = null;
       this.activeConcepts = [];
       this.semanticSearching = Boolean(query);
       this.loadingMore = false;
@@ -410,42 +415,45 @@ export const useLibraryStore = defineStore("library", {
       if (!this.images.length) this.loading = true;
       try {
         if (!query) {
-          const results = await imagyxApi.search({
+          const page = await imagyxApi.searchPage({
             query,
             folderId,
             limit: BROWSE_PAGE_SIZE,
             offset: 0,
           });
           if (sequence !== this.searchSequence) return;
-          this.images = imageList(results);
-          this.hasMoreImages = results.length === BROWSE_PAGE_SIZE;
+          this.images = imageList(page.items);
+          this.totalResults = page.total;
+          this.hasMoreImages = this.images.length < page.total;
           perfLog(
             "LibraryStore",
             "refreshImages first browse page",
             performance.now() - start,
-            { received: results.length, hasMore: this.hasMoreImages },
+            { received: page.items.length, total: page.total, hasMore: this.hasMoreImages },
           );
           return;
         }
 
         const lexicalStarted = performance.now();
         const lexicalPromise = imagyxApi
-          .search({ query, folderId, limit: SEARCH_RESULT_LIMIT })
-          .then((results) => {
+          .searchPage({ query, folderId, limit: SEARCH_RESULT_LIMIT, offset: 0 })
+          .then((page) => {
             if (
               sequence === this.searchSequence &&
-              (results.length > 0 || this.images.length === 0)
+              (page.items.length > 0 || this.images.length === 0)
             ) {
-              this.images = imageList(results);
+              this.images = imageList(page.items);
+              this.totalResults = page.total;
+              this.hasMoreImages = this.images.length < page.total;
               this.loading = false;
               perfLog(
                 "LibraryStore",
-                "refreshImages fast lexical",
+                "refreshImages fast first page",
                 performance.now() - lexicalStarted,
-                { results: results.length },
+                { results: page.items.length, total: page.total },
               );
             }
-            return results;
+            return page;
           });
         const embeddingStarted = performance.now();
         const embeddingPromise = semanticRuntime.embedQuery(query).then((result) => {
@@ -466,28 +474,32 @@ export const useLibraryStore = defineStore("library", {
         if (embeddingResult.status === "rejected") throw embeddingResult.reason;
 
         const embedded = embeddingResult.value;
+        this.activeQueryVector = embedded?.queryVector ?? null;
         this.activeConcepts = embedded?.concepts ?? [];
         if (!embedded?.queryVector) return;
         const hybridStarted = performance.now();
-        const hybrid = await imagyxApi.search({
+        const hybrid = await imagyxApi.searchPage({
           query,
           queryVector: embedded.queryVector,
           folderId,
           limit: SEARCH_RESULT_LIMIT,
+          offset: 0,
         });
         if (sequence !== this.searchSequence) return;
-        this.images = imageList(hybrid);
+        this.images = imageList(hybrid.items);
+        this.totalResults = hybrid.total;
+        this.hasMoreImages = this.images.length < hybrid.total;
         perfLog(
           "LibraryStore",
           "refreshImages hybrid IPC",
           performance.now() - hybridStarted,
-          { results: hybrid.length },
+          { results: hybrid.items.length, total: hybrid.total },
         );
         perfLog(
           "LibraryStore",
           "refreshImages semantic total",
           performance.now() - start,
-          { results: hybrid.length },
+          { results: hybrid.items.length, total: hybrid.total },
         );
       } catch (error) {
         if (sequence === this.searchSequence) this.reportError(error);
@@ -500,39 +512,39 @@ export const useLibraryStore = defineStore("library", {
     },
 
     async loadMoreImages() {
-      if (
-        this.query.trim() ||
-        !this.hasMoreImages ||
-        this.loadingMore
-      ) {
-        return;
-      }
+      if (!this.hasMoreImages || this.loadingMore) return;
       const sequence = this.searchSequence;
+      const query = this.query.trim();
       const offset = this.images.length;
       const folderId = this.selectedFolderId ?? undefined;
+      const limit = query ? SEARCH_RESULT_LIMIT : BROWSE_PAGE_SIZE;
       const started = performance.now();
       this.loadingMore = true;
       try {
-        const page = await imagyxApi.search({
-          query: "",
+        const page = await imagyxApi.searchPage({
+          query,
+          queryVector: this.activeQueryVector ?? undefined,
           folderId,
-          limit: BROWSE_PAGE_SIZE,
+          limit,
           offset,
         });
         if (sequence !== this.searchSequence) return;
         const existing = new Set(this.images.map((image) => image.id));
-        const appended = page.filter((image) => !existing.has(image.id));
+        const appended = page.items.filter((image) => !existing.has(image.id));
         this.images = imageList([...this.images, ...appended]);
-        this.hasMoreImages = page.length === BROWSE_PAGE_SIZE;
+        this.totalResults = page.total;
+        this.hasMoreImages = this.images.length < page.total;
         perfLog(
           "LibraryStore",
-          "loadMoreImages backend page",
+          "loadMoreImages shared search page",
           performance.now() - started,
           {
+            queryMode: query ? (this.activeQueryVector ? "hybrid" : "lexical-or-visual") : "browse",
             offset,
-            received: page.length,
+            received: page.items.length,
             appended: appended.length,
             totalLoaded: this.images.length,
+            total: page.total,
           },
         );
       } catch (error) {
@@ -615,7 +627,7 @@ export const useLibraryStore = defineStore("library", {
         current: 0,
         total: folder.imageCount,
         stage: "queued",
-        message: storeT('spotlight.index_message.queued', { total: folder.imageCount }),
+        message: storeT('spotlight.index_message.queued', undefined, { total: folder.imageCount }),
       };
       try {
         await semanticRuntime.resumeIndexing(folderId);

@@ -15,13 +15,16 @@ import { capitalize, useTagTypewriter } from '../../useTagTypewriter'
 import MovingBorder from '../ui/MovingBorder/MovingBorder.vue'
 import SpotlightInput from './SpotlightInput.vue'
 import SpotlightResults from './SpotlightResults.vue'
+import ImagePreviewDialog from '../ImagePreviewDialog.vue'
 import SpotlightSettings from './SpotlightSettings.vue'
 import type { SpotlightIndexJob, SpotlightView } from './types'
 import { useSpotlightResultActions } from './useSpotlightResultActions'
 import { useTranslate } from '../../i18n'
+import { spotlightSearchTiming } from '../../config/spotlight-search'
 
 const CACHE_TTL_MS = 2_000
-const SEARCH_DEBOUNCE_MS = 140
+const SEARCH_DEBOUNCE_MS = spotlightSearchTiming.lexicalDebounceMs
+const SEMANTIC_DEBOUNCE_MS = spotlightSearchTiming.semanticDebounceMs
 
 interface CachedResults {
   images: ImageAsset[]
@@ -49,6 +52,8 @@ const visible = ref(false)
 const resultsOpen = ref(false)
 const shellMerged = ref(false)
 const dialogOpen = ref(false)
+const previewImage = ref<ImageAsset | null>(null)
+const resultsScrolling = ref(false)
 const jobs = ref<SpotlightIndexJob[]>([])
 const inputView = ref<InstanceType<typeof SpotlightInput> | null>(null)
 const resultsView = ref<InstanceType<typeof SpotlightResults> | null>(null)
@@ -65,6 +70,8 @@ const {
 } = useSpotlightResultActions((reason) => { error.value = String(reason) })
 
 let searchSequence = 0
+let searchDiagnosticSequence = 0
+let pendingSearchDiagnosticId: string | undefined
 let lastSearchInputAt = 0
 let morphSequence = 0
 let expanded = false
@@ -79,6 +86,7 @@ let unlistenFocus: UnlistenFn | null = null
 let unlistenIndex: UnlistenFn | null = null
 let unlistenRuntime: UnlistenFn | null = null
 let unlistenLibrary: UnlistenFn | null = null
+let spacePressed = false
 
 const activeQuery = computed({
   get: () => view.value === 'settings' ? settingsQuery.value : searchQuery.value,
@@ -123,6 +131,48 @@ const showAddAction = computed(() => {
 
 const searchLater = debounce(() => { void runSearch() }, SEARCH_DEBOUNCE_MS)
 
+function waitForDelay(delayMs: number): Promise<void> {
+  if (delayMs <= 0) return Promise.resolve()
+  return new Promise((resolve) => window.setTimeout(resolve, delayMs))
+}
+
+function nextSearchDiagnosticId(): string | undefined {
+  if (!import.meta.env.DEV) return undefined
+  searchDiagnosticSequence += 1
+  return `spotlight-${Date.now().toString(36)}-${searchDiagnosticSequence}`
+}
+
+function deferResultSetLog(callback: () => void): void {
+  if (!import.meta.env.DEV) return
+  window.requestAnimationFrame(() => window.setTimeout(callback, 0))
+}
+
+function logResultSet(
+  diagnosticId: string | undefined,
+  stage: string,
+  images: ImageAsset[],
+  durationMs: number,
+  details: Record<string, unknown> = {},
+): void {
+  if (!import.meta.env.DEV || !diagnosticId) return
+  deferResultSetLog(() => {
+    console.groupCollapsed(
+      `[Imagyx][SpotlightSearch][${diagnosticId}] ${stage} · ${images.length} résultat(s) · ${durationMs.toFixed(1)} ms`,
+    )
+    console.log('Timing', { diagnosticId, stage, durationMs: Number(durationMs.toFixed(2)), ...details })
+    console.table(images.map((image, index) => ({
+      rank: index + 1,
+      id: image.id,
+      name: image.name,
+      format: image.extension.toLocaleUpperCase(),
+      semanticScore: image.semanticScore == null
+        ? null
+        : Number(image.semanticScore.toFixed(4)),
+    })))
+    console.groupEnd()
+  })
+}
+
 watch(searchQuery, (value) => {
   folderSuggestionIndex.value = 0
   selectedIndex.value = 0
@@ -130,19 +180,34 @@ watch(searchQuery, (value) => {
   searchSequence += 1
   const request = ++morphSequence
   if (!hasFolders.value) {
+    pendingSearchDiagnosticId = undefined
     results.value = []
     searching.value = false
     if (view.value === 'search') void openPanel(request)
     return
   }
   if (!value.trim()) {
+    pendingSearchDiagnosticId = undefined
     results.value = []
     searching.value = false
     if (view.value === 'search' && !hasActiveJobs.value) void closePanel(request)
     return
   }
+
   lastSearchInputAt = performance.now()
+  pendingSearchDiagnosticId = nextSearchDiagnosticId()
   searching.value = true
+  if (import.meta.env.DEV && pendingSearchDiagnosticId) {
+    const parsed = parseFolderQuery(value, folders.value)
+    console.info(`[Imagyx][SpotlightSearch][${pendingSearchDiagnosticId}] scheduled`, {
+      rawQuery: value,
+      query: parsed.query,
+      folderId: parsed.folder?.id ?? null,
+      lexicalDebounceMs: SEARCH_DEBOUNCE_MS,
+      semanticDebounceMs: SEMANTIC_DEBOUNCE_MS,
+      cacheTtlMs: CACHE_TTL_MS,
+    })
+  }
   searchLater()
   void openPanel(request)
 })
@@ -243,39 +308,113 @@ async function backToSearch() {
   if (!searchQuery.value.trim() && hasFolders.value && !hasActiveJobs.value) await closePanel(++morphSequence)
   else await openPanel(++morphSequence)
 }
-
 async function runSearch() {
   const sequence = ++searchSequence
-  const startedAt = performance.now()
+  const diagnosticId = pendingSearchDiagnosticId ?? nextSearchDiagnosticId()
+  pendingSearchDiagnosticId = undefined
+  const runStartedAt = performance.now()
+  const startedAt = import.meta.env.DEV ? runStartedAt : 0
+  const inputStartedAt = lastSearchInputAt
+  const inputToRunMs = inputStartedAt > 0 ? runStartedAt - inputStartedAt : 0
   const parsed = parsedFolderQuery.value
   const text = parsed.query
   const folderId = parsed.folder?.id
   const cacheKey = `${folderId ?? 'all'}:${text.toLocaleLowerCase('en')}`
+  const trigger = inputToRunMs + 2 < SEARCH_DEBOUNCE_MS ? 'immediate' : 'debounced'
+
+  if (import.meta.env.DEV) {
+    perfLog('Spotlight', 'input to search start', inputToRunMs, {
+      diagnosticId,
+      trigger,
+      query: text,
+      folderId: folderId ?? null,
+      configuredDebounceMs: SEARCH_DEBOUNCE_MS,
+      configuredSemanticDebounceMs: SEMANTIC_DEBOUNCE_MS,
+    })
+    console.info(`[Imagyx][SpotlightSearch][${diagnosticId ?? '-'}] run`, {
+      sequence,
+      trigger,
+      rawQuery: searchQuery.value,
+      query: text,
+      folderId: folderId ?? null,
+      inputToRunMs: Number(inputToRunMs.toFixed(2)),
+      configuredDebounceMs: SEARCH_DEBOUNCE_MS,
+      configuredSemanticDebounceMs: SEMANTIC_DEBOUNCE_MS,
+    })
+  }
+
   if (!hasFolders.value || (!text && !folderId)) {
     results.value = []
     searching.value = false
     return
   }
+
   const cached = resultCache.get(cacheKey)
-  if (cached && performance.now() - cached.storedAt <= CACHE_TTL_MS) {
+  const cacheAgeMs = cached ? performance.now() - cached.storedAt : null
+  if (cached && cacheAgeMs != null && cacheAgeMs <= CACHE_TTL_MS) {
     results.value = cached.images
     searching.value = false
+    if (import.meta.env.DEV) {
+      const cacheDurationMs = performance.now() - startedAt
+      perfLog('Spotlight', 'result cache hit', cacheDurationMs, {
+        diagnosticId,
+        query: text,
+        folderId: folderId ?? null,
+        cacheAgeMs,
+        results: cached.images.length,
+      })
+      logResultSet(diagnosticId, 'cache hit', cached.images, inputToRunMs + cacheDurationMs, {
+        query: text,
+        folderId: folderId ?? null,
+        cacheAgeMs: Number(cacheAgeMs.toFixed(2)),
+        inputToRunMs: Number(inputToRunMs.toFixed(2)),
+      })
+    }
     return
   }
-  if (cached) resultCache.delete(cacheKey)
+  if (cached) {
+    resultCache.delete(cacheKey)
+    if (import.meta.env.DEV) {
+      console.info(`[Imagyx][SpotlightSearch][${diagnosticId ?? '-'}] cache expired`, {
+        query: text,
+        folderId: folderId ?? null,
+        cacheAgeMs,
+        cacheTtlMs: CACHE_TTL_MS,
+      })
+    }
+  }
 
   searching.value = true
-  const lexicalStartedAt = performance.now()
-  const lexicalPromise = imagyxApi.search({ query: text, folderId, limit: 60 })
+  const lexicalStartedAt = import.meta.env.DEV ? performance.now() : 0
+  const lexicalPromise = imagyxApi.search({
+    query: text,
+    folderId,
+    limit: 60,
+    diagnosticId: import.meta.env.DEV && diagnosticId
+      ? `${diagnosticId}-${text ? 'lexical' : 'browse'}`
+      : undefined,
+  })
   if (!text) {
     try {
       const images = await lexicalPromise
-      if (!matchesActiveSearch(sequence, text, folderId)) return
+      if (!matchesActiveSearch(sequence, text, folderId, diagnosticId)) return
       results.value = images
       rememberResults(cacheKey, images)
-      perfLog('Spotlight', 'folder browse IPC', performance.now() - lexicalStartedAt, {
-        results: images.length,
-      })
+      if (import.meta.env.DEV) {
+        const browseMs = performance.now() - lexicalStartedAt
+        perfLog('Spotlight', 'folder browse IPC', browseMs, {
+          diagnosticId,
+          query: text,
+          folderId: folderId ?? null,
+          results: images.length,
+        })
+        logResultSet(diagnosticId, 'folder browse complete', images, inputToRunMs + browseMs, {
+          query: text,
+          folderId: folderId ?? null,
+          inputToRunMs: Number(inputToRunMs.toFixed(2)),
+          rustIpcMs: Number(browseMs.toFixed(2)),
+        })
+      }
     } catch (reason) {
       if (sequence === searchSequence) error.value = String(reason)
     } finally {
@@ -284,46 +423,164 @@ async function runSearch() {
     return
   }
 
-  const embeddingPromise = text.length >= 2
-    ? semanticRuntime.embedQuery(text)
-    : Promise.resolve(undefined)
   void lexicalPromise.then((images) => {
-    perfLog('Spotlight', 'lexical IPC', performance.now() - lexicalStartedAt, { results: images.length })
-    if (!matchesActiveSearch(sequence, text, folderId)) return
-    results.value = images
-    void nextPaint().then(() => {
-      perfLog('Spotlight', 'input to lexical paint', performance.now() - lastSearchInputAt, {
+    const lexicalMs = import.meta.env.DEV ? performance.now() - lexicalStartedAt : 0
+    if (import.meta.env.DEV) {
+      perfLog('Spotlight', 'lexical IPC', lexicalMs, {
+        diagnosticId,
+        query: text,
+        folderId: folderId ?? null,
         results: images.length,
       })
+    }
+    if (!matchesActiveSearch(sequence, text, folderId, diagnosticId)) return
+    results.value = images
+    void nextPaint().then(() => {
+      if (!import.meta.env.DEV) return
+      const inputToPaintMs = inputStartedAt > 0
+        ? performance.now() - inputStartedAt
+        : performance.now() - startedAt
+      perfLog('Spotlight', 'input to lexical paint', inputToPaintMs, {
+        diagnosticId,
+        query: text,
+        folderId: folderId ?? null,
+        configuredDebounceMs: SEARCH_DEBOUNCE_MS,
+        lexicalIpcMs: lexicalMs,
+        results: images.length,
+      })
+      logResultSet(diagnosticId, 'lexical first paint', images, inputToPaintMs, {
+        query: text,
+        folderId: folderId ?? null,
+        configuredDebounceMs: SEARCH_DEBOUNCE_MS,
+        lexicalIpcMs: Number(lexicalMs.toFixed(2)),
+      })
     })
-  }).catch(() => undefined)
+  }).catch((reason) => {
+    if (import.meta.env.DEV) {
+      console.error(`[Imagyx][SpotlightSearch][${diagnosticId ?? '-'}] lexical request failed`, {
+        query: text,
+        folderId: folderId ?? null,
+        reason,
+      })
+    }
+  })
 
   try {
-    const embedded = await embeddingPromise
-    perfLog('Spotlight', 'semantic embedding', performance.now() - lexicalStartedAt, {
-      vectorReady: Boolean(embedded?.queryVector),
-    })
-    if (!matchesActiveSearch(sequence, text, folderId)) return
+    const shouldEmbed = text.length >= 2
+    let semanticWaitMs = 0
+    if (shouldEmbed) {
+      const semanticWaitStartedAt = performance.now()
+      const elapsedSinceInputMs = inputStartedAt > 0
+        ? semanticWaitStartedAt - inputStartedAt
+        : inputToRunMs
+      const remainingSemanticDelayMs = Math.max(0, SEMANTIC_DEBOUNCE_MS - elapsedSinceInputMs)
+      if (remainingSemanticDelayMs > 0) await waitForDelay(remainingSemanticDelayMs)
+      semanticWaitMs = performance.now() - semanticWaitStartedAt
+      if (import.meta.env.DEV) {
+        perfLog('Spotlight', 'semantic debounce wait', semanticWaitMs, {
+          diagnosticId,
+          query: text,
+          folderId: folderId ?? null,
+          configuredSemanticDebounceMs: SEMANTIC_DEBOUNCE_MS,
+          elapsedSinceInputMs,
+          remainingSemanticDelayMs,
+        })
+      }
+    }
+    if (!matchesActiveSearch(sequence, text, folderId, diagnosticId)) return
+
+    const embeddingStartedAt = import.meta.env.DEV ? performance.now() : 0
+    const embedded = shouldEmbed ? await semanticRuntime.embedQuery(text) : undefined
+    const embeddingMs = import.meta.env.DEV ? performance.now() - embeddingStartedAt : 0
+    if (import.meta.env.DEV) {
+      perfLog('Spotlight', 'semantic embedding', embeddingMs, {
+        diagnosticId,
+        query: text,
+        folderId: folderId ?? null,
+        vectorReady: Boolean(embedded?.queryVector),
+        vectorDimensions: embedded?.queryVector.length ?? 0,
+      })
+    }
+    if (!matchesActiveSearch(sequence, text, folderId, diagnosticId)) return
+    const hybridStartedAt = import.meta.env.DEV ? performance.now() : 0
     const images = embedded?.queryVector
-      ? await imagyxApi.search({ query: text, folderId, queryVector: embedded.queryVector, limit: 60 })
+      ? await imagyxApi.search({
+          query: text,
+          folderId,
+          queryVector: embedded.queryVector,
+          limit: 60,
+          diagnosticId: import.meta.env.DEV && diagnosticId
+            ? `${diagnosticId}-hybrid`
+            : undefined,
+        })
       : await lexicalPromise
-    if (!matchesActiveSearch(sequence, text, folderId)) return
+    const hybridMs = import.meta.env.DEV ? performance.now() - hybridStartedAt : 0
+    if (!matchesActiveSearch(sequence, text, folderId, diagnosticId)) return
     results.value = images
     rememberResults(cacheKey, images)
-    perfLog('Spotlight', 'semantic search total', performance.now() - startedAt, { results: images.length })
+    if (import.meta.env.DEV) {
+      const totalMs = performance.now() - startedAt
+      perfLog('Spotlight', 'semantic search total', totalMs, {
+        diagnosticId,
+        query: text,
+        folderId: folderId ?? null,
+        inputToRunMs,
+        semanticWaitMs,
+        embeddingMs,
+        hybridRustIpcMs: hybridMs,
+        results: images.length,
+      })
+      logResultSet(diagnosticId, 'hybrid final', images, inputToRunMs + totalMs, {
+        query: text,
+        folderId: folderId ?? null,
+        configuredDebounceMs: SEARCH_DEBOUNCE_MS,
+        configuredSemanticDebounceMs: SEMANTIC_DEBOUNCE_MS,
+        inputToRunMs: Number(inputToRunMs.toFixed(2)),
+        semanticWaitMs: Number(semanticWaitMs.toFixed(2)),
+        embeddingMs: Number(embeddingMs.toFixed(2)),
+        hybridRustIpcMs: Number(hybridMs.toFixed(2)),
+        runSearchMs: Number(totalMs.toFixed(2)),
+      })
+    }
   } catch (reason) {
     if (sequence === searchSequence) {
       error.value = String(reason)
       try { results.value = await lexicalPromise } catch { /* the primary error remains visible */ }
+    }
+    if (import.meta.env.DEV) {
+      console.error(`[Imagyx][SpotlightSearch][${diagnosticId ?? '-'}] semantic search failed`, {
+        query: text,
+        folderId: folderId ?? null,
+        elapsedMs: Number((performance.now() - startedAt).toFixed(2)),
+        reason,
+      })
     }
   } finally {
     if (sequence === searchSequence) searching.value = false
   }
 }
 
-function matchesActiveSearch(sequence: number, query: string, folderId?: string): boolean {
+function matchesActiveSearch(
+  sequence: number,
+  query: string,
+  folderId?: string,
+  diagnosticId?: string,
+): boolean {
   const active = parseFolderQuery(searchQuery.value, folders.value)
-  return sequence === searchSequence && active.query === query && active.folder?.id === folderId
+  const matches = sequence === searchSequence
+    && active.query === query
+    && active.folder?.id === folderId
+  if (import.meta.env.DEV && !matches) {
+    console.info(`[Imagyx][SpotlightSearch][${diagnosticId ?? '-'}] stale result ignored`, {
+      requestSequence: sequence,
+      activeSequence: searchSequence,
+      requestQuery: query,
+      activeQuery: active.query,
+      requestFolderId: folderId ?? null,
+      activeFolderId: active.folder?.id ?? null,
+    })
+  }
+  return matches
 }
 
 function rememberResults(key: string, images: ImageAsset[]) {
@@ -368,6 +625,7 @@ async function resumeIncompleteFolders(folderIds: string[]) {
     upsertJob({
       folderId: folder.id,
       folderName: folder.name,
+
       current: 0,
       total: folder.imageCount,
       stage: 'queued',
@@ -452,6 +710,21 @@ function moveSelection(delta: number) {
 }
 
 function handleKeydown(event: KeyboardEvent) {
+  const isSpace = event.code === 'Space' || event.key === ' '
+  if (isSpace && (spacePressed || event.repeat)) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    return
+  }
+  if (isSpace) spacePressed = true
+  if (previewImage.value) {
+    if (isSpace || event.key === 'Escape') {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      previewImage.value = null
+    }
+    return
+  }
   if (view.value === 'search' && (event.ctrlKey || event.metaKey) && selectedImage.value) {
     const key = event.key.toLocaleLowerCase()
     if (key === 'c' || event.code === 'KeyC') {
@@ -478,10 +751,21 @@ function handleKeydown(event: KeyboardEvent) {
   if (event.key === 'Enter' && selectedImage.value) {
     event.preventDefault()
     void openImage(selectedImage.value)
+    return
+  }
+  if (isSpace && selectedImage.value) {
+    event.preventDefault()
+    previewImage.value = selectedImage.value
   }
 }
 
+function handleKeyup(event: KeyboardEvent) {
+  if (event.code === 'Space' || event.key === ' ') spacePressed = false
+}
+
 function prepareOpen() {
+  resultsScrolling.value = false
+  spacePressed = false
   visible.value = false
   view.value = 'search'
   searchQuery.value = ''
@@ -494,6 +778,8 @@ function prepareOpen() {
   shellMerged.value = false
   expanded = false
   expansionPromise = null
+  pendingSearchDiagnosticId = undefined
+  lastSearchInputAt = 0
   resetActionFeedback()
   void syncFolders(true)
 }
@@ -504,6 +790,9 @@ function animateOpen() {
 }
 
 function prepareHide() {
+  resultsScrolling.value = false
+  spacePressed = false
+  previewImage.value = null
   visible.value = false
   searchQuery.value = ''
   settingsQuery.value = ''
@@ -513,6 +802,8 @@ function prepareHide() {
   shellMerged.value = false
   expanded = false
   expansionPromise = null
+  pendingSearchDiagnosticId = undefined
+  lastSearchInputAt = 0
   resetActionFeedback()
 }
 
@@ -535,7 +826,18 @@ onMounted(async () => {
   void platform.initialize()
   void shortcut.initialize()
   void syncFolders()
+  if (import.meta.env.DEV) {
+    console.info('[Imagyx][SpotlightSearch] development diagnostics enabled', {
+      lexicalDebounceMs: SEARCH_DEBOUNCE_MS,
+      semanticDebounceMs: SEMANTIC_DEBOUNCE_MS,
+      cacheTtlMs: CACHE_TTL_MS,
+      targetFirstResultMs: 100,
+      targetFinalResultMs: 200,
+      note: 'Le lexical part rapidement; le sémantique attend une courte période de calme et vérifie la requête active avant l’embedding.',
+    })
+  }
   window.addEventListener('keydown', handleKeydown, { capture: true })
+  window.addEventListener('keyup', handleKeyup, { capture: true })
   const unlisteners = await Promise.all([
     listen('spotlight-will-open', prepareOpen),
     listen('spotlight-opened', animateOpen),
@@ -559,6 +861,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeydown, { capture: true })
+  window.removeEventListener('keyup', handleKeyup, { capture: true })
   unlistenWillOpen?.()
   unlistenOpened?.()
   unlistenWillHide?.()
@@ -574,7 +877,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="spotlight-root">
+  <main class="spotlight-root" :class="{ 'spotlight-root--scrolling': resultsScrolling }">
     <section
       class="spotlight-stage"
       :class="{ 'spotlight-stage--visible': visible }"
@@ -640,7 +943,9 @@ onBeforeUnmount(() => {
                   :incomplete-coverage="incompleteCoverage"
                   :jobs="jobs"
                   :file-manager-name="platform.fileManagerName"
+                  :performance-mode="resultsScrolling"
                   @select="selectedIndex = $event"
+                  @scroll-state="resultsScrolling = $event"
                   @open="openImage"
                   @copy="copyImage"
                   @reveal="revealImage"
@@ -653,6 +958,11 @@ onBeforeUnmount(() => {
         </div>
       </MovingBorder>
     </section>
+    <ImagePreviewDialog
+      :image="previewImage"
+      :keyboard-shortcuts="false"
+      @close="previewImage = null"
+    />
   </main>
 </template>
 
@@ -693,6 +1003,11 @@ onBeforeUnmount(() => {
 .spotlight-surface--expanded {
   box-shadow: inset 0 1px rgb(255 255 255 / 0.1), 0 18px 38px -28px rgb(15 23 42 / 0.42);
 }
+.spotlight-root--scrolling .spotlight-surface {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.spotlight-root--scrolling .spotlight-surface { transition: none; }
 .spotlight-panel {
   height: var(--spotlight-panel-height);
   min-height: 0;

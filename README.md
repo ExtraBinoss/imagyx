@@ -18,23 +18,17 @@
 
 <br />
 
-<table>
-  <tr>
-    <td align="center">
-      <strong>Banner placeholder</strong><br />
-      Replace this block with <code>docs/assets/imagyx-banner.webp</code><br />
-      Expected size: <strong>1600 × 800 px</strong> · 2:1 ratio · WebP or PNG<br />
-      Keep important content inside the centered 1200 × 600 px safe area.
-    </td>
-  </tr>
-</table>
-
-<!--
-When the banner is ready, replace the placeholder table with:
 <p align="center">
-  <img src="./docs/assets/imagyx-banner.webp" alt="Imagyx natural-language image search" width="100%" />
+  <img src="./docs/assets/imagyx-banner.png" alt="Imagyx banner" width="100%" />
 </p>
--->
+
+## Demo
+
+See how Imagyx lets you search your local image library instantly using natural language.
+
+<p align="center">
+  <video src="./docs/assets/IMAGYX-demo.webm" controls width="100%" autoplay loop muted></video>
+</p>
 
 <br />
 

@@ -71,6 +71,15 @@ pub struct SearchRequest {
     pub limit: Option<usize>,
     pub offset: Option<usize>,
     pub query_vector: Option<Vec<f32>>,
+    pub mode: Option<String>,
+    pub exclude_image_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchPage {
+    pub items: Vec<ImageAsset>,
+    pub total: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]

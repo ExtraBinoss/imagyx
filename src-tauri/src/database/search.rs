@@ -8,6 +8,20 @@ use super::{
 };
 
 impl Database {
+    pub fn image_count(&self, folder_id: Option<&str>) -> Result<usize, AppError> {
+        let connection = self.connect()?;
+        let count = if let Some(folder_id) = folder_id {
+            connection.query_row(
+                "SELECT COUNT(*) FROM images WHERE folder_id = ?1",
+                params![folder_id],
+                |row| row.get::<_, i64>(0),
+            )?
+        } else {
+            connection.query_row("SELECT COUNT(*) FROM images", [], |row| row.get::<_, i64>(0))?
+        };
+        Ok(count_to_usize(count))
+    }
+
     pub fn recent_images(
         &self,
         folder_id: Option<&str>,
@@ -104,6 +118,73 @@ impl Database {
         rows.collect::<Result<Vec<_>, _>>().map_err(AppError::from)
     }
 
+    pub fn lexical_search_count(
+        &self,
+        fts_query: &str,
+        folder_id: Option<&str>,
+    ) -> Result<usize, AppError> {
+        if fts_query.is_empty() {
+            return Ok(0);
+        }
+        let connection = self.connect()?;
+        let count = if let Some(folder_id) = folder_id {
+            connection.query_row(
+                "SELECT COUNT(*)
+                 FROM images_fts JOIN images i ON i.rowid = images_fts.rowid
+                 WHERE images_fts MATCH ?1 AND i.folder_id = ?2",
+                params![fts_query, folder_id],
+                |row| row.get::<_, i64>(0),
+            )?
+        } else {
+            connection.query_row(
+                "SELECT COUNT(*) FROM images_fts WHERE images_fts MATCH ?1",
+                params![fts_query],
+                |row| row.get::<_, i64>(0),
+            )?
+        };
+        Ok(count_to_usize(count))
+    }
+
+    pub fn hybrid_search_count(
+        &self,
+        fts_query: Option<&str>,
+        folder_id: Option<&str>,
+    ) -> Result<usize, AppError> {
+        let connection = self.connect()?;
+        let count = match (fts_query, folder_id) {
+            (Some(fts_query), Some(folder_id)) => connection.query_row(
+                "SELECT COUNT(*) FROM images i
+                 WHERE i.folder_id = ?2 AND (
+                   EXISTS (SELECT 1 FROM embeddings e WHERE e.image_id = i.id)
+                   OR i.rowid IN (SELECT rowid FROM images_fts WHERE images_fts MATCH ?1)
+                 )",
+                params![fts_query, folder_id],
+                |row| row.get::<_, i64>(0),
+            )?,
+            (Some(fts_query), None) => connection.query_row(
+                "SELECT COUNT(*) FROM images i
+                 WHERE EXISTS (SELECT 1 FROM embeddings e WHERE e.image_id = i.id)
+                    OR i.rowid IN (SELECT rowid FROM images_fts WHERE images_fts MATCH ?1)",
+                params![fts_query],
+                |row| row.get::<_, i64>(0),
+            )?,
+            (None, Some(folder_id)) => connection.query_row(
+                "SELECT COUNT(*) FROM images i
+                 WHERE i.folder_id = ?1
+                   AND EXISTS (SELECT 1 FROM embeddings e WHERE e.image_id = i.id)",
+                params![folder_id],
+                |row| row.get::<_, i64>(0),
+            )?,
+            (None, None) => connection.query_row(
+                "SELECT COUNT(*) FROM images i
+                 WHERE EXISTS (SELECT 1 FROM embeddings e WHERE e.image_id = i.id)",
+                [],
+                |row| row.get::<_, i64>(0),
+            )?,
+        };
+        Ok(count_to_usize(count))
+    }
+
     pub fn image_exists(&self, image_id: &str) -> Result<bool, AppError> {
         self.connect()?
             .query_row(
@@ -127,6 +208,10 @@ impl Database {
 
 fn sqlite_limit(limit: usize) -> i64 {
     i64::try_from(limit).unwrap_or(i64::MAX)
+}
+
+fn count_to_usize(count: i64) -> usize {
+    usize::try_from(count.max(0)).unwrap_or(usize::MAX)
 }
 
 #[cfg(test)]

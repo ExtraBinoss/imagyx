@@ -3,16 +3,20 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   Check,
   Copy,
+  Ellipsis,
   ExternalLink,
   FolderOpen,
   FolderPlus,
   LoaderCircle,
+  RefreshCw,
   Search,
 } from '@lucide/vue'
 import type { FolderIndexCoverage, ImageAsset } from '../../types'
+import { visualSearch } from '../../services/visual-search'
 import ThumbnailImage from '../ThumbnailImage.vue'
 import Button from '../ui/Button/Button.vue'
 import KbdChip from '../ui/KbdChip/KbdChip.vue'
+import SpotlightConverter from './SpotlightConverter.vue'
 import SpotlightIndexProgress from './SpotlightIndexProgress.vue'
 import SpotlightIndexCoverageNotice from './SpotlightIndexCoverageNotice.vue'
 import type { SpotlightIndexJob } from './types'
@@ -35,10 +39,12 @@ const props = defineProps<{
   incompleteCoverage: FolderIndexCoverage[]
   jobs: SpotlightIndexJob[]
   fileManagerName: string
+  performanceMode: boolean
 }>()
 
 const emit = defineEmits<{
   select: [index: number]
+  scrollState: [scrolling: boolean]
   open: [image: ImageAsset]
   copy: [image: ImageAsset]
   reveal: [image: ImageAsset]
@@ -51,13 +57,21 @@ const RESULT_ROW_HEIGHT = 72
 const RESULT_OVERSCAN = 4
 const viewport = ref<HTMLElement | null>(null)
 const resultList = ref<HTMLElement | null>(null)
+const actionHub = ref<HTMLElement | null>(null)
+const converterView = ref<InstanceType<typeof SpotlightConverter> | null>(null)
+const converterSource = ref<ImageAsset | null>(null)
+const actionsOpen = ref(false)
+const findingSimilar = ref(false)
 const canScrollDown = ref(false)
 const scrollTop = ref(0)
 const viewportHeight = ref(0)
 const resultsOffset = ref(0)
 let scrollFrame: number | undefined
+let scrollEndTimer: number | undefined
 let resizeObserver: ResizeObserver | null = null
+const isScrolling = ref(false)
 
+const selectedImage = computed(() => props.results[props.selectedIndex] ?? null)
 const visibleResults = computed(() => {
   const firstVisible = Math.floor(
     Math.max(0, scrollTop.value - resultsOffset.value) / RESULT_ROW_HEIGHT,
@@ -86,7 +100,16 @@ watch(
   () => { void nextTick(scheduleScrollState) },
 )
 
+watch(
+  () => selectedImage.value?.id,
+  () => { actionsOpen.value = false },
+)
+
 function updateScrollState() {
+  if (converterSource.value) {
+    canScrollDown.value = false
+    return
+  }
   const element = viewport.value
   if (!element) {
     canScrollDown.value = false
@@ -107,7 +130,27 @@ function scheduleScrollState() {
   })
 }
 
+function handleScroll() {
+  if (!isScrolling.value) {
+    isScrolling.value = true
+    emit('scrollState', true)
+  }
+  if (scrollEndTimer) window.clearTimeout(scrollEndTimer)
+  scrollEndTimer = window.setTimeout(() => {
+    isScrolling.value = false
+    emit('scrollState', false)
+  }, 120)
+  scheduleScrollState()
+}
+
+function handleResultPointerEnter(index: number) {
+  // Virtual rows are replaced while scrolling. Selecting each replacement forces
+  // a parent render and makes fast wheel scrolling feel sticky.
+  if (!isScrolling.value) emit('select', index)
+}
+
 function scrollToIndex(index: number) {
+  if (converterSource.value) return
   void nextTick(() => {
     const element = viewport.value
     const list = resultList.value
@@ -122,23 +165,162 @@ function scrollToIndex(index: number) {
   })
 }
 
+function openConverter(image: ImageAsset) {
+  actionsOpen.value = false
+  converterSource.value = image
+  canScrollDown.value = false
+}
+
+function closeConverter() {
+  converterSource.value = null
+  void nextTick(scheduleScrollState)
+}
+
+function promoteConvertedResult(image: ImageAsset) {
+  const existingIndex = props.results.findIndex((result) => result.id === image.id)
+  if (existingIndex >= 0) props.results.splice(existingIndex, 1)
+  props.results.unshift(image)
+  emit('select', 0)
+}
+
+function toggleActions() {
+  if (!selectedImage.value) return
+  actionsOpen.value = !actionsOpen.value
+}
+
+function copySelected() {
+  if (!selectedImage.value) return
+  emit('copy', selectedImage.value)
+}
+
+async function findSimilarSelected() {
+  const image = selectedImage.value
+  if (!image || findingSimilar.value) return
+  actionsOpen.value = false
+  findingSimilar.value = true
+  try {
+    await visualSearch.findSimilar(image)
+  } finally {
+    findingSimilar.value = false
+  }
+}
+
+function convertSelected() {
+  if (!selectedImage.value) return
+  openConverter(selectedImage.value)
+}
+
+function revealSelected() {
+  if (!selectedImage.value) return
+  actionsOpen.value = false
+  emit('reveal', selectedImage.value)
+}
+
+function openSelected() {
+  if (!selectedImage.value) return
+  actionsOpen.value = false
+  emit('open', selectedImage.value)
+}
+
+function handleDocumentPointerDown(event: PointerEvent) {
+  if (!actionsOpen.value) return
+  const target = event.target
+  if (target instanceof Node && actionHub.value?.contains(target)) return
+  actionsOpen.value = false
+}
+
+function handleWindowKeydown(event: KeyboardEvent) {
+  if (converterSource.value) {
+    const handled = converterView.value?.handleKeydown(event) ?? false
+    if (handled) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+    }
+    return
+  }
+
+  if (actionsOpen.value && event.key === 'Escape') {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    actionsOpen.value = false
+    return
+  }
+
+  const primaryModifier = event.ctrlKey || event.metaKey
+  const key = event.key.toLocaleLowerCase()
+  if (primaryModifier && !event.shiftKey && key === 'k') {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    toggleActions()
+    return
+  }
+
+  if (!primaryModifier || !event.shiftKey || event.altKey) return
+  const image = selectedImage.value
+  if (!image) return
+
+  if (key === 's' || event.code === 'KeyS') {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    void findSimilarSelected()
+    return
+  }
+
+  if (key !== 'c' && event.code !== 'KeyC') return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  openConverter(image)
+}
+
 onMounted(() => {
   resizeObserver = new ResizeObserver(scheduleScrollState)
   if (viewport.value) resizeObserver.observe(viewport.value)
+  window.addEventListener('keydown', handleWindowKeydown, { capture: true })
+  document.addEventListener('pointerdown', handleDocumentPointerDown, { capture: true })
   scheduleScrollState()
 })
 
 onBeforeUnmount(() => {
   if (scrollFrame) window.cancelAnimationFrame(scrollFrame)
+  if (scrollEndTimer) window.clearTimeout(scrollEndTimer)
+  if (isScrolling.value) emit('scrollState', false)
   resizeObserver?.disconnect()
+  window.removeEventListener('keydown', handleWindowKeydown, { capture: true })
+  document.removeEventListener('pointerdown', handleDocumentPointerDown, { capture: true })
 })
 
 defineExpose({ scrollToIndex })
 </script>
 
 <template>
-  <div class="spotlight-results-shell">
-    <div ref="viewport" class="spotlight-results" role="listbox" @scroll.passive="scheduleScrollState">
+  <div
+    class="spotlight-results-shell"
+    :class="{ 'spotlight-results-shell--scrolling': performanceMode }"
+  >
+    <SpotlightConverter
+      v-if="converterSource"
+      ref="converterView"
+      :source="converterSource"
+      :copied-image-id="copiedImageId"
+      :copying-image-id="copyingImageId"
+      :revealing-image-id="revealingImageId"
+      :opening-image-id="openingImageId"
+      :file-manager-name="fileManagerName"
+      @back="closeConverter"
+      @converted="promoteConvertedResult"
+      @copy="emit('copy', $event)"
+      @reveal="emit('reveal', $event)"
+      @open="emit('open', $event)"
+    />
+
+    <div
+      v-else
+      ref="viewport"
+      class="spotlight-results"
+      :class="{ 'spotlight-results--with-actions': Boolean(selectedImage) }"
+      role="listbox"
+      @scroll.passive="handleScroll"
+    >
       <div v-if="!libraryReady" class="spotlight-library-loading" aria-live="polite">
         <LoaderCircle class="spin" :size="22" />
         <strong>{{ t('spotlight.loading_library') }}</strong>
@@ -201,73 +383,35 @@ defineExpose({ scrollToIndex })
             class="spotlight-result-list__items"
             :style="{ transform: `translate3d(0, ${(visibleResults[0]?.index ?? 0) * RESULT_ROW_HEIGHT}px, 0)` }"
           >
-        <div
-          v-for="{ image, index } in visibleResults"
-          :key="image.id"
-          class="spotlight-result"
-          :class="{ 'spotlight-result--selected': index === selectedIndex }"
-          :data-result-index="index"
-          :aria-posinset="index + 1"
-          :aria-setsize="results.length"
-          :aria-selected="index === selectedIndex"
-          role="option"
-          tabindex="-1"
-          @mouseenter="emit('select', index)"
-          @focus="emit('select', index)"
-          @click="emit('select', index)"
-          @dblclick="emit('open', image)"
-        >
-          <span class="spotlight-thumb">
-            <ThumbnailImage class="spotlight-thumbnail-image" :image="image" />
-          </span>
-          <span class="spotlight-copy">
-            <strong>{{ image.name }}</strong>
-            <small>{{ image.width }} × {{ image.height }} · {{ Math.max(1, Math.round(image.sizeBytes / 1024)) }} KB</small>
-          </span>
-          <span v-if="image.semanticScore != null" class="spotlight-score">{{ Math.round(image.semanticScore * 100) }}%</span>
-          <span class="spotlight-actions">
-            <Button
-              class="spotlight-action-button"
-              :class="{ 'spotlight-action-button--success': copiedImageId === image.id }"
-              :variant="copiedImageId === image.id ? 'primary' : 'secondary'"
-              size="sm"
-              :loading="copyingImageId === image.id"
-              :aria-label="t('copy_image')"
-              @click.stop="emit('copy', image)"
+            <div
+              v-for="{ image, index } in visibleResults"
+              :key="image.id"
+              class="spotlight-result"
+              :class="{ 'spotlight-result--selected': index === selectedIndex }"
+              :data-result-index="index"
+              :aria-posinset="index + 1"
+              :aria-setsize="results.length"
+              :aria-selected="index === selectedIndex"
+              role="option"
+              tabindex="-1"
+              @mouseenter="handleResultPointerEnter(index)"
+              @focus="emit('select', index)"
+              @click="emit('select', index)"
+              @dblclick="emit('open', image)"
             >
-              <template #leading>
-                <Check v-if="copiedImageId === image.id" :size="14" />
-                <Copy v-else :size="14" />
-              </template>
-              {{ copiedImageId === image.id ? t('copied') : t('copy') }}
-              <template #trailing><KbdChip shortcut="Ctrl+C" size="sm" /></template>
-            </Button>
-            <Button
-              class="spotlight-action-button"
-              variant="secondary"
-              size="sm"
-              :loading="revealingImageId === image.id"
-              :aria-label="t('open_in_file_manager', { name: fileManagerName })"
-              @click.stop="emit('reveal', image)"
-            >
-              <template #leading><FolderOpen :size="14" /></template>
-              {{ t('open_in_file_manager_short', { name: fileManagerName }) }}
-              <template #trailing><KbdChip shortcut="Ctrl+E" size="sm" /></template>
-            </Button>
-            <Button
-              class="spotlight-action-button"
-              variant="primary"
-              size="sm"
-              :loading="openingImageId === image.id"
-              :aria-label="t('open_in_imagyx')"
-              @click.stop="emit('open', image)"
-            >
-              <template #leading><ExternalLink :size="14" /></template>
-              Imagyx
-              <template #trailing><KbdChip shortcut="Ctrl+I" size="sm" /></template>
-            </Button>
-          </span>
-        </div>
+              <span class="spotlight-thumb">
+                <ThumbnailImage
+                  class="spotlight-thumbnail-image"
+                  :image="image"
+                  :priority="isScrolling ? 3 : index === selectedIndex ? 0 : 1"
+                />
+              </span>
+              <span class="spotlight-copy">
+                <strong>{{ image.name }}</strong>
+                <small>{{ image.width }} × {{ image.height }} · {{ Math.max(1, Math.round(image.sizeBytes / 1024)) }} KB</small>
+              </span>
+              <span v-if="image.semanticScore != null" class="spotlight-score">{{ Math.round(image.semanticScore * 100) }}%</span>
+            </div>
           </div>
         </div>
 
@@ -291,12 +435,141 @@ defineExpose({ scrollToIndex })
 
       <div v-if="error" class="spotlight-error">{{ error }}</div>
     </div>
-    <div v-if="canScrollDown" class="spotlight-scroll-shadow" aria-hidden="true" />
+
+    <div
+      v-if="!converterSource && selectedImage"
+      class="spotlight-action-dock"
+      role="toolbar"
+      :aria-label="t('spotlight.actions.toolbar')"
+    >
+      <div class="spotlight-action-dock__bar">
+        <Button
+          class="spotlight-dock-button spotlight-dock-button--copy"
+          :class="{ 'spotlight-dock-button--success': copiedImageId === selectedImage.id }"
+          :variant="copiedImageId === selectedImage.id ? 'primary' : 'ghost'"
+          size="md"
+          :depth="false"
+          :loading="copyingImageId === selectedImage.id"
+          :aria-label="t('copy_image')"
+          @click="copySelected"
+        >
+          <template #leading>
+            <Check v-if="copiedImageId === selectedImage.id" :size="15" />
+            <Copy v-else :size="15" />
+          </template>
+          {{ copiedImageId === selectedImage.id ? t('copied') : t('copy') }}
+          <template #trailing><KbdChip shortcut="Ctrl+C" size="sm" /></template>
+        </Button>
+
+        <div ref="actionHub" class="spotlight-action-hub">
+          <Transition name="action-popover">
+            <div
+              v-if="actionsOpen"
+              class="spotlight-action-popover"
+              role="menu"
+              :aria-label="t('spotlight.actions.more')"
+            >
+              <Button
+                class="spotlight-action-menu-button spotlight-action-menu-button--featured"
+                variant="ghost"
+                size="md"
+                :depth="false"
+                :disabled="findingSimilar"
+                role="menuitem"
+                @click="findSimilarSelected"
+              >
+                <template #leading>
+                  <span class="spotlight-action-popover__preview">
+                    <ThumbnailImage
+                      class="spotlight-action-popover__preview-image"
+                      :image="selectedImage"
+                      :priority="0"
+                    />
+                    <span v-if="findingSimilar" class="spotlight-action-popover__preview-loading">
+                      <LoaderCircle class="spin" :size="15" />
+                    </span>
+                  </span>
+                </template>
+                <span class="spotlight-action-popover__copy">
+                  <strong>{{ t('search.visual.find_similar') }}</strong>
+                  <small>{{ t('search.visual.find_similar_desc') }}</small>
+                </span>
+                <template #trailing><KbdChip shortcut="Ctrl+Shift+S" size="sm" /></template>
+              </Button>
+
+              <Button
+                class="spotlight-action-menu-button"
+                variant="ghost"
+                size="md"
+                :depth="false"
+                role="menuitem"
+                @click="convertSelected"
+              >
+                <template #leading><RefreshCw :size="16" /></template>
+                {{ t('spotlight.convert.action') }}
+                <template #trailing><KbdChip shortcut="Ctrl+Shift+C" size="sm" /></template>
+              </Button>
+
+              <Button
+                class="spotlight-action-menu-button"
+                variant="ghost"
+                size="md"
+                :depth="false"
+                role="menuitem"
+                @click="revealSelected"
+              >
+                <template #leading><FolderOpen :size="16" /></template>
+                {{ t('open_in_file_manager', { name: fileManagerName }) }}
+                <template #trailing><KbdChip shortcut="Ctrl+E" size="sm" /></template>
+              </Button>
+
+              <Button
+                class="spotlight-action-menu-button"
+                variant="ghost"
+                size="md"
+                :depth="false"
+                role="menuitem"
+                @click="openSelected"
+              >
+                <template #leading><ExternalLink :size="16" /></template>
+                {{ t('open_in_imagyx') }}
+                <template #trailing><KbdChip shortcut="Ctrl+I" size="sm" /></template>
+              </Button>
+            </div>
+          </Transition>
+
+          <Button
+            class="spotlight-dock-button spotlight-dock-button--more"
+            variant="ghost"
+            size="md"
+            :depth="false"
+            :pressed="actionsOpen"
+            :aria-label="t('spotlight.actions.more')"
+            :aria-expanded="actionsOpen"
+            aria-haspopup="menu"
+            @click="toggleActions"
+          >
+            <template #leading><Ellipsis :size="17" /></template>
+            {{ t('spotlight.actions.more') }}
+            <template #trailing><KbdChip shortcut="Ctrl+K" size="sm" /></template>
+          </Button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="canScrollDown && !selectedImage" class="spotlight-scroll-shadow" aria-hidden="true" />
   </div>
 </template>
 
 <style scoped>
 .spotlight-results-shell { position: relative; height: 100%; min-height: 0; overflow: hidden; }
+.spotlight-results-shell--scrolling .spotlight-action-dock,
+.spotlight-results-shell--scrolling .spotlight-action-popover {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.spotlight-results-shell--scrolling .spotlight-result,
+.spotlight-results-shell--scrolling .spotlight-thumb { transition: none; }
 .spotlight-results {
   height: 100%;
   overflow-y: auto;
@@ -304,6 +577,7 @@ defineExpose({ scrollToIndex })
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--border-strong) 78%, transparent) transparent;
 }
+.spotlight-results--with-actions { padding-bottom: 58px; }
 .spotlight-library-loading {
   display: grid;
   place-items: center;
@@ -418,29 +692,107 @@ defineExpose({ scrollToIndex })
   font-size: 10px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  transition: opacity 120ms ease, transform 160ms ease;
 }
-.spotlight-result--selected .spotlight-score { opacity: 0; transform: translate3d(7px, 0, 0); pointer-events: none; }
-.spotlight-actions {
+.spotlight-action-dock {
   position: absolute;
-  right: 8px;
-  top: 50%;
-  z-index: 2;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 6;
+  padding: 7px 10px 8px;
+  pointer-events: none;
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 34%, transparent);
+  background: color-mix(in srgb, var(--surface-elevated) 82%, transparent);
+  box-shadow: 0 -8px 22px -17px rgb(2 6 23 / 0.42), inset 0 1px rgb(255 255 255 / 0.055);
+  backdrop-filter: blur(18px) saturate(1.1);
+  -webkit-backdrop-filter: blur(18px) saturate(1.1);
+}
+.spotlight-action-dock__bar {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding-left: 28px;
-  opacity: 0;
-  transform: translate3d(0, -50%, 0);
-  pointer-events: none;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary-soft) 85%, var(--surface)) 28%);
-  border-radius: var(--radius-md);
-  transition: opacity 80ms ease;
+  justify-content: flex-end;
+  gap: 2px;
+  width: 100%;
+  min-height: 36px;
+  pointer-events: auto;
 }
-.spotlight-result--selected .spotlight-actions,
-.spotlight-result:focus-within .spotlight-actions { opacity: 1; pointer-events: auto; will-change: opacity; }
-.spotlight-action-button { min-height: 31px; padding-inline: 9px; border-radius: 9px; font-size: 10px; }
-.spotlight-action-button--success { animation: action-success 280ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.spotlight-dock-button {
+  flex: 0 0 auto;
+  font-size: 10px;
+}
+.spotlight-dock-button--success { animation: action-success 280ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.spotlight-action-hub { position: relative; display: flex; }
+.spotlight-action-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  width: 316px;
+  padding: 6px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 82%, transparent);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--surface-elevated) 94%, transparent);
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.08), 0 22px 48px -24px rgb(2 6 23 / 0.72);
+  backdrop-filter: blur(28px) saturate(1.18);
+  transform-origin: calc(100% - 34px) 100%;
+}
+.spotlight-action-menu-button {
+  width: 100%;
+  min-height: 43px;
+  justify-content: flex-start;
+  padding-inline: 8px;
+  text-align: left;
+}
+.spotlight-action-menu-button + .spotlight-action-menu-button { margin-top: 2px; }
+.spotlight-action-menu-button--featured { min-height: 48px; margin-bottom: 4px; }
+.spotlight-action-menu-button :deep(.ui-button__content) {
+  flex: 1;
+  justify-content: flex-start;
+  min-width: 0;
+  text-align: left;
+}
+.spotlight-action-menu-button :deep(.ui-button__icon:last-child) { margin-left: auto; }
+.spotlight-action-popover__copy { display: block; min-width: 0; }
+.spotlight-action-popover__copy strong,
+.spotlight-action-popover__copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spotlight-action-popover__copy strong { font-size: 11px; font-weight: 650; }
+.spotlight-action-popover__copy small { margin-top: 2px; color: var(--text-muted); font-size: 9px; }
+.spotlight-action-popover__preview {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-hover);
+  color: var(--primary-text);
+}
+.spotlight-action-popover__preview-image,
+.spotlight-action-popover__preview :deep(.thumbnail-loader) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.spotlight-action-popover__preview-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--surface-elevated) 68%, transparent);
+  color: var(--primary-text);
+  backdrop-filter: blur(5px);
+}
+.action-popover-enter-active,
+.action-popover-leave-active { transition: opacity 130ms ease, transform 170ms cubic-bezier(0.16, 1, 0.3, 1), filter 130ms ease; }
+.action-popover-enter-from,
+.action-popover-leave-to { opacity: 0; transform: translate3d(0, 7px, 0) scale(0.965); filter: blur(3px); }
 .spotlight-loading-list { display: grid; gap: 8px; padding: 4px; }
 .spotlight-loading-list span {
   height: 70px;
@@ -471,7 +823,9 @@ defineExpose({ scrollToIndex })
 @keyframes action-success { 0% { transform: scale(0.94); } 55% { transform: scale(1.04); } 100% { transform: none; } }
 @keyframes skeleton-shimmer { to { background-position: -160% 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .spotlight-action-button--success,
-  .spin { animation-duration: 0.01ms; }
+  .spotlight-dock-button--success,
+  .action-popover-enter-active,
+  .action-popover-leave-active,
+  .spin { animation-duration: 0.01ms; transition-duration: 0.01ms; }
 }
 </style>
