@@ -10,6 +10,8 @@ export default {
   'spotlight.quick_search': 'Búsqueda rápida',
   'spotlight.clear_search': 'Limpiar búsqueda',
   'spotlight.open_settings': 'Abrir ajustes',
+  'spotlight.actions.toolbar': 'Acciones de imagen',
+  'spotlight.actions.more': 'Más acciones',
 
   'spotlight.convert.action': 'Convertir imagen',
   'spotlight.convert.title': 'Convertir',
