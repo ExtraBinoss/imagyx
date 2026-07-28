@@ -76,6 +76,7 @@ pub fn search_with_diagnostics(
         return results;
     }
 
+    #[cfg(debug_assertions)]
     let mode = if query_vector.is_some() {
         "hybrid"
     } else {
@@ -238,7 +239,7 @@ pub fn search_with_diagnostics(
         format!(
             "id={} mode={mode} query={query:?} folder_id={folder_id:?} requested_limit={requested_limit} effective_limit={limit} offset={requested_offset} query_vector_dimensions={} normalize_ms={normalize_ms:.2} fts_prepare_ms={fts_prepare_ms:.2} lexical_db_ms={lexical_ms:.2} lexical_candidates={lexical_count} vector_lock_wait_ms={vector_lock_wait_ms:.2} vector_scan_ms={vector_scan_ms:.2} vector_store_len={vector_store_len} semantic_candidates={semantic_count} rank_maps_ms={rank_maps_ms:.2} missing_semantic_ids={missing_count} missing_lookup_ms={missing_lookup_ms:.2} merged_candidates={candidate_count} ranking_ms={ranking_ms:.2} sort_truncate_ms={sort_ms:.2} results={} total_ms={:.2} top_results={top_results:?}",
             diagnostic_id.unwrap_or("-"),
-            query_vector.map_or(0, <[f32]>::len),
+            query_vector.map_or(0, |vector| vector.len()),
             results.len(),
             total_started_at.elapsed().as_secs_f64() * 1_000.0,
         ),
