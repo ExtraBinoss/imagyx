@@ -18,13 +18,10 @@ function installSemanticVisualBridge() {
   semanticBridgeInstalled = true
   const embedTextQuery = semanticRuntime.embedQuery.bind(semanticRuntime)
   semanticRuntime.embedQuery = async (query: string) => {
-    const visualVector = visualSearchSession.vectorForQuery(query.trim())
-    if (visualVector) {
-      return {
-        queryVector: visualVector,
-        concepts: [],
-      }
-    }
+    // The first normal search request is already rewritten to a pure visual
+    // request by imagyxApi. Returning no text embedding prevents the existing
+    // progressive text pipelines from issuing a duplicate second search.
+    if (visualSearchSession.vectorForQuery(query.trim())) return undefined
     return embedTextQuery(query)
   }
 }
