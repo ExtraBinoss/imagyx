@@ -193,11 +193,19 @@ pub fn get_image_embedding(
     image_id: String,
     state: State<'_, Arc<AppState>>,
 ) -> Result<Vec<f32>, String> {
-    state
+    if let Some(vector) = state
         .vectors
         .read()
         .vector(&image_id)
         .map(ToOwned::to_owned)
+    {
+        return Ok(vector);
+    }
+
+    state
+        .database
+        .embedding_vector(&image_id)
+        .map_err(|error| error.to_string())?
         .ok_or_else(|| "Cette image n’a pas encore d’index visuel".to_owned())
 }
 
