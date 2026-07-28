@@ -43,6 +43,24 @@ impl VectorStore {
         self.entries.len()
     }
 
+    pub fn count(&self, folder_id: Option<&str>) -> usize {
+        match folder_id {
+            Some(folder_id) => self
+                .entries
+                .iter()
+                .filter(|entry| entry.folder_id == folder_id)
+                .count(),
+            None => self.entries.len(),
+        }
+    }
+
+    pub fn contains_in_scope(&self, image_id: &str, folder_id: Option<&str>) -> bool {
+        let Some(position) = self.positions.get(image_id).copied() else {
+            return false;
+        };
+        folder_id.is_none_or(|folder_id| self.entries[position].folder_id == folder_id)
+    }
+
     pub fn clear(&mut self) {
         self.dimensions = 0;
         self.vectors.clear();
