@@ -3,7 +3,12 @@ use std::{
     collections::BinaryHeap,
 };
 
+#[cfg(debug_assertions)]
+use std::time::Instant;
+
 use rayon::prelude::*;
+
+use crate::tracing;
 
 use super::{VectorMatch, VectorStore, maintenance::normalize_in_place};
 
@@ -14,19 +19,62 @@ impl VectorStore {
         folder_id: Option<&str>,
         limit: usize,
     ) -> Vec<VectorMatch> {
+        self.top_k_with_diagnostics(query, folder_id, limit, None)
+    }
+
+    pub fn top_k_with_diagnostics(
+        &self,
+        query: &[f32],
+        folder_id: Option<&str>,
+        limit: usize,
+        diagnostic_id: Option<&str>,
+    ) -> Vec<VectorMatch> {
+        #[cfg(debug_assertions)]
+        let total_started_at = Instant::now();
+
         if limit == 0 || query.len() != self.dimensions || self.dimensions == 0 {
+            #[cfg(debug_assertions)]
+            tracing::event(
+                "search.vector",
+                format!(
+                    "id={} status=skipped reason=invalid_input query_dimensions={} store_dimensions={} vectors={} limit={limit} folder_id={folder_id:?}",
+                    diagnostic_id.unwrap_or("-"),
+                    query.len(),
+                    self.dimensions,
+                    self.entries.len(),
+                ),
+            );
             return Vec::new();
         }
+
+        #[cfg(debug_assertions)]
+        let normalize_started_at = Instant::now();
         let mut normalized_query = query.to_vec();
         normalize_in_place(&mut normalized_query);
+        #[cfg(debug_assertions)]
+        let normalize_ms = normalize_started_at.elapsed().as_secs_f64() * 1_000.0;
+
         if normalized_query
             .iter()
             .all(|value| value.abs() <= f32::EPSILON)
         {
+            #[cfg(debug_assertions)]
+            tracing::event(
+                "search.vector",
+                format!(
+                    "id={} status=skipped reason=zero_vector query_dimensions={} vectors={} normalize_ms={normalize_ms:.2} total_ms={:.2}",
+                    diagnostic_id.unwrap_or("-"),
+                    query.len(),
+                    self.entries.len(),
+                    total_started_at.elapsed().as_secs_f64() * 1_000.0,
+                ),
+            );
             return Vec::new();
         }
 
         let dimensions = self.dimensions;
+        #[cfg(debug_assertions)]
+        let scan_started_at = Instant::now();
         let heap = self
             .vectors
             .par_chunks_exact(dimensions)
@@ -61,7 +109,11 @@ impl VectorStore {
                     left
                 },
             );
+        #[cfg(debug_assertions)]
+        let parallel_scan_ms = scan_started_at.elapsed().as_secs_f64() * 1_000.0;
 
+        #[cfg(debug_assertions)]
+        let materialize_started_at = Instant::now();
         let mut matches = heap
             .into_iter()
             .map(|Reverse(candidate)| VectorMatch {
@@ -70,6 +122,24 @@ impl VectorStore {
             })
             .collect::<Vec<_>>();
         matches.sort_by(|left, right| right.score.total_cmp(&left.score));
+        #[cfg(debug_assertions)]
+        let materialize_sort_ms = materialize_started_at.elapsed().as_secs_f64() * 1_000.0;
+
+        #[cfg(debug_assertions)]
+        tracing::event(
+            "search.vector",
+            format!(
+                "id={} status=complete query_dimensions={} store_dimensions={} vectors={} folder_id={folder_id:?} requested_results={limit} results={} normalize_ms={normalize_ms:.2} parallel_scan_ms={parallel_scan_ms:.2} materialize_sort_ms={materialize_sort_ms:.2} best_score={:.4} total_ms={:.2}",
+                diagnostic_id.unwrap_or("-"),
+                query.len(),
+                self.dimensions,
+                self.entries.len(),
+                matches.len(),
+                matches.first().map_or(0.0, |item| item.score),
+                total_started_at.elapsed().as_secs_f64() * 1_000.0,
+            ),
+        );
+
         matches
     }
 }
