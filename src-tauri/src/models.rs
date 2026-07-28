@@ -71,6 +71,8 @@ pub struct SearchRequest {
     pub limit: Option<usize>,
     pub offset: Option<usize>,
     pub query_vector: Option<Vec<f32>>,
+    pub mode: Option<String>,
+    pub exclude_image_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
