@@ -135,6 +135,8 @@ export interface IndexProgress {
   message: string
 }
 
+export type SearchMode = 'text' | 'visual'
+
 export interface SearchRequest {
   query: string
   folderId?: string
@@ -142,6 +144,8 @@ export interface SearchRequest {
   offset?: number
   queryVector?: number[]
   diagnosticId?: string
+  mode?: SearchMode
+  excludeImageId?: string
 }
 
 export interface SearchPage {
