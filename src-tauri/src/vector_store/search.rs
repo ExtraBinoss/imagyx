@@ -28,10 +28,10 @@ impl VectorStore {
         query: &[f32],
         folder_id: Option<&str>,
         limit: usize,
-        diagnostic_id: Option<&str>,
+        _diagnostic_id: Option<&str>,
     ) -> Vec<VectorMatch> {
-        #[cfg(not(debug_assertions))]
-        let _ = diagnostic_id;
+        #[cfg(debug_assertions)]
+        let diagnostic_id = _diagnostic_id;
         #[cfg(debug_assertions)]
         let total_started_at = Instant::now();
 
