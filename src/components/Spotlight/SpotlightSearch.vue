@@ -66,7 +66,7 @@ const {
 
 let searchSequence = 0
 let searchDiagnosticSequence = 0
-let pendingSearchDiagnosticId: string | null = null
+let pendingSearchDiagnosticId: string | undefined
 let lastSearchInputAt = 0
 let morphSequence = 0
 let expanded = false
@@ -125,7 +125,8 @@ const showAddAction = computed(() => {
 
 const searchLater = debounce(() => { void runSearch() }, SEARCH_DEBOUNCE_MS)
 
-function nextSearchDiagnosticId(): string {
+function nextSearchDiagnosticId(): string | undefined {
+  if (!import.meta.env.DEV) return undefined
   searchDiagnosticSequence += 1
   return `spotlight-${Date.now().toString(36)}-${searchDiagnosticSequence}`
 }
@@ -136,13 +137,13 @@ function deferResultSetLog(callback: () => void): void {
 }
 
 function logResultSet(
-  diagnosticId: string,
+  diagnosticId: string | undefined,
   stage: string,
   images: ImageAsset[],
   durationMs: number,
   details: Record<string, unknown> = {},
 ): void {
-  if (!import.meta.env.DEV) return
+  if (!import.meta.env.DEV || !diagnosticId) return
   deferResultSetLog(() => {
     console.groupCollapsed(
       `[Imagyx][SpotlightSearch][${diagnosticId}] ${stage} · ${images.length} résultat(s) · ${durationMs.toFixed(1)} ms`,
@@ -168,24 +169,24 @@ watch(searchQuery, (value) => {
   searchSequence += 1
   const request = ++morphSequence
   if (!hasFolders.value) {
-    pendingSearchDiagnosticId = null
+    pendingSearchDiagnosticId = undefined
     results.value = []
     searching.value = false
     if (view.value === 'search') void openPanel(request)
     return
   }
   if (!value.trim()) {
-    pendingSearchDiagnosticId = null
+    pendingSearchDiagnosticId = undefined
     results.value = []
     searching.value = false
     if (view.value === 'search' && !hasActiveJobs.value) void closePanel(request)
     return
   }
 
-  lastSearchInputAt = performance.now()
+  lastSearchInputAt = import.meta.env.DEV ? performance.now() : 0
   pendingSearchDiagnosticId = nextSearchDiagnosticId()
   searching.value = true
-  if (import.meta.env.DEV) {
+  if (import.meta.env.DEV && pendingSearchDiagnosticId) {
     const parsed = parseFolderQuery(value, folders.value)
     console.info(`[Imagyx][SpotlightSearch][${pendingSearchDiagnosticId}] scheduled`, {
       rawQuery: value,
@@ -299,25 +300,25 @@ async function backToSearch() {
 async function runSearch() {
   const sequence = ++searchSequence
   const diagnosticId = pendingSearchDiagnosticId ?? nextSearchDiagnosticId()
-  pendingSearchDiagnosticId = null
-  const startedAt = performance.now()
+  pendingSearchDiagnosticId = undefined
+  const startedAt = import.meta.env.DEV ? performance.now() : 0
   const inputStartedAt = lastSearchInputAt
-  const inputToRunMs = inputStartedAt > 0 ? startedAt - inputStartedAt : 0
+  const inputToRunMs = import.meta.env.DEV && inputStartedAt > 0 ? startedAt - inputStartedAt : 0
   const parsed = parsedFolderQuery.value
   const text = parsed.query
   const folderId = parsed.folder?.id
   const cacheKey = `${folderId ?? 'all'}:${text.toLocaleLowerCase('en')}`
   const trigger = inputToRunMs + 2 < SEARCH_DEBOUNCE_MS ? 'immediate' : 'debounced'
 
-  perfLog('Spotlight', 'input to search start', inputToRunMs, {
-    diagnosticId,
-    trigger,
-    query: text,
-    folderId: folderId ?? null,
-    configuredDebounceMs: SEARCH_DEBOUNCE_MS,
-  })
   if (import.meta.env.DEV) {
-    console.info(`[Imagyx][SpotlightSearch][${diagnosticId}] run`, {
+    perfLog('Spotlight', 'input to search start', inputToRunMs, {
+      diagnosticId,
+      trigger,
+      query: text,
+      folderId: folderId ?? null,
+      configuredDebounceMs: SEARCH_DEBOUNCE_MS,
+    })
+    console.info(`[Imagyx][SpotlightSearch][${diagnosticId ?? '-'}] run`, {
       sequence,
       trigger,
       rawQuery: searchQuery.value,
@@ -339,26 +340,28 @@ async function runSearch() {
   if (cached && cacheAgeMs != null && cacheAgeMs <= CACHE_TTL_MS) {
     results.value = cached.images
     searching.value = false
-    const cacheDurationMs = performance.now() - startedAt
-    perfLog('Spotlight', 'result cache hit', cacheDurationMs, {
-      diagnosticId,
-      query: text,
-      folderId: folderId ?? null,
-      cacheAgeMs,
-      results: cached.images.length,
-    })
-    logResultSet(diagnosticId, 'cache hit', cached.images, inputToRunMs + cacheDurationMs, {
-      query: text,
-      folderId: folderId ?? null,
-      cacheAgeMs: Number(cacheAgeMs.toFixed(2)),
-      inputToRunMs: Number(inputToRunMs.toFixed(2)),
-    })
+    if (import.meta.env.DEV) {
+      const cacheDurationMs = performance.now() - startedAt
+      perfLog('Spotlight', 'result cache hit', cacheDurationMs, {
+        diagnosticId,
+        query: text,
+        folderId: folderId ?? null,
+        cacheAgeMs,
+        results: cached.images.length,
+      })
+      logResultSet(diagnosticId, 'cache hit', cached.images, inputToRunMs + cacheDurationMs, {
+        query: text,
+        folderId: folderId ?? null,
+        cacheAgeMs: Number(cacheAgeMs.toFixed(2)),
+        inputToRunMs: Number(inputToRunMs.toFixed(2)),
+      })
+    }
     return
   }
   if (cached) {
     resultCache.delete(cacheKey)
     if (import.meta.env.DEV) {
-      console.info(`[Imagyx][SpotlightSearch][${diagnosticId}] cache expired`, {
+      console.info(`[Imagyx][SpotlightSearch][${diagnosticId ?? '-'}] cache expired`, {
         query: text,
         folderId: folderId ?? null,
         cacheAgeMs,
@@ -368,12 +371,14 @@ async function runSearch() {
   }
 
   searching.value = true
-  const lexicalStartedAt = performance.now()
+  const lexicalStartedAt = import.meta.env.DEV ? performance.now() : 0
   const lexicalPromise = imagyxApi.search({
     query: text,
     folderId,
     limit: 60,
-    diagnosticId: `${diagnosticId}-${text ? 'lexical' : 'browse'}`,
+    diagnosticId: import.meta.env.DEV && diagnosticId
+      ? `${diagnosticId}-${text ? 'lexical' : 'browse'}`
+      : undefined,
   })
   if (!text) {
     try {
@@ -381,19 +386,21 @@ async function runSearch() {
       if (!matchesActiveSearch(sequence, text, folderId, diagnosticId)) return
       results.value = images
       rememberResults(cacheKey, images)
-      const browseMs = performance.now() - lexicalStartedAt
-      perfLog('Spotlight', 'folder browse IPC', browseMs, {
-        diagnosticId,
-        query: text,
-        folderId: folderId ?? null,
-        results: images.length,
-      })
-      logResultSet(diagnosticId, 'folder browse complete', images, inputToRunMs + browseMs, {
-        query: text,
-        folderId: folderId ?? null,
-        inputToRunMs: Number(inputToRunMs.toFixed(2)),
-        rustIpcMs: Number(browseMs.toFixed(2)),
-      })
+      if (import.meta.env.DEV) {
+        const browseMs = performance.now() - lexicalStartedAt
+        perfLog('Spotlight', 'folder browse IPC', browseMs, {
+          diagnosticId,
+          query: text,
+          folderId: folderId ?? null,
+          results: images.length,
+        })
+        logResultSet(diagnosticId, 'folder browse complete', images, inputToRunMs + browseMs, {
+          query: text,
+          folderId: folderId ?? null,
+          inputToRunMs: Number(inputToRunMs.toFixed(2)),
+          rustIpcMs: Number(browseMs.toFixed(2)),
+        })
+      }
     } catch (reason) {
       if (sequence === searchSequence) error.value = String(reason)
     } finally {
@@ -406,16 +413,19 @@ async function runSearch() {
     ? semanticRuntime.embedQuery(text)
     : Promise.resolve(undefined)
   void lexicalPromise.then((images) => {
-    const lexicalMs = performance.now() - lexicalStartedAt
-    perfLog('Spotlight', 'lexical IPC', lexicalMs, {
-      diagnosticId,
-      query: text,
-      folderId: folderId ?? null,
-      results: images.length,
-    })
+    const lexicalMs = import.meta.env.DEV ? performance.now() - lexicalStartedAt : 0
+    if (import.meta.env.DEV) {
+      perfLog('Spotlight', 'lexical IPC', lexicalMs, {
+        diagnosticId,
+        query: text,
+        folderId: folderId ?? null,
+        results: images.length,
+      })
+    }
     if (!matchesActiveSearch(sequence, text, folderId, diagnosticId)) return
     results.value = images
     void nextPaint().then(() => {
+      if (!import.meta.env.DEV) return
       const inputToPaintMs = inputStartedAt > 0
         ? performance.now() - inputStartedAt
         : performance.now() - startedAt
@@ -436,7 +446,7 @@ async function runSearch() {
     })
   }).catch((reason) => {
     if (import.meta.env.DEV) {
-      console.error(`[Imagyx][SpotlightSearch][${diagnosticId}] lexical request failed`, {
+      console.error(`[Imagyx][SpotlightSearch][${diagnosticId ?? '-'}] lexical request failed`, {
         query: text,
         folderId: folderId ?? null,
         reason,
@@ -445,57 +455,63 @@ async function runSearch() {
   })
 
   try {
-    const embeddingStartedAt = performance.now()
+    const embeddingStartedAt = import.meta.env.DEV ? performance.now() : 0
     const embedded = await embeddingPromise
-    const embeddingMs = performance.now() - embeddingStartedAt
-    perfLog('Spotlight', 'semantic embedding', embeddingMs, {
-      diagnosticId,
-      query: text,
-      folderId: folderId ?? null,
-      vectorReady: Boolean(embedded?.queryVector),
-      vectorDimensions: embedded?.queryVector.length ?? 0,
-    })
+    const embeddingMs = import.meta.env.DEV ? performance.now() - embeddingStartedAt : 0
+    if (import.meta.env.DEV) {
+      perfLog('Spotlight', 'semantic embedding', embeddingMs, {
+        diagnosticId,
+        query: text,
+        folderId: folderId ?? null,
+        vectorReady: Boolean(embedded?.queryVector),
+        vectorDimensions: embedded?.queryVector.length ?? 0,
+      })
+    }
     if (!matchesActiveSearch(sequence, text, folderId, diagnosticId)) return
-    const hybridStartedAt = performance.now()
+    const hybridStartedAt = import.meta.env.DEV ? performance.now() : 0
     const images = embedded?.queryVector
       ? await imagyxApi.search({
           query: text,
           folderId,
           queryVector: embedded.queryVector,
           limit: 60,
-          diagnosticId: `${diagnosticId}-hybrid`,
+          diagnosticId: import.meta.env.DEV && diagnosticId
+            ? `${diagnosticId}-hybrid`
+            : undefined,
         })
       : await lexicalPromise
-    const hybridMs = performance.now() - hybridStartedAt
+    const hybridMs = import.meta.env.DEV ? performance.now() - hybridStartedAt : 0
     if (!matchesActiveSearch(sequence, text, folderId, diagnosticId)) return
     results.value = images
     rememberResults(cacheKey, images)
-    const totalMs = performance.now() - startedAt
-    perfLog('Spotlight', 'semantic search total', totalMs, {
-      diagnosticId,
-      query: text,
-      folderId: folderId ?? null,
-      inputToRunMs,
-      embeddingMs,
-      hybridRustIpcMs: hybridMs,
-      results: images.length,
-    })
-    logResultSet(diagnosticId, 'hybrid final', images, inputToRunMs + totalMs, {
-      query: text,
-      folderId: folderId ?? null,
-      configuredDebounceMs: SEARCH_DEBOUNCE_MS,
-      inputToRunMs: Number(inputToRunMs.toFixed(2)),
-      embeddingMs: Number(embeddingMs.toFixed(2)),
-      hybridRustIpcMs: Number(hybridMs.toFixed(2)),
-      runSearchMs: Number(totalMs.toFixed(2)),
-    })
+    if (import.meta.env.DEV) {
+      const totalMs = performance.now() - startedAt
+      perfLog('Spotlight', 'semantic search total', totalMs, {
+        diagnosticId,
+        query: text,
+        folderId: folderId ?? null,
+        inputToRunMs,
+        embeddingMs,
+        hybridRustIpcMs: hybridMs,
+        results: images.length,
+      })
+      logResultSet(diagnosticId, 'hybrid final', images, inputToRunMs + totalMs, {
+        query: text,
+        folderId: folderId ?? null,
+        configuredDebounceMs: SEARCH_DEBOUNCE_MS,
+        inputToRunMs: Number(inputToRunMs.toFixed(2)),
+        embeddingMs: Number(embeddingMs.toFixed(2)),
+        hybridRustIpcMs: Number(hybridMs.toFixed(2)),
+        runSearchMs: Number(totalMs.toFixed(2)),
+      })
+    }
   } catch (reason) {
     if (sequence === searchSequence) {
       error.value = String(reason)
       try { results.value = await lexicalPromise } catch { /* the primary error remains visible */ }
     }
     if (import.meta.env.DEV) {
-      console.error(`[Imagyx][SpotlightSearch][${diagnosticId}] semantic search failed`, {
+      console.error(`[Imagyx][SpotlightSearch][${diagnosticId ?? '-'}] semantic search failed`, {
         query: text,
         folderId: folderId ?? null,
         elapsedMs: Number((performance.now() - startedAt).toFixed(2)),
@@ -698,7 +714,7 @@ function prepareOpen() {
   shellMerged.value = false
   expanded = false
   expansionPromise = null
-  pendingSearchDiagnosticId = null
+  pendingSearchDiagnosticId = undefined
   lastSearchInputAt = 0
   resetActionFeedback()
   void syncFolders(true)
@@ -719,7 +735,7 @@ function prepareHide() {
   shellMerged.value = false
   expanded = false
   expansionPromise = null
-  pendingSearchDiagnosticId = null
+  pendingSearchDiagnosticId = undefined
   lastSearchInputAt = 0
   resetActionFeedback()
 }
