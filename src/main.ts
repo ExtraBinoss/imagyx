@@ -1,10 +1,12 @@
 import { createApp } from "vue";
 import { createPinia } from "pinia";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App.vue";
 import SpotlightSearch from "./components/Spotlight/SpotlightSearch.vue";
 import { installSpotlightConverterKeyboardGuard } from "./services/spotlight-converter-keyboard";
 import { installUnifiedSearchEngine } from "./services/unified-search-engine";
+import { visualSearchSession } from "./services/visual-search-session";
 import { installPerformanceDiagnostics } from "./utils";
 import { initI18n } from "./i18n";
 import "./style.css";
@@ -45,6 +47,18 @@ document.documentElement.style.colorScheme = resolvedTheme;
 installUnifiedSearchEngine();
 if (currentWindowLabel === "spotlight") {
   installSpotlightConverterKeyboardGuard();
+  void listen("spotlight-opened", () => {
+    // Spotlight intentionally resets its local input while opening. Re-emit the
+    // retained visual session after that reset so the query and its results are
+    // restored together instead of showing an orphaned reference thumbnail.
+    window.setTimeout(() => {
+      const state = visualSearchSession.state;
+      if (state.status !== "ready" || !state.token) return;
+      window.dispatchEvent(new CustomEvent(visualSearchSession.eventName, {
+        detail: { status: state.status, token: state.token },
+      }));
+    }, 0);
+  });
 }
 
 const i18n = initI18n();
