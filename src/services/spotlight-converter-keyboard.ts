@@ -1,6 +1,8 @@
 const CONVERTER_SELECTOR = ".spotlight-converter";
 const BACK_BUTTON_SELECTOR = ".spotlight-conversion-input__back";
 const CONVERT_BUTTON_SELECTOR = ".spotlight-converter__command";
+const VISUAL_SEARCH_SELECTOR = ".unified-search-input--visual";
+const VISUAL_BACK_BUTTON_SELECTOR = ".unified-search-input--visual .unified-search-input__nav";
 const ACTION_POPOVER_SELECTOR = ".spotlight-action-popover";
 const MORE_ACTIONS_BUTTON_SELECTOR = ".spotlight-dock-button--more";
 
@@ -8,6 +10,10 @@ let installed = false;
 
 function converterIsOpen(): boolean {
   return document.querySelector(CONVERTER_SELECTOR) !== null;
+}
+
+function visualSearchIsOpen(): boolean {
+  return document.querySelector(VISUAL_SEARCH_SELECTOR) !== null;
 }
 
 function actionPopoverIsOpen(): boolean {
@@ -61,6 +67,17 @@ function handleConverterKeydown(event: KeyboardEvent): void {
         action: started ? "convert" : "consumed",
         repeat: event.repeat,
         hasModifier,
+      });
+    }
+    return;
+  }
+
+  if (event.key === "Escape" && visualSearchIsOpen()) {
+    consume(event);
+    const wentBack = clickEnabledButton(VISUAL_BACK_BUTTON_SELECTOR);
+    if (import.meta.env.DEV) {
+      console.debug("[Imagyx][SpotlightVisualSearchKeyboard] Escape", {
+        action: wentBack ? "back-to-previous-search" : "consumed",
       });
     }
     return;
