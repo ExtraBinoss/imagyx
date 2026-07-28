@@ -1,6 +1,5 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import type { ImageAsset } from '../types'
-import { semanticRuntime } from './semantic'
 import { VisionWorkerClient } from './vision-worker-client'
 import { visualSearchSession, type VisualSearchSourceKind } from './visual-search-session'
 
@@ -11,22 +10,6 @@ const IMAGE_BYTES = IMAGE_EDGE * IMAGE_EDGE * IMAGE_CHANNELS
 const visionWorker = new VisionWorkerClient()
 let visionReady: Promise<void> | null = null
 let querySequence = 0
-let semanticBridgeInstalled = false
-
-function installSemanticVisualBridge() {
-  if (semanticBridgeInstalled) return
-  semanticBridgeInstalled = true
-  const embedTextQuery = semanticRuntime.embedQuery.bind(semanticRuntime)
-  semanticRuntime.embedQuery = async (query: string) => {
-    // The first normal search request is already rewritten to a pure visual
-    // request by imagyxApi. Returning no text embedding prevents the existing
-    // progressive text pipelines from issuing a duplicate second search.
-    if (visualSearchSession.vectorForQuery(query.trim())) return undefined
-    return embedTextQuery(query)
-  }
-}
-
-installSemanticVisualBridge()
 
 function filename(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
