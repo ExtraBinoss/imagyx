@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ExternalLink, FileImage, SearchX } from '@lucide/vue'
+import { ExternalLink, FileImage, SearchX, Sparkles } from '@lucide/vue'
 import type { ImageAsset } from '../types'
 import { imagyxApi } from '../api/tauri'
+import { visualSearch } from '../services/visual-search'
 import { formatBytes, perfLog } from '../utils'
 import Badge from './ui/Badge/Badge.vue'
 import Skeleton from './ui/Skeleton/Skeleton.vue'
@@ -31,6 +32,8 @@ const scrollDirection = ref<-1 | 0 | 1>(0)
 const activeImageId = ref<string | null>(null)
 const selectedImageId = ref<string | null>(null)
 const isScrolling = ref(false)
+const contextMenu = ref<{ image: ImageAsset; x: number; y: number } | null>(null)
+const findingSimilar = ref(false)
 const copyBtnRefs = new Map<string, InstanceType<typeof CopyButton>>()
 let resizeObserver: ResizeObserver | null = null
 let scrollFrame = 0
@@ -98,16 +101,45 @@ function scrollToImage(id: string) {
 
 async function copySelectedImage(image: ImageAsset) {
   copyBtnRefs.get(image.id)?.triggerCopied()
-  try {
-    await imagyxApi.copyImage(image.path)
-  } catch {
-    await imagyxApi.copyImageToClipboard(image.path)
-  }
+  await imagyxApi.copyImage(image.path)
 }
 
 async function openFileInExplorer(image: ImageAsset, event: MouseEvent) {
   event.stopPropagation()
   await imagyxApi.openInFileManager(image.path, false)
+}
+
+function openContextMenu(image: ImageAsset, event: MouseEvent) {
+  selectImage(image)
+  const width = 292
+  const height = 92
+  contextMenu.value = {
+    image,
+    x: Math.max(10, Math.min(window.innerWidth - width - 10, event.clientX)),
+    y: Math.max(10, Math.min(window.innerHeight - height - 10, event.clientY)),
+  }
+}
+
+function closeContextMenu() {
+  if (!findingSimilar.value) contextMenu.value = null
+}
+
+async function findSimilarFromMenu() {
+  const image = contextMenu.value?.image
+  if (!image || findingSimilar.value) return
+  findingSimilar.value = true
+  try {
+    await visualSearch.findSimilar(image)
+    contextMenu.value = null
+  } finally {
+    findingSimilar.value = false
+  }
+}
+
+function handleDocumentPointerDown(event: PointerEvent) {
+  const target = event.target
+  if (target instanceof Element && target.closest('.image-context-menu')) return
+  closeContextMenu()
 }
 
 function moveSelection(deltaIndex: number) {
@@ -121,6 +153,11 @@ function moveSelection(deltaIndex: number) {
 }
 
 function handleGlobalKeydown(event: KeyboardEvent) {
+  if (contextMenu.value && event.key === 'Escape') {
+    event.preventDefault()
+    closeContextMenu()
+    return
+  }
   const target = event.target as HTMLElement | null
   if (target?.matches('input, textarea, select, [contenteditable="true"]')) return
 
@@ -183,6 +220,7 @@ function measure() {
 }
 
 function handleScroll() {
+  closeContextMenu()
   if (!isScrolling.value) isScrolling.value = true
   if (scrollTimeout) window.clearTimeout(scrollTimeout)
   scrollTimeout = window.setTimeout(() => {
@@ -216,6 +254,7 @@ onMounted(() => {
   resizeObserver = new ResizeObserver(measure)
   if (viewport.value) resizeObserver.observe(viewport.value)
   window.addEventListener('keydown', handleGlobalKeydown)
+  document.addEventListener('pointerdown', handleDocumentPointerDown, { capture: true })
 })
 
 onBeforeUnmount(() => {
@@ -223,6 +262,7 @@ onBeforeUnmount(() => {
   if (scrollFrame) cancelAnimationFrame(scrollFrame)
   if (scrollTimeout) window.clearTimeout(scrollTimeout)
   window.removeEventListener('keydown', handleGlobalKeydown)
+  document.removeEventListener('pointerdown', handleDocumentPointerDown, { capture: true })
 })
 
 watch(() => props.viewKey, async () => {
@@ -234,6 +274,7 @@ watch(() => props.viewKey, async () => {
   updateVirtualWindow(0, true)
   activeImageId.value = null
   selectedImageId.value = null
+  contextMenu.value = null
 })
 
 watch([columns, rowStride, totalRows], () => {
@@ -276,6 +317,7 @@ watch(() => props.images.length, () => {
           :aria-posinset="entry.index + 1"
           :aria-setsize="images.length"
           @click="selectImage(entry.image)"
+          @contextmenu.prevent="openContextMenu(entry.image, $event)"
           @mouseenter="activate(entry.image)"
           @focusin="activate(entry.image)"
         >
@@ -341,6 +383,29 @@ watch(() => props.images.length, () => {
       <p>{{ hasFolders ? t('search.no_images_desc') : t('search.no_folder_desc') }}</p>
     </div>
   </section>
+
+  <Teleport to="body">
+    <Transition name="context-pop">
+      <div
+        v-if="contextMenu"
+        class="image-context-menu"
+        :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+        role="menu"
+        :aria-label="t('search.visual.find_similar')"
+      >
+        <button type="button" role="menuitem" :disabled="findingSimilar" @click="findSimilarFromMenu">
+          <span class="image-context-menu__icon">
+            <Sparkles v-if="!findingSimilar" :size="17" />
+            <span v-else class="image-context-menu__spinner" />
+          </span>
+          <span class="image-context-menu__copy">
+            <strong>{{ t('search.visual.find_similar') }}</strong>
+            <small>{{ t('search.visual.find_similar_desc') }}</small>
+          </span>
+        </button>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -362,21 +427,11 @@ watch(() => props.images.length, () => {
   outline: none;
   background: transparent;
   cursor: default;
-  transition:
-    border-color var(--transition-fast),
-    background-color var(--transition-fast),
-    box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), background-color var(--transition-fast), box-shadow var(--transition-fast);
 }
-.virtual-grid-window.is-scrolling .image-card {
-  transition: none;
-}
-.virtual-grid-window.is-scrolling :deep(.thumbnail-loader > img) {
-  transform: none !important;
-  transition: none !important;
-}
-.virtual-grid-window.is-scrolling :deep(.thumbnail-placeholder::after) {
-  animation: none !important;
-}
+.virtual-grid-window.is-scrolling .image-card { transition: none; }
+.virtual-grid-window.is-scrolling :deep(.thumbnail-loader > img) { transform: none !important; transition: none !important; }
+.virtual-grid-window.is-scrolling :deep(.thumbnail-placeholder::after) { animation: none !important; }
 .image-card:hover { background: color-mix(in srgb, var(--surface-hover) 58%, transparent); }
 .image-card--selected {
   border-color: var(--primary);
@@ -384,7 +439,6 @@ watch(() => props.images.length, () => {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 18%, transparent), 0 10px 28px rgb(15 23 42 / 0.08);
 }
 .image-card:focus-visible { border-color: var(--primary); box-shadow: 0 0 0 3px var(--focus-ring-soft); }
-
 .card-hover-actions {
   position: absolute;
   top: 8px;
@@ -398,27 +452,17 @@ watch(() => props.images.length, () => {
   pointer-events: none;
   transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
-
 .image-card:hover .card-hover-actions,
 .image-card--selected .card-hover-actions,
-.image-card:focus-within .card-hover-actions {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-
+.image-card:focus-within .card-hover-actions { opacity: 1; transform: translateY(0); pointer-events: auto; }
 .card-action-btn {
   width: 28px !important;
   height: 28px !important;
   border-radius: var(--radius-sm) !important;
   backdrop-filter: blur(8px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.25) !important;
 }
-.virtual-grid-window.is-scrolling .card-action-btn {
-  backdrop-filter: none;
-  box-shadow: none !important;
-}
-
+.virtual-grid-window.is-scrolling .card-action-btn { backdrop-filter: none; box-shadow: none !important; }
 .semantic-overlay {
   position: absolute;
   right: 0;
@@ -439,28 +483,12 @@ watch(() => props.images.length, () => {
 .image-card:hover .semantic-overlay,
 .image-card:focus-within .semantic-overlay { opacity: 1; transform: translateY(0); }
 .semantic-overlay__loading { padding: 0 var(--space-3); color: rgb(255 255 255 / 0.75); font-size: 10px; }
-.semantic-marquee {
-  width: 100%;
-  overflow: hidden;
-  pointer-events: auto;
-}
-.semantic-marquee--animated {
-  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
-}
-.semantic-marquee__track {
-  display: flex;
-  align-items: center;
-  width: max-content;
-  gap: var(--space-2);
-  padding-inline: var(--space-3);
-}
+.semantic-marquee { width: 100%; overflow: hidden; pointer-events: auto; }
+.semantic-marquee--animated { mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); }
+.semantic-marquee__track { display: flex; align-items: center; width: max-content; gap: var(--space-2); padding-inline: var(--space-3); }
 .image-card:hover .semantic-marquee--animated .semantic-marquee__track,
-.image-card:focus-within .semantic-marquee--animated .semantic-marquee__track {
-  animation: semantic-marquee 10s linear infinite;
-}
-.semantic-marquee:hover .semantic-marquee__track {
-  animation-play-state: paused;
-}
+.image-card:focus-within .semantic-marquee--animated .semantic-marquee__track { animation: semantic-marquee 10s linear infinite; }
+.semantic-marquee:hover .semantic-marquee__track { animation-play-state: paused; }
 .semantic-chip {
   display: inline-flex;
   align-items: center;
@@ -471,21 +499,77 @@ watch(() => props.images.length, () => {
   font-size: 10px;
   font-weight: 600;
 }
-
-.semantic-chip--filename {
-  background: rgba(18, 20, 26, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: #f1f5f9;
-}
-
+.semantic-chip--filename { background: rgb(18 20 26 / 0.82); border: 1px solid rgb(255 255 255 / 0.18); color: #f1f5f9; }
 .semantic-chip--semantic {
   background: color-mix(in srgb, var(--primary) 85%, #0284c7);
   border: 1px solid var(--primary);
-  color: #ffffff;
+  color: #fff;
   box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 40%, transparent);
 }
+.image-context-menu {
+  position: fixed;
+  z-index: 200;
+  width: 292px;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 82%, transparent);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--surface-elevated) 94%, transparent);
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.08), 0 24px 54px -24px rgb(2 6 23 / 0.72);
+  backdrop-filter: blur(28px) saturate(1.18);
+  transform-origin: top left;
+}
+.image-context-menu button {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 54px;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, var(--border));
+  border-radius: 11px;
+  background: linear-gradient(120deg, color-mix(in srgb, var(--primary-soft) 74%, var(--surface)), transparent);
+  color: var(--text);
+  text-align: left;
+  cursor: default;
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1), background-color 120ms ease;
+}
+.image-context-menu button:hover,
+.image-context-menu button:focus-visible { outline: none; transform: translate3d(2px, 0, 0); background-color: var(--primary-soft); }
+.image-context-menu button:disabled { opacity: 0.66; }
+.image-context-menu__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary-soft) 56%, var(--surface));
+  color: var(--primary-text);
+}
+.image-context-menu__copy { min-width: 0; }
+.image-context-menu__copy strong,
+.image-context-menu__copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.image-context-menu__copy strong { font-size: 12px; }
+.image-context-menu__copy small { margin-top: 3px; color: var(--text-muted); font-size: 9px; }
+.image-context-menu__spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid color-mix(in srgb, var(--primary) 22%, transparent);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: context-spin 0.7s linear infinite;
+}
+.context-pop-enter-active,
+.context-pop-leave-active { transition: opacity 120ms ease, transform 170ms cubic-bezier(0.16, 1, 0.3, 1), filter 120ms ease; }
+.context-pop-enter-from,
+.context-pop-leave-to { opacity: 0; transform: translate3d(0, -4px, 0) scale(0.96); filter: blur(3px); }
 @keyframes semantic-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes context-spin { to { transform: rotate(1turn); } }
 @media (prefers-reduced-motion: reduce) {
-  .semantic-marquee__track { animation: none !important; }
+  .semantic-marquee__track,
+  .image-context-menu__spinner { animation: none !important; }
+  .context-pop-enter-active,
+  .context-pop-leave-active { transition-duration: 0.01ms; }
 }
 </style>
