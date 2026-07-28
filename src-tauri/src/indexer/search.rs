@@ -24,46 +24,6 @@ pub fn search(
     requested_limit: usize,
     requested_offset: usize,
 ) -> Result<Vec<ImageAsset>, AppError> {
-    search_page(
-        state,
-        query,
-        query_vector,
-        folder_id,
-        requested_limit,
-        requested_offset,
-    )
-    .map(|page| page.items)
-}
-
-pub fn search_with_diagnostics(
-    state: &AppState,
-    query: &str,
-    query_vector: Option<&[f32]>,
-    folder_id: Option<&str>,
-    requested_limit: usize,
-    requested_offset: usize,
-    diagnostic_id: Option<&str>,
-) -> Result<Vec<ImageAsset>, AppError> {
-    search_page_with_diagnostics(
-        state,
-        query,
-        query_vector,
-        folder_id,
-        requested_limit,
-        requested_offset,
-        diagnostic_id,
-    )
-    .map(|page| page.items)
-}
-
-pub fn search_page(
-    state: &AppState,
-    query: &str,
-    query_vector: Option<&[f32]>,
-    folder_id: Option<&str>,
-    requested_limit: usize,
-    requested_offset: usize,
-) -> Result<SearchPage, AppError> {
     search_page_with_diagnostics(
         state,
         query,
@@ -73,6 +33,7 @@ pub fn search_page(
         requested_offset,
         None,
     )
+    .map(|page| page.items)
 }
 
 pub fn search_page_with_diagnostics(
