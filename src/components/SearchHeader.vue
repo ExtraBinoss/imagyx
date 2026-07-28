@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { LoaderCircle, Search, X } from '@lucide/vue'
-import Button from './ui/Button/Button.vue'
-import Input from './ui/Input/Input.vue'
 import MovingBorder from './ui/MovingBorder/MovingBorder.vue'
 import TitleBar from './TitleBar.vue'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import UnifiedSearchInput from './UnifiedSearchInput.vue'
 import { usePlatformStore } from '../stores/platform'
 import { useTranslate } from '../i18n'
 import type { FollowedFolder } from '../types'
-import FolderQueryAutocomplete from './FolderQueryAutocomplete.vue'
 
 const props = defineProps<{
   modelReady: boolean
@@ -30,7 +26,7 @@ const emit = defineEmits<{
 
 const platform = usePlatformStore()
 const { t } = useTranslate()
-const searchInput = ref<{ focus: () => void; select: () => void } | null>(null)
+const searchInput = ref<InstanceType<typeof UnifiedSearchInput> | null>(null)
 const isFocused = ref(false)
 
 function focusSearch() {
@@ -40,80 +36,41 @@ function focusSearch() {
 function selectSearch() {
   searchInput.value?.select()
 }
-function handleKeydown(event: KeyboardEvent) {
-  const folders = props.folderSuggestions ?? []
-  if (!folders.length) return
-  if (event.key === 'ArrowDown') { event.preventDefault(); emit('folderNavigate', 1) }
-  else if (event.key === 'ArrowUp') { event.preventDefault(); emit('folderNavigate', -1) }
-  else if (event.key === 'Tab' || event.key === 'Enter') {
-    const folder = folders[props.folderSuggestionIndex ?? 0]
-    if (!folder) return
-    event.preventDefault()
-    emit('folderSelect', folder)
-  }
-}
 
 defineExpose({ focusSearch, selectSearch })
 </script>
 
 <template>
-  <header
-    class="search-header"
-    data-tauri-drag-region
-  >
+  <header class="search-header" data-tauri-drag-region>
     <div v-if="platform.controlsPosition === 'right'" class="search-header-controls">
       <TitleBar />
     </div>
 
     <div class="search-field">
-      <MovingBorder border-radius="14px" :duration="searching ? 2600 : 4200" :active="isFocused">
-        <Input
+      <MovingBorder
+        border-radius="14px"
+        :duration="searching ? 2600 : 4200"
+        :active="isFocused"
+      >
+        <UnifiedSearchInput
           ref="searchInput"
+          variant="app"
+          view="search"
           :model-value="props.modelValue"
-          type="search"
           :placeholder="placeholder ?? t('search.placeholder')"
-          :aria-label="t('search.aria')"
-          class="floating-search-input"
-          @focus="isFocused = true"
-          @blur="isFocused = false"
+          :searching="props.searching"
+          :result-label="props.modelValue.trim() && props.resultCount != null
+            ? (props.searching ? t('search.searching') : t('search.result_count', { count: props.resultCount }))
+            : ''"
+          :folder-suggestions="folderSuggestions ?? []"
+          :folder-suggestion-index="folderSuggestionIndex ?? 0"
+          @focusin="isFocused = true"
+          @focusout="isFocused = false"
           @update:model-value="emit('update:modelValue', $event)"
-          @keydown="handleKeydown"
-        >
-          <template #leading>
-            <div class="header-icon-wrapper">
-              <Transition name="icon-swap" mode="out-in">
-                <LoaderCircle v-if="props.searching" key="loader" class="spin" :size="18" :stroke-width="2.2" />
-                <Search v-else key="search" :size="18" :stroke-width="1.9" />
-              </Transition>
-            </div>
-          </template>
-          <template #trailing>
-            <div class="search-trailing-actions">
-              <span
-                v-if="props.modelValue.trim() && props.resultCount != null"
-                class="search-count-badge"
-              >
-                {{ props.searching ? t('search.searching') : t('search.result_count', { count: props.resultCount }) }}
-              </span>
-              <Button
-                v-if="props.modelValue"
-                variant="ghost"
-                size="icon"
-                :aria-label="t('search.clear')"
-                @click="emit('update:modelValue', '')"
-              >
-                <X :size="15" />
-              </Button>
-            </div>
-          </template>
-        </Input>
+          @folder-select="emit('folderSelect', $event)"
+          @folder-navigate="emit('folderNavigate', $event)"
+        />
       </MovingBorder>
-      <FolderQueryAutocomplete
-        :folders="folderSuggestions ?? []"
-        :active-index="folderSuggestionIndex ?? 0"
-        placement="below"
-        @select="emit('folderSelect', $event)"
-      />
     </div>
   </header>
 </template>
@@ -141,15 +98,14 @@ defineExpose({ focusSearch, selectSearch })
   -webkit-backdrop-filter: blur(16px);
   -webkit-app-region: drag;
 }
-
 .search-header-controls {
   position: absolute;
   top: 0;
   right: 12px;
-  height: 38px;
+  z-index: 10;
   display: flex;
   align-items: center;
-  z-index: 10;
+  height: 38px;
   pointer-events: auto;
   -webkit-app-region: no-drag;
 }
@@ -159,62 +115,5 @@ defineExpose({ focusSearch, selectSearch })
   max-width: 640px;
   pointer-events: auto;
   -webkit-app-region: no-drag;
-}
-
-.floating-search-input {
-  min-height: 48px;
-  border: 1px solid var(--border) !important;
-  border-radius: 13px;
-  background: var(--surface-elevated);
-  box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.1);
-}
-.floating-search-input:focus-within,
-.floating-search-input:hover {
-  border-color: transparent !important;
-  outline: none !important;
-}
-
-.header-icon-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-}
-
-.search-trailing-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.search-count-badge {
-  min-width: 86px;
-  text-align: center;
-  padding: 3px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--surface-hover) 88%, transparent);
-  color: var(--text-muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-  transition: width 150ms ease, opacity 120ms ease;
-}
-
-.spin {
-  animation: spin 0.85s linear infinite;
-  color: var(--primary);
-}
-
-.icon-swap-enter-active,
-.icon-swap-leave-active {
-  transition: opacity 140ms ease, transform 140ms ease;
-}
-.icon-swap-enter-from { opacity: 0; transform: scale(0.85); }
-.icon-swap-leave-to { opacity: 0; transform: scale(0.85); }
-
-@keyframes spin {
-  to { transform: rotate(1turn); }
 }
 </style>
