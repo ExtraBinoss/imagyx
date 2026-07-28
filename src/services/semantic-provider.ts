@@ -7,7 +7,7 @@ import {
 } from './semantic-channel'
 
 async function handleSemanticQueryRequest(request: SemanticQueryRequest): Promise<void> {
-  const startedAt = performance.now()
+  const startedAt = import.meta.env.DEV ? performance.now() : 0
   const target = request.replyTo === 'spotlight' ? 'spotlight' : 'main'
 
   if (import.meta.env.DEV) {
@@ -18,29 +18,30 @@ async function handleSemanticQueryRequest(request: SemanticQueryRequest): Promis
   }
 
   try {
-    const embeddingStartedAt = performance.now()
+    const embeddingStartedAt = import.meta.env.DEV ? performance.now() : 0
     const result = await semanticRuntime.embedQuery(request.query)
-    const embeddingMs = performance.now() - embeddingStartedAt
-    perfLog('SemanticProvider', 'text embedding', embeddingMs, {
-      requestId: request.requestId,
-      query: request.query,
-      vectorDimensions: result?.queryVector.length ?? 0,
-      concepts: result?.concepts.length ?? 0,
-    })
+    const embeddingMs = import.meta.env.DEV ? performance.now() - embeddingStartedAt : 0
+    if (import.meta.env.DEV) {
+      perfLog('SemanticProvider', 'text embedding', embeddingMs, {
+        requestId: request.requestId,
+        query: request.query,
+        vectorDimensions: result?.queryVector.length ?? 0,
+        concepts: result?.concepts.length ?? 0,
+      })
+    }
 
-    const replyStartedAt = performance.now()
+    const replyStartedAt = import.meta.env.DEV ? performance.now() : 0
     await emitTo(target, request.replyEvent, {
       requestId: request.requestId,
       result,
     })
-    const replyMs = performance.now() - replyStartedAt
-    perfLog('SemanticProvider', 'main to Spotlight reply', replyMs, {
-      requestId: request.requestId,
-      query: request.query,
-      target,
-    })
-
     if (import.meta.env.DEV) {
+      const replyMs = performance.now() - replyStartedAt
+      perfLog('SemanticProvider', 'main to Spotlight reply', replyMs, {
+        requestId: request.requestId,
+        query: request.query,
+        target,
+      })
       console.info(
         `[Imagyx][SemanticProvider][${request.requestId}] complete in ${(performance.now() - startedAt).toFixed(1)} ms`,
         {
@@ -52,7 +53,7 @@ async function handleSemanticQueryRequest(request: SemanticQueryRequest): Promis
       )
     }
   } catch (error) {
-    const failedAt = performance.now()
+    const failedAt = import.meta.env.DEV ? performance.now() : 0
     await emitTo(target, request.replyEvent, {
       requestId: request.requestId,
       error: String(error),
