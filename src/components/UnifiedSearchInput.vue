@@ -198,16 +198,15 @@ onMounted(async () => {
   try {
     unlistenWindowDrop = await getCurrentWindow().onDragDropEvent(({ payload }) => {
       if (props.view !== 'search') return
-      if (payload.type === 'over') dragActive.value = true
-      else if (payload.type === 'cancel') dragActive.value = false
-      else if (payload.type === 'drop') {
+      if (payload.type === 'enter' || payload.type === 'over') {
+        dragActive.value = true
+      } else if (payload.type === 'leave') {
+        dragActive.value = false
+      } else if (payload.type === 'drop') {
         dragActive.value = false
         const path = payload.paths[0]
         if (!path) return
-        void visualSearch.searchPath(path, 'drop').catch((reason) => {
-          visualSearchSession.fail(reason)
-          emit('visualError', reason)
-        })
+        void visualSearch.searchPath(path, 'drop')
       }
     })
   } catch {
