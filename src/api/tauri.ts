@@ -68,7 +68,7 @@ function logSearchResults(
 
 async function searchImages(request: SearchRequest): Promise<ImageAsset[]> {
   const mode = searchMode(request)
-  const diagnosticId = nextSearchDiagnosticId(mode)
+  const diagnosticId = request.diagnosticId ?? nextSearchDiagnosticId(mode)
   const startedAt = performance.now()
 
   if (import.meta.env.DEV && diagnosticId) {
