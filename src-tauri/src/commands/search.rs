@@ -7,7 +7,7 @@ use tauri::State;
 
 use crate::{
     indexer,
-    models::{ImageAsset, SearchRequest},
+    models::{ImageAsset, SearchPage, SearchRequest},
     state::AppState,
 };
 #[cfg(debug_assertions)]
@@ -47,16 +47,14 @@ pub async fn get_thumbnail(
     .map_err(|error| error.to_string())?
 }
 
-#[tauri::command(rename_all = "camelCase")]
-pub async fn search_images(
+async fn execute_search_page(
     request: SearchRequest,
     diagnostic_id: Option<String>,
-    state: State<'_, Arc<AppState>>,
-) -> Result<Vec<ImageAsset>, String> {
+    state: Arc<AppState>,
+) -> Result<SearchPage, String> {
     #[cfg(debug_assertions)]
     let received_at = Instant::now();
 
-    let state = Arc::clone(state.inner());
     tauri::async_runtime::spawn_blocking(move || {
         #[cfg(debug_assertions)]
         let diagnostic_label = diagnostic_id.as_deref().unwrap_or("-");
@@ -74,7 +72,7 @@ pub async fn search_images(
         };
 
         let limit = request.limit.unwrap_or(2_000).min(50_000);
-        let offset = request.offset.unwrap_or(0);
+        let offset = request.offset.unwrap_or(0).min(50_000);
 
         #[cfg(debug_assertions)]
         tracing::event(
@@ -87,7 +85,7 @@ pub async fn search_images(
             ),
         );
 
-        let result = indexer::search_with_diagnostics(
+        let result = indexer::search_page_with_diagnostics(
             &state,
             &request.query,
             request.query_vector.as_deref(),
@@ -101,9 +99,10 @@ pub async fn search_images(
         tracing::event(
             "search.command.complete",
             format!(
-                "id={diagnostic_label} mode={mode} query={:?} results={} success={} rust_execution_ms={:.2} command_total_ms={:.2}",
+                "id={diagnostic_label} mode={mode} query={:?} results={} total_available={} success={} rust_execution_ms={:.2} command_total_ms={:.2}",
                 request.query,
-                result.as_ref().map_or(0, Vec::len),
+                result.as_ref().map_or(0, |page| page.items.len()),
+                result.as_ref().map_or(0, |page| page.total),
                 result.is_ok(),
                 execution_started_at.elapsed().as_secs_f64() * 1_000.0,
                 received_at.elapsed().as_secs_f64() * 1_000.0,
@@ -115,4 +114,24 @@ pub async fn search_images(
     .await
     .map_err(|error| error.to_string())?
     .map_err(|error| error.to_string())
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn search_images(
+    request: SearchRequest,
+    diagnostic_id: Option<String>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<Vec<ImageAsset>, String> {
+    execute_search_page(request, diagnostic_id, Arc::clone(state.inner()))
+        .await
+        .map(|page| page.items)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn search_image_page(
+    request: SearchRequest,
+    diagnostic_id: Option<String>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<SearchPage, String> {
+    execute_search_page(request, diagnostic_id, Arc::clone(state.inner())).await
 }
