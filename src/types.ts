@@ -143,3 +143,8 @@ export interface SearchRequest {
   queryVector?: number[]
   diagnosticId?: string
 }
+
+export interface SearchPage {
+  items: ImageAsset[]
+  total: number
+}
