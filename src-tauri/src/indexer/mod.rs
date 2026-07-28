@@ -6,4 +6,4 @@ mod search;
 pub use crate::vector_store::cosine_similarity;
 pub(crate) use files::prepare_asset;
 pub use scan::{index_folder, pending_assets};
-pub use search::search;
+pub use search::{search, search_with_diagnostics};
