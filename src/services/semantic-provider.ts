@@ -20,22 +20,20 @@ async function handleSemanticQueryRequest(request: SemanticQueryRequest): Promis
   try {
     const embeddingStartedAt = import.meta.env.DEV ? performance.now() : 0
     const result = await semanticRuntime.embedQuery(request.query)
-    const embeddingMs = import.meta.env.DEV ? performance.now() - embeddingStartedAt : 0
     if (import.meta.env.DEV) {
+      const embeddingMs = performance.now() - embeddingStartedAt
       perfLog('SemanticProvider', 'text embedding', embeddingMs, {
         requestId: request.requestId,
         query: request.query,
         vectorDimensions: result?.queryVector.length ?? 0,
         concepts: result?.concepts.length ?? 0,
       })
-    }
 
-    const replyStartedAt = import.meta.env.DEV ? performance.now() : 0
-    await emitTo(target, request.replyEvent, {
-      requestId: request.requestId,
-      result,
-    })
-    if (import.meta.env.DEV) {
+      const replyStartedAt = performance.now()
+      await emitTo(target, request.replyEvent, {
+        requestId: request.requestId,
+        result,
+      })
       const replyMs = performance.now() - replyStartedAt
       perfLog('SemanticProvider', 'main to Spotlight reply', replyMs, {
         requestId: request.requestId,
@@ -51,6 +49,11 @@ async function handleSemanticQueryRequest(request: SemanticQueryRequest): Promis
           vectorDimensions: result?.queryVector.length ?? 0,
         },
       )
+    } else {
+      await emitTo(target, request.replyEvent, {
+        requestId: request.requestId,
+        result,
+      })
     }
   } catch (error) {
     const failedAt = import.meta.env.DEV ? performance.now() : 0
