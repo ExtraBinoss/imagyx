@@ -16,6 +16,7 @@ import type {
   SearchRequest,
 } from '../types'
 import { perfLog } from '../utils'
+import { nativeDialogIsOpen } from '../services/native-dialog-state'
 import { spotlightSearchPagination } from '../services/spotlight-search-pagination'
 import { visualSearchSession } from '../services/visual-search-session'
 
@@ -247,6 +248,10 @@ export const imagyxApi = {
   openOnboarding: () => invoke<void>('open_onboarding'),
   setSpotlightExpanded: (expanded: boolean) =>
     invoke<void>('set_spotlight_expanded', { expanded }),
-  hideSpotlight: () => invoke<void>('hide_spotlight'),
+  hideSpotlight: () => (
+    nativeDialogIsOpen()
+      ? Promise.resolve()
+      : invoke<void>('hide_spotlight')
+  ),
   fileUrl: (path: string) => convertFileSrc(path),
 }
