@@ -3,6 +3,7 @@ import { createPinia } from "pinia";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App.vue";
 import SpotlightSearch from "./components/Spotlight/SpotlightSearch.vue";
+import { installSpotlightConverterKeyboardGuard } from "./services/spotlight-converter-keyboard";
 import { installPerformanceDiagnostics } from "./utils";
 import { initI18n } from "./i18n";
 import "./style.css";
@@ -40,8 +41,11 @@ document.documentElement.dataset.theme = resolvedTheme;
 document.documentElement.dataset.window = currentWindowLabel;
 document.documentElement.style.colorScheme = resolvedTheme;
 
+if (currentWindowLabel === "spotlight") {
+  installSpotlightConverterKeyboardGuard();
+}
+
 const i18n = initI18n();
 const RootComponent =
   currentWindowLabel === "spotlight" ? SpotlightSearch : App;
 createApp(RootComponent).use(createPinia()).use(i18n).mount("#app");
-
