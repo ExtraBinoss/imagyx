@@ -42,8 +42,10 @@ pub fn search_with_diagnostics(
     folder_id: Option<&str>,
     requested_limit: usize,
     requested_offset: usize,
-    diagnostic_id: Option<&str>,
+    _diagnostic_id: Option<&str>,
 ) -> Result<Vec<ImageAsset>, AppError> {
+    #[cfg(debug_assertions)]
+    let diagnostic_id = _diagnostic_id;
     #[cfg(debug_assertions)]
     let total_started_at = Instant::now();
     #[cfg(debug_assertions)]
@@ -135,7 +137,7 @@ pub fn search_with_diagnostics(
             query_vector,
             folder_id,
             SEMANTIC_CANDIDATES,
-            diagnostic_id,
+            _diagnostic_id,
         );
         #[cfg(debug_assertions)]
         {
