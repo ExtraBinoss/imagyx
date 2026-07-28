@@ -10,6 +10,8 @@ export default {
   'spotlight.quick_search': '快速搜索',
   'spotlight.clear_search': '清除搜索',
   'spotlight.open_settings': '打开设置',
+  'spotlight.actions.toolbar': '图片操作',
+  'spotlight.actions.more': '更多操作',
 
   'spotlight.convert.action': '转换图片',
   'spotlight.convert.title': '转换',
