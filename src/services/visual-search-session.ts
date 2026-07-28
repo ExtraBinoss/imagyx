@@ -102,10 +102,13 @@ function activate(
 
 function fail(reason: unknown, operationId = operationSequence) {
   if (operationId !== operationSequence) return
+  if (import.meta.env.DEV) console.error('[Imagyx][VisualSearch] query failed', reason)
   state.status = 'error'
   state.vector = null
   state.token = ''
-  state.error = String(reason)
+  // The shared input renders the localized error description. Keep technical
+  // backend details in development logs instead of leaking English strings.
+  state.error = null
   dispatchSessionEvent()
 }
 
