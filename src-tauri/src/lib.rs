@@ -167,6 +167,7 @@ pub fn run() {
             commands::semantic::top_image_tags,
             commands::search::get_thumbnail,
             commands::search::search_images,
+            commands::search::search_image_page,
             commands::files::open_in_file_manager,
             commands::files::copy_image_to_clipboard,
             commands::files::convert_image,
