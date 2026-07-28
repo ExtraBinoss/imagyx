@@ -1,5 +1,6 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import type { ImageAsset } from '../types'
+import { semanticRuntime } from './semantic'
 import { VisionWorkerClient } from './vision-worker-client'
 import { visualSearchSession, type VisualSearchSourceKind } from './visual-search-session'
 
@@ -10,6 +11,25 @@ const IMAGE_BYTES = IMAGE_EDGE * IMAGE_EDGE * IMAGE_CHANNELS
 const visionWorker = new VisionWorkerClient()
 let visionReady: Promise<void> | null = null
 let querySequence = 0
+let semanticBridgeInstalled = false
+
+function installSemanticVisualBridge() {
+  if (semanticBridgeInstalled) return
+  semanticBridgeInstalled = true
+  const embedTextQuery = semanticRuntime.embedQuery.bind(semanticRuntime)
+  semanticRuntime.embedQuery = async (query: string) => {
+    const visualVector = visualSearchSession.vectorForQuery(query.trim())
+    if (visualVector) {
+      return {
+        queryVector: visualVector,
+        concepts: [],
+      }
+    }
+    return embedTextQuery(query)
+  }
+}
+
+installSemanticVisualBridge()
 
 function filename(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
@@ -101,7 +121,7 @@ async function findSimilar(image: ImageAsset): Promise<string> {
     })
   } catch (error) {
     visualSearchSession.fail(error)
-    throw error
+    return ''
   }
 }
 
@@ -119,7 +139,7 @@ async function searchPath(path: string, sourceKind: VisualSearchSourceKind = 'fi
     })
   } catch (error) {
     visualSearchSession.fail(error)
-    throw error
+    return ''
   }
 }
 
@@ -129,7 +149,9 @@ async function searchBlob(
   sourceKind: Extract<VisualSearchSourceKind, 'clipboard' | 'drop'>,
 ): Promise<string> {
   if (blob.type && !blob.type.startsWith('image/')) {
-    throw new Error('The dropped or pasted file is not an image')
+    visualSearchSession.begin(sourceKind, label)
+    visualSearchSession.fail('The dropped or pasted file is not an image')
+    return ''
   }
   const previewUrl = URL.createObjectURL(blob)
   visualSearchSession.begin(sourceKind, label, { previewUrl })
@@ -144,7 +166,7 @@ async function searchBlob(
   } catch (error) {
     URL.revokeObjectURL(previewUrl)
     visualSearchSession.fail(error)
-    throw error
+    return ''
   }
 }
 
