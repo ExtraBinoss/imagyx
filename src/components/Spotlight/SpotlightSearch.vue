@@ -130,6 +130,11 @@ function nextSearchDiagnosticId(): string {
   return `spotlight-${Date.now().toString(36)}-${searchDiagnosticSequence}`
 }
 
+function deferResultSetLog(callback: () => void): void {
+  if (!import.meta.env.DEV) return
+  window.requestAnimationFrame(() => window.setTimeout(callback, 0))
+}
+
 function logResultSet(
   diagnosticId: string,
   stage: string,
@@ -138,20 +143,22 @@ function logResultSet(
   details: Record<string, unknown> = {},
 ): void {
   if (!import.meta.env.DEV) return
-  console.groupCollapsed(
-    `[Imagyx][SpotlightSearch][${diagnosticId}] ${stage} · ${images.length} résultat(s) · ${durationMs.toFixed(1)} ms`,
-  )
-  console.log('Timing', { diagnosticId, stage, durationMs: Number(durationMs.toFixed(2)), ...details })
-  console.table(images.map((image, index) => ({
-    rank: index + 1,
-    id: image.id,
-    name: image.name,
-    format: image.extension.toLocaleUpperCase(),
-    semanticScore: image.semanticScore == null
-      ? null
-      : Number(image.semanticScore.toFixed(4)),
-  })))
-  console.groupEnd()
+  deferResultSetLog(() => {
+    console.groupCollapsed(
+      `[Imagyx][SpotlightSearch][${diagnosticId}] ${stage} · ${images.length} résultat(s) · ${durationMs.toFixed(1)} ms`,
+    )
+    console.log('Timing', { diagnosticId, stage, durationMs: Number(durationMs.toFixed(2)), ...details })
+    console.table(images.map((image, index) => ({
+      rank: index + 1,
+      id: image.id,
+      name: image.name,
+      format: image.extension.toLocaleUpperCase(),
+      semanticScore: image.semanticScore == null
+        ? null
+        : Number(image.semanticScore.toFixed(4)),
+    })))
+    console.groupEnd()
+  })
 }
 
 watch(searchQuery, (value) => {
@@ -292,8 +299,10 @@ async function backToSearch() {
 async function runSearch() {
   const sequence = ++searchSequence
   const diagnosticId = pendingSearchDiagnosticId ?? nextSearchDiagnosticId()
+  pendingSearchDiagnosticId = null
   const startedAt = performance.now()
-  const inputToRunMs = lastSearchInputAt > 0 ? startedAt - lastSearchInputAt : 0
+  const inputStartedAt = lastSearchInputAt
+  const inputToRunMs = inputStartedAt > 0 ? startedAt - inputStartedAt : 0
   const parsed = parsedFolderQuery.value
   const text = parsed.query
   const folderId = parsed.folder?.id
@@ -407,7 +416,9 @@ async function runSearch() {
     if (!matchesActiveSearch(sequence, text, folderId, diagnosticId)) return
     results.value = images
     void nextPaint().then(() => {
-      const inputToPaintMs = performance.now() - lastSearchInputAt
+      const inputToPaintMs = inputStartedAt > 0
+        ? performance.now() - inputStartedAt
+        : performance.now() - startedAt
       perfLog('Spotlight', 'input to lexical paint', inputToPaintMs, {
         diagnosticId,
         query: text,
