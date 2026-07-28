@@ -10,6 +10,8 @@ export default {
   'spotlight.quick_search': 'クイック検索',
   'spotlight.clear_search': '検索をクリア',
   'spotlight.open_settings': '設定を開く',
+  'spotlight.actions.toolbar': '画像の操作',
+  'spotlight.actions.more': 'その他の操作',
 
   'spotlight.convert.action': '画像を変換',
   'spotlight.convert.title': '変換',
