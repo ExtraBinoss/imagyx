@@ -50,9 +50,11 @@ pub async fn get_thumbnail(
 #[tauri::command(rename_all = "camelCase")]
 pub async fn search_images(
     request: SearchRequest,
-    diagnostic_id: Option<String>,
+    _diagnostic_id: Option<String>,
     state: State<'_, Arc<AppState>>,
 ) -> Result<Vec<ImageAsset>, String> {
+    #[cfg(debug_assertions)]
+    let diagnostic_id = _diagnostic_id.as_deref();
     #[cfg(debug_assertions)]
     let received_at = Instant::now();
 
@@ -79,7 +81,7 @@ pub async fn search_images(
             "search.command.start",
             format!(
                 "id={} mode={mode} query={:?} folder_id={:?} limit={limit} offset={offset} vector_dimensions={} spawn_blocking_queue_ms={queue_wait_ms:.2}",
-                diagnostic_id.as_deref().unwrap_or("-"),
+                diagnostic_id.unwrap_or("-"),
                 request.query,
                 request.folder_id,
                 request.query_vector.as_ref().map_or(0, Vec::len),
@@ -93,7 +95,7 @@ pub async fn search_images(
             request.folder_id.as_deref(),
             limit,
             offset,
-            diagnostic_id.as_deref(),
+            _diagnostic_id.as_deref(),
         );
 
         #[cfg(debug_assertions)]
@@ -101,7 +103,7 @@ pub async fn search_images(
             "search.command.complete",
             format!(
                 "id={} mode={mode} query={:?} results={} success={} rust_execution_ms={:.2} command_total_ms={:.2}",
-                diagnostic_id.as_deref().unwrap_or("-"),
+                diagnostic_id.unwrap_or("-"),
                 request.query,
                 result.as_ref().map_or(0, Vec::len),
                 result.is_ok(),
