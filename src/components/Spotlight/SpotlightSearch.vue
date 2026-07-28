@@ -15,6 +15,7 @@ import { capitalize, useTagTypewriter } from '../../useTagTypewriter'
 import MovingBorder from '../ui/MovingBorder/MovingBorder.vue'
 import SpotlightInput from './SpotlightInput.vue'
 import SpotlightResults from './SpotlightResults.vue'
+import ImagePreviewDialog from '../ImagePreviewDialog.vue'
 import SpotlightSettings from './SpotlightSettings.vue'
 import type { SpotlightIndexJob, SpotlightView } from './types'
 import { useSpotlightResultActions } from './useSpotlightResultActions'
@@ -51,6 +52,7 @@ const visible = ref(false)
 const resultsOpen = ref(false)
 const shellMerged = ref(false)
 const dialogOpen = ref(false)
+const previewImage = ref<ImageAsset | null>(null)
 const jobs = ref<SpotlightIndexJob[]>([])
 const inputView = ref<InstanceType<typeof SpotlightInput> | null>(null)
 const resultsView = ref<InstanceType<typeof SpotlightResults> | null>(null)
@@ -706,6 +708,7 @@ function moveSelection(delta: number) {
 }
 
 function handleKeydown(event: KeyboardEvent) {
+  if (previewImage.value) return
   if (view.value === 'search' && (event.ctrlKey || event.metaKey) && selectedImage.value) {
     const key = event.key.toLocaleLowerCase()
     if (key === 'c' || event.code === 'KeyC') {
@@ -732,6 +735,11 @@ function handleKeydown(event: KeyboardEvent) {
   if (event.key === 'Enter' && selectedImage.value) {
     event.preventDefault()
     void openImage(selectedImage.value)
+    return
+  }
+  if ((event.code === 'Space' || event.key === ' ') && selectedImage.value) {
+    event.preventDefault()
+    previewImage.value = selectedImage.value
   }
 }
 
@@ -760,6 +768,7 @@ function animateOpen() {
 }
 
 function prepareHide() {
+  previewImage.value = null
   visible.value = false
   searchQuery.value = ''
   settingsQuery.value = ''
@@ -921,6 +930,7 @@ onBeforeUnmount(() => {
         </div>
       </MovingBorder>
     </section>
+    <ImagePreviewDialog :image="previewImage" @close="previewImage = null" />
   </main>
 </template>
 

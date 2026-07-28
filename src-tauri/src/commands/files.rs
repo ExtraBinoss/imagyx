@@ -157,20 +157,20 @@ pub fn open_in_imagyx(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    if !state
+    let image = state
         .database
-        .image_exists(&image_id)
+        .images_by_ids(&[image_id])
         .map_err(|error| error.to_string())?
-    {
-        return Err("Image inconnue".to_owned());
-    }
+        .into_iter()
+        .next()
+        .ok_or_else(|| "Image inconnue".to_owned())?;
     let main = app
         .get_webview_window("main")
         .ok_or_else(|| "Fenêtre principale indisponible".to_owned())?;
     main.show().map_err(|error| error.to_string())?;
     let _ = main.unminimize();
     main.set_focus().map_err(|error| error.to_string())?;
-    main.emit("open-image-requested", image_id)
+    main.emit("open-image-requested", image)
         .map_err(|error| error.to_string())?;
     if let Some(spotlight) = app.get_webview_window("spotlight") {
         let _ = spotlight.emit("spotlight-will-hide", ());

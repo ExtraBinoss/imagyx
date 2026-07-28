@@ -65,7 +65,9 @@ const scrollTop = ref(0)
 const viewportHeight = ref(0)
 const resultsOffset = ref(0)
 let scrollFrame: number | undefined
+let scrollEndTimer: number | undefined
 let resizeObserver: ResizeObserver | null = null
+const isScrolling = ref(false)
 
 const selectedImage = computed(() => props.results[props.selectedIndex] ?? null)
 const visibleResults = computed(() => {
@@ -124,6 +126,19 @@ function scheduleScrollState() {
     scrollFrame = undefined
     updateScrollState()
   })
+}
+
+function handleScroll() {
+  isScrolling.value = true
+  if (scrollEndTimer) window.clearTimeout(scrollEndTimer)
+  scrollEndTimer = window.setTimeout(() => { isScrolling.value = false }, 80)
+  scheduleScrollState()
+}
+
+function handleResultPointerEnter(index: number) {
+  // Virtual rows are replaced while scrolling. Selecting each replacement forces
+  // a parent render and makes fast wheel scrolling feel sticky.
+  if (!isScrolling.value) emit('select', index)
 }
 
 function scrollToIndex(index: number) {
@@ -259,6 +274,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (scrollFrame) window.cancelAnimationFrame(scrollFrame)
+  if (scrollEndTimer) window.clearTimeout(scrollEndTimer)
   resizeObserver?.disconnect()
   window.removeEventListener('keydown', handleWindowKeydown, { capture: true })
   document.removeEventListener('pointerdown', handleDocumentPointerDown, { capture: true })
@@ -291,7 +307,7 @@ defineExpose({ scrollToIndex })
       class="spotlight-results"
       :class="{ 'spotlight-results--with-actions': Boolean(selectedImage) }"
       role="listbox"
-      @scroll.passive="scheduleScrollState"
+      @scroll.passive="handleScroll"
     >
       <div v-if="!libraryReady" class="spotlight-library-loading" aria-live="polite">
         <LoaderCircle class="spin" :size="22" />
@@ -366,7 +382,7 @@ defineExpose({ scrollToIndex })
               :aria-selected="index === selectedIndex"
               role="option"
               tabindex="-1"
-              @mouseenter="emit('select', index)"
+              @mouseenter="handleResultPointerEnter(index)"
               @focus="emit('select', index)"
               @click="emit('select', index)"
               @dblclick="emit('open', image)"

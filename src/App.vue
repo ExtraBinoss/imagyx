@@ -145,13 +145,12 @@ function handleTypeToSearch(event: KeyboardEvent) {
   void nextTick(() => searchHeader.value?.focusSearch());
 }
 
-async function openImageFromSpotlight(imageId: string) {
+function openImageFromSpotlight(image: ImageAsset) {
   localQuery.value = "";
   store.query = "";
   store.selectedFolderId = null;
-  await store.refreshImages();
-  previewImage.value =
-    store.images.find((image) => image.id === imageId) ?? null;
+  previewImage.value = image;
+  void store.refreshImages();
 }
 
 function scheduleEarlyTextWarmup() {
@@ -202,8 +201,8 @@ onMounted(async () => {
     unlistenResumeIndexing,
     unlistenAddFolder,
   ] = await Promise.all([
-    listen<string>("open-image-requested", (event) => {
-      void openImageFromSpotlight(event.payload);
+    listen<ImageAsset>("open-image-requested", (event) => {
+      openImageFromSpotlight(event.payload);
     }),
     listen("open-onboarding-requested", () => onboarding.show()),
     listen("pause-indexing-requested", () => pauseIndexing()),
