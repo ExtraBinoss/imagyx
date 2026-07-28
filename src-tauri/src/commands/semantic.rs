@@ -170,6 +170,19 @@ pub async fn prepare_ai_images(
     Ok(Response::new(packed))
 }
 
+#[tauri::command(rename_all = "camelCase")]
+pub fn get_image_embedding(
+    image_id: String,
+    state: State<'_, Arc<AppState>>,
+) -> Result<Vec<f32>, String> {
+    state
+        .vectors
+        .read()
+        .vector(&image_id)
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| "Cette image n’a pas encore d’index visuel".to_owned())
+}
+
 #[tauri::command]
 pub fn save_embeddings(
     embeddings: Vec<ImageEmbedding>,
