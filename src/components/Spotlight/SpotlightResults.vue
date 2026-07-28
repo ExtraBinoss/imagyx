@@ -10,8 +10,10 @@ import {
   LoaderCircle,
   RefreshCw,
   Search,
+  Sparkles,
 } from '@lucide/vue'
 import type { FolderIndexCoverage, ImageAsset } from '../../types'
+import { visualSearch } from '../../services/visual-search'
 import ThumbnailImage from '../ThumbnailImage.vue'
 import Button from '../ui/Button/Button.vue'
 import KbdChip from '../ui/KbdChip/KbdChip.vue'
@@ -58,6 +60,7 @@ const actionHub = ref<HTMLElement | null>(null)
 const converterView = ref<InstanceType<typeof SpotlightConverter> | null>(null)
 const converterSource = ref<ImageAsset | null>(null)
 const actionsOpen = ref(false)
+const findingSimilar = ref(false)
 const canScrollDown = ref(false)
 const scrollTop = ref(0)
 const viewportHeight = ref(0)
@@ -166,6 +169,18 @@ function toggleActions() {
 function copySelected() {
   if (!selectedImage.value) return
   emit('copy', selectedImage.value)
+}
+
+async function findSimilarSelected() {
+  const image = selectedImage.value
+  if (!image || findingSimilar.value) return
+  actionsOpen.value = false
+  findingSimilar.value = true
+  try {
+    await visualSearch.findSimilar(image)
+  } finally {
+    findingSimilar.value = false
+  }
 }
 
 function convertSelected() {
@@ -414,6 +429,23 @@ defineExpose({ scrollToIndex })
               role="menu"
               :aria-label="t('spotlight.actions.more')"
             >
+              <button
+                class="spotlight-action-popover__featured"
+                type="button"
+                role="menuitem"
+                :disabled="findingSimilar"
+                @click="findSimilarSelected"
+              >
+                <span class="spotlight-action-popover__icon">
+                  <LoaderCircle v-if="findingSimilar" class="spin" :size="16" />
+                  <Sparkles v-else :size="16" />
+                </span>
+                <span class="spotlight-action-popover__copy">
+                  <strong>{{ t('search.visual.find_similar') }}</strong>
+                  <small>{{ t('search.visual.find_similar_desc') }}</small>
+                </span>
+                <span class="spotlight-action-popover__ai">AI</span>
+              </button>
               <button type="button" role="menuitem" @click="convertSelected">
                 <span class="spotlight-action-popover__icon"><RefreshCw :size="16" /></span>
                 <strong>{{ t('spotlight.convert.action') }}</strong>
@@ -624,7 +656,7 @@ defineExpose({ scrollToIndex })
   position: absolute;
   right: 0;
   bottom: calc(100% + 12px);
-  width: 286px;
+  width: 304px;
   padding: 6px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--border-strong) 82%, transparent);
@@ -656,14 +688,25 @@ defineExpose({ scrollToIndex })
   background: color-mix(in srgb, var(--primary-soft) 68%, var(--surface));
   transform: translate3d(2px, 0, 0);
 }
-.spotlight-action-popover button strong {
-  min-width: 0;
+.spotlight-action-popover button:disabled { opacity: 0.66; pointer-events: none; }
+.spotlight-action-popover__featured {
+  margin-bottom: 4px;
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border)) !important;
+  background: linear-gradient(120deg, color-mix(in srgb, var(--primary-soft) 76%, var(--surface)), transparent) !important;
+}
+.spotlight-action-popover button > strong,
+.spotlight-action-popover__copy { min-width: 0; }
+.spotlight-action-popover button > strong,
+.spotlight-action-popover__copy strong,
+.spotlight-action-popover__copy small {
+  display: block;
   overflow: hidden;
-  font-size: 11px;
-  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.spotlight-action-popover button > strong,
+.spotlight-action-popover__copy strong { font-size: 11px; font-weight: 650; }
+.spotlight-action-popover__copy small { margin-top: 2px; color: var(--text-muted); font-size: 9px; }
 .spotlight-action-popover__icon {
   display: grid;
   place-items: center;
@@ -673,6 +716,15 @@ defineExpose({ scrollToIndex })
   border-radius: 9px;
   background: color-mix(in srgb, var(--primary-soft) 48%, var(--surface));
   color: var(--primary-text);
+}
+.spotlight-action-popover__ai {
+  padding: 3px 6px;
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border));
+  border-radius: var(--radius-full);
+  color: var(--primary-text);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
 }
 .action-popover-enter-active,
 .action-popover-leave-active { transition: opacity 130ms ease, transform 170ms cubic-bezier(0.16, 1, 0.3, 1), filter 130ms ease; }
