@@ -37,7 +37,12 @@ function isSpotlightSurface(): boolean {
 }
 
 function requestKey(request: SearchRequest): string {
-  return `${request.folderId ?? 'all'}:${request.query.trim().toLocaleLowerCase('en')}`
+  return [
+    request.mode ?? 'text',
+    request.folderId ?? 'all',
+    request.excludeImageId ?? '-',
+    request.query.trim().toLocaleLowerCase('en'),
+  ].join(':')
 }
 
 function trimCache(now = performance.now()): void {
@@ -108,6 +113,7 @@ function completeInitialSearch(
   if (import.meta.env.DEV) {
     console.info('[Imagyx][SpotlightPagination] initial page ready', {
       rawQuery: context.rawQuery,
+      mode: request.mode ?? 'text',
       query: request.query,
       folderId: request.folderId ?? null,
       loaded: reactiveItems.length,
@@ -162,6 +168,7 @@ async function loadMore(loader: SearchPageLoader): Promise<void> {
     if (import.meta.env.DEV) {
       console.info('[Imagyx][SpotlightPagination] page appended', {
         rawQuery,
+        mode: request.mode ?? 'text',
         query: request.query,
         folderId: request.folderId ?? null,
         offset,
@@ -178,6 +185,7 @@ async function loadMore(loader: SearchPageLoader): Promise<void> {
     if (import.meta.env.DEV) {
       console.error('[Imagyx][SpotlightPagination] page failed', {
         rawQuery,
+        mode: request.mode ?? 'text',
         query: request.query,
         folderId: request.folderId ?? null,
         offset,
