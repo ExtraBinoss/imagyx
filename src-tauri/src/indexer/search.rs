@@ -272,31 +272,34 @@ pub fn search_page_with_diagnostics(
             .total_cmp(left_score)
             .then_with(|| right_asset.modified_at.cmp(&left_asset.modified_at))
     });
-    let items = ranked
+    let page = ranked
         .into_iter()
         .skip(offset)
         .take(limit)
-        .map(|(asset, _)| asset)
         .collect::<Vec<_>>();
-    #[cfg(debug_assertions)]
-    let sort_ms = sort_started_at.elapsed().as_secs_f64() * 1_000.0;
 
     #[cfg(debug_assertions)]
-    let top_results = items
+    let top_results = page
         .iter()
         .take(8)
         .enumerate()
-        .map(|(index, asset)| {
+        .map(|(index, (asset, score))| {
             format!(
-                "{}:{}:{}:{:.4}",
+                "{}:{}:{}:{score:.4}",
                 offset + index + 1,
                 asset.id,
                 asset.name,
-                asset.semantic_score.unwrap_or_default(),
             )
         })
         .collect::<Vec<_>>()
         .join(" | ");
+
+    let items = page
+        .into_iter()
+        .map(|(asset, _)| asset)
+        .collect::<Vec<_>>();
+    #[cfg(debug_assertions)]
+    let sort_ms = sort_started_at.elapsed().as_secs_f64() * 1_000.0;
 
     #[cfg(debug_assertions)]
     tracing::event(
