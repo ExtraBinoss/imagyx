@@ -1,4 +1,5 @@
 import { spotlightSearchTiming } from '../config/spotlight-search'
+import { installNativeDialogFocusGuard } from './native-dialog-state'
 import { semanticRuntime } from './semantic'
 import { visualSearchSession } from './visual-search-session'
 
@@ -27,6 +28,7 @@ function installMainVisualEscape() {
 export function installUnifiedSearchEngine(): void {
   if (installed || typeof window === 'undefined') return
   installed = true
+  installNativeDialogFocusGuard()
   installMainVisualEscape()
 
   const embedTextQuery = semanticRuntime.embedQuery.bind(semanticRuntime)
