@@ -21,6 +21,7 @@ import { useShortcutStore } from "./stores/shortcut";
 import { useThemeStore } from "./stores/theme";
 import { semanticRuntime } from "./services/semantic";
 import { registerSemanticQueryProvider } from "./services/semantic-provider";
+import { spotlightSearchTiming } from "./config/spotlight-search";
 import { capitalize, useTagTypewriter } from "./useTagTypewriter";
 import { debounce, perfLog } from "./utils";
 import { folderQuerySuggestions, formatFolderQuery, parseFolderQuery } from "./utils/folder-query";
@@ -77,7 +78,7 @@ const searchLater = debounce(() => {
   store.selectedFolderId = parsed.folder?.id ?? null;
   store.setQuery(parsed.query);
   void store.refreshImages();
-}, 180);
+}, spotlightSearchTiming.lexicalDebounceMs);
 
 watch(localQuery, () => {
   folderSuggestionIndex.value = 0;
@@ -251,7 +252,7 @@ onBeforeUnmount(() => {
         :model-ready="store.appInfo?.aiReady ?? false"
         :model-backend="store.appInfo?.aiBackend ?? 'Automatic'"
         :searching="store.semanticSearching"
-        :result-count="store.images.length"
+        :result-count="store.totalResults"
         :folder-suggestions="folderSuggestions"
         :folder-suggestion-index="folderSuggestionIndex"
         @folder-select="selectFolderSuggestion"
