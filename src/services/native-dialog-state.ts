@@ -1,6 +1,7 @@
 let activeDialogs = 0
 let installed = false
 let releaseUploadDialog: (() => void) | null = null
+let releaseFallback: number | undefined
 
 export function beginNativeDialog(): () => void {
   activeDialogs += 1
@@ -16,6 +17,13 @@ export function nativeDialogIsOpen(): boolean {
   return activeDialogs > 0
 }
 
+function releaseActiveUploadDialog(): void {
+  if (releaseFallback) window.clearTimeout(releaseFallback)
+  releaseFallback = undefined
+  releaseUploadDialog?.()
+  releaseUploadDialog = null
+}
+
 export function installNativeDialogFocusGuard(): void {
   if (installed || typeof document === 'undefined') return
   installed = true
@@ -24,13 +32,13 @@ export function installNativeDialogFocusGuard(): void {
     const target = event.target
     if (!(target instanceof Element) || !target.closest('.unified-search-input__upload')) return
 
-    releaseUploadDialog?.()
+    releaseActiveUploadDialog()
     releaseUploadDialog = beginNativeDialog()
+    // Focus normally returns when the system picker closes. The fallback only
+    // prevents a failed native dialog from keeping Spotlight pinned forever.
+    releaseFallback = window.setTimeout(releaseActiveUploadDialog, 120_000)
     window.addEventListener('focus', () => {
-      window.setTimeout(() => {
-        releaseUploadDialog?.()
-        releaseUploadDialog = null
-      }, 0)
+      window.setTimeout(releaseActiveUploadDialog, 0)
     }, { once: true })
   }, { capture: true })
 }
