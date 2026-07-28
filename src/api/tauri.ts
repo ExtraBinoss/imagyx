@@ -13,6 +13,107 @@ import type {
   RuntimeStats,
   SearchRequest,
 } from '../types'
+import { perfLog } from '../utils'
+
+type SearchMode = 'browse' | 'lexical' | 'hybrid'
+
+let searchDiagnosticSequence = 0
+
+function searchMode(request: SearchRequest): SearchMode {
+  if (!request.query.trim()) return 'browse'
+  return request.queryVector?.length ? 'hybrid' : 'lexical'
+}
+
+function nextSearchDiagnosticId(mode: SearchMode): string | undefined {
+  if (!import.meta.env.DEV) return undefined
+  searchDiagnosticSequence += 1
+  const surface = typeof document === 'undefined'
+    ? 'unknown'
+    : document.documentElement.dataset.window ?? 'unknown'
+  return `${surface}-${mode}-${Date.now().toString(36)}-${searchDiagnosticSequence}`
+}
+
+function logSearchResults(
+  diagnosticId: string,
+  mode: SearchMode,
+  request: SearchRequest,
+  results: ImageAsset[],
+  durationMs: number,
+): void {
+  if (!import.meta.env.DEV) return
+  console.groupCollapsed(
+    `[Imagyx][Search][${diagnosticId}] ${mode} · ${results.length} résultat(s) · ${durationMs.toFixed(1)} ms`,
+  )
+  console.log('Request', {
+    diagnosticId,
+    mode,
+    query: request.query,
+    folderId: request.folderId ?? null,
+    limit: request.limit ?? 2_000,
+    offset: request.offset ?? 0,
+    queryVectorDimensions: request.queryVector?.length ?? 0,
+  })
+  console.table(results.map((image, index) => ({
+    rank: index + 1,
+    id: image.id,
+    name: image.name,
+    format: image.extension.toLocaleUpperCase(),
+    semanticScore: image.semanticScore == null
+      ? null
+      : Number(image.semanticScore.toFixed(4)),
+    folderId: image.folderId,
+  })))
+  console.groupEnd()
+}
+
+async function searchImages(request: SearchRequest): Promise<ImageAsset[]> {
+  const mode = searchMode(request)
+  const diagnosticId = nextSearchDiagnosticId(mode)
+  const startedAt = performance.now()
+
+  if (import.meta.env.DEV && diagnosticId) {
+    console.info(`[Imagyx][Search][${diagnosticId}] start`, {
+      mode,
+      query: request.query,
+      folderId: request.folderId ?? null,
+      limit: request.limit ?? 2_000,
+      offset: request.offset ?? 0,
+      queryVectorDimensions: request.queryVector?.length ?? 0,
+    })
+  }
+
+  try {
+    const results = await invoke<ImageAsset[]>('search_images', {
+      request: {
+        query: request.query,
+        folderId: request.folderId ?? null,
+        limit: request.limit ?? 2_000,
+        offset: request.offset ?? 0,
+        queryVector: request.queryVector ?? null,
+      },
+      diagnosticId: diagnosticId ?? null,
+    })
+    const durationMs = performance.now() - startedAt
+    perfLog('SearchIPC', `${mode} Rust round trip`, durationMs, {
+      diagnosticId,
+      query: request.query,
+      results: results.length,
+      queryVectorDimensions: request.queryVector?.length ?? 0,
+    })
+    if (diagnosticId) logSearchResults(diagnosticId, mode, request, results, durationMs)
+    return results
+  } catch (error) {
+    const durationMs = performance.now() - startedAt
+    if (import.meta.env.DEV) {
+      console.error(`[Imagyx][Search][${diagnosticId ?? 'release'}] failed after ${durationMs.toFixed(1)} ms`, {
+        mode,
+        query: request.query,
+        error,
+      })
+    }
+    throw error
+  }
+}
 
 export const imagyxApi = {
   appInfo: () => invoke<AppInfo>('get_app_info'),
@@ -49,16 +150,7 @@ export const imagyxApi = {
       path: image.path,
       modifiedAt: image.modifiedAt,
     }),
-  search: (request: SearchRequest) =>
-    invoke<ImageAsset[]>('search_images', {
-      request: {
-        query: request.query,
-        folderId: request.folderId ?? null,
-        limit: request.limit ?? 2_000,
-        offset: request.offset ?? 0,
-        queryVector: request.queryVector ?? null,
-      },
-    }),
+  search: searchImages,
   openInFileManager: (path: string, reveal = false) =>
     invoke<void>('open_in_file_manager', { path, reveal }),
   copyImage: (path: string) => invoke<void>('copy_image_to_clipboard', { path }),
