@@ -147,7 +147,8 @@ withDefaults(
   background: var(--surface);
   color: var(--text);
 }
-.ui-button--secondary:hover:not(:disabled) {
+.ui-button--secondary:hover:not(:disabled),
+.ui-button--secondary.ui-button--pressed:not(:disabled) {
   border-color: var(--border-strong);
   background: var(--surface-hover);
 }
@@ -157,7 +158,8 @@ withDefaults(
   background: transparent;
   color: var(--text-secondary);
 }
-.ui-button--ghost:hover:not(:disabled) {
+.ui-button--ghost:hover:not(:disabled),
+.ui-button--ghost.ui-button--pressed:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text);
 }
@@ -167,7 +169,8 @@ withDefaults(
   background: var(--danger-surface);
   color: var(--danger-text);
 }
-.ui-button--danger:hover:not(:disabled) {
+.ui-button--danger:hover:not(:disabled),
+.ui-button--danger.ui-button--pressed:not(:disabled) {
   background: var(--danger-surface-hover);
 }
 
