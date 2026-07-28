@@ -75,8 +75,10 @@ function logSearchResults(
 
 async function searchImages(request: SearchRequest): Promise<ImageAsset[]> {
   const mode = searchMode(request)
-  const diagnosticId = request.diagnosticId ?? nextSearchDiagnosticId(mode)
-  const startedAt = performance.now()
+  const diagnosticId = import.meta.env.DEV
+    ? request.diagnosticId ?? nextSearchDiagnosticId(mode)
+    : undefined
+  const startedAt = import.meta.env.DEV ? performance.now() : 0
 
   if (import.meta.env.DEV && diagnosticId) {
     console.info(`[Imagyx][Search][${diagnosticId}] start`, {
@@ -98,23 +100,25 @@ async function searchImages(request: SearchRequest): Promise<ImageAsset[]> {
         offset: request.offset ?? 0,
         queryVector: request.queryVector ?? null,
       },
-      diagnosticId: diagnosticId ?? null,
+      diagnosticId: import.meta.env.DEV ? diagnosticId ?? null : null,
     })
-    const durationMs = performance.now() - startedAt
-    perfLog('SearchIPC', `${mode} Rust round trip`, durationMs, {
-      diagnosticId,
-      query: request.query,
-      results: results.length,
-      queryVectorDimensions: request.queryVector?.length ?? 0,
-    })
-    if (diagnosticId) {
-      deferSearchResultLog(() => logSearchResults(diagnosticId, mode, request, results, durationMs))
+    if (import.meta.env.DEV) {
+      const durationMs = performance.now() - startedAt
+      perfLog('SearchIPC', `${mode} Rust round trip`, durationMs, {
+        diagnosticId,
+        query: request.query,
+        results: results.length,
+        queryVectorDimensions: request.queryVector?.length ?? 0,
+      })
+      if (diagnosticId) {
+        deferSearchResultLog(() => logSearchResults(diagnosticId, mode, request, results, durationMs))
+      }
     }
     return results
   } catch (error) {
-    const durationMs = performance.now() - startedAt
     if (import.meta.env.DEV) {
-      console.error(`[Imagyx][Search][${diagnosticId ?? 'release'}] failed after ${durationMs.toFixed(1)} ms`, {
+      const durationMs = performance.now() - startedAt
+      console.error(`[Imagyx][Search][${diagnosticId ?? 'unknown'}] failed after ${durationMs.toFixed(1)} ms`, {
         mode,
         query: request.query,
         error,
