@@ -26,9 +26,7 @@
 
 See how Imagyx lets you search your local image library instantly using natural language.
 
-<p align="center">
-  <video src="./docs/assets/IMAGYX-demo.webm" controls width="100%" autoplay loop muted></video>
-</p>
+[IMAGYX-demo (1).webm](https://github.com/user-attachments/assets/cbd375ac-0d6a-4cf8-ab5b-89958bc7bdcd)
 
 <br />
 
