@@ -348,17 +348,6 @@ const demoImages = [
     </div>
 
     <div v-else class="indexing-demo">
-      <div class="indexing-demo__hero">
-        <FolderOpen :size="28" />
-        <div>
-          <strong>{{
-            hasFolders
-              ? t("indexing.title.completed")
-              : t("search.no_folder_title")
-          }}</strong>
-          <span>{{ t("onboarding.step_indexing_desc") }}</span>
-        </div>
-      </div>
       <div class="indexing-demo__job">
         <span><WandSparkles :size="17" /></span>
         <div>
@@ -370,10 +359,21 @@ const demoImages = [
         </div>
         <b>55%</b>
       </div>
-      <Button variant="primary" size="lg" block @click="emit('addFolder')">
-        <template #leading><FolderOpen :size="17" /></template>
+      <Button class="indexing-demo__add-folder" variant="primary" size="lg" @click="emit('addFolder')">
+        <template #leading><FolderOpen :size="20" /></template>
         {{ t("onboarding.add_folder") }}
       </Button>
+      <div class="indexing-demo__hero">
+        <FolderOpen :size="23" />
+        <div>
+          <strong>{{
+            hasFolders
+              ? t("indexing.title.completed")
+              : t("search.no_folder_title")
+          }}</strong>
+          <span>{{ t("onboarding.step_indexing_desc") }}</span>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -887,11 +887,14 @@ const demoImages = [
 }
 .indexing-demo {
   display: grid;
-  align-content: center;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  align-content: stretch;
   gap: 16px;
   width: min(510px, calc(100% - 52px));
   height: 100%;
   margin: 0 auto;
+  padding: 24px 0;
+  box-sizing: border-box;
 }
 .indexing-demo__hero {
   display: flex;
@@ -912,6 +915,14 @@ const demoImages = [
   color: var(--text-muted);
   font-size: 10px;
   line-height: 1.5;
+}
+.indexing-demo__add-folder {
+  align-self: center;
+  justify-self: center;
+  min-width: min(320px, 100%);
+  min-height: 64px;
+  padding-inline: 28px;
+  font-size: 13px;
 }
 .indexing-demo__job {
   display: grid;
