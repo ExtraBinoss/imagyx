@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Download, LoaderCircle } from '@lucide/vue'
-import type { ModelDownloadProgress } from '../../types'
+import type { ModelDownloadProgress, RuntimeStats } from '../../types'
 import { formatBytes } from '../../utils'
+import { isModelDownloading } from '../../utils/model-readiness'
 import { useTranslate } from '../../i18n'
 
-const props = defineProps<{ progress: ModelDownloadProgress }>()
+const props = defineProps<{
+  progress: ModelDownloadProgress
+  runtimeStats: RuntimeStats | null
+}>()
 
 const { t } = useTranslate()
-const downloading = computed(() => props.progress.stage === 'downloading')
+const downloading = computed(() => isModelDownloading(props.progress))
+const runtimePhase = computed(() => props.runtimeStats?.stage)
 const percent = computed(() => {
   if (!props.progress.totalBytes) return null
   return Math.min(100, Math.max(0, (props.progress.currentBytes / props.progress.totalBytes) * 100))
@@ -23,6 +28,9 @@ const detail = computed(() => {
       total: formatBytes(props.progress.totalBytes),
     })
   }
+  if (runtimePhase.value === 'loading-text') return t('indexing.phase.loading_text')
+  if (runtimePhase.value === 'checking') return t('indexing.phase.checking')
+  if (runtimePhase.value === 'loading') return t('indexing.phase.loading')
   return props.progress.message || props.progress.fileName || t('indexing.message.downloading_name')
 })
 </script>

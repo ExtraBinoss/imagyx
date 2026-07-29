@@ -11,7 +11,7 @@ import {
   RefreshCw,
   Search,
 } from '@lucide/vue'
-import type { FolderIndexCoverage, ImageAsset, ModelDownloadProgress } from '../../types'
+import type { FolderIndexCoverage, ImageAsset, ModelDownloadProgress, RuntimeStats } from '../../types'
 import { visualSearch } from '../../services/visual-search'
 import ThumbnailImage from '../ThumbnailImage.vue'
 import Button from '../ui/Button/Button.vue'
@@ -20,6 +20,7 @@ import SpotlightConverter from './SpotlightConverter.vue'
 import SpotlightIndexProgress from './SpotlightIndexProgress.vue'
 import SpotlightIndexCoverageNotice from './SpotlightIndexCoverageNotice.vue'
 import SpotlightModelDownload from './SpotlightModelDownload.vue'
+import { isModelPreparing } from '../../utils/model-readiness'
 import type { SpotlightIndexJob } from './types'
 import { useTranslate } from '../../i18n'
 
@@ -42,6 +43,7 @@ const props = defineProps<{
   fileManagerName: string
   performanceMode: boolean
   modelProgress: ModelDownloadProgress | null
+  runtimeStats: RuntimeStats | null
 }>()
 
 const emit = defineEmits<{
@@ -74,7 +76,7 @@ let resizeObserver: ResizeObserver | null = null
 const isScrolling = ref(false)
 
 const selectedImage = computed(() => props.results[props.selectedIndex] ?? null)
-const modelPreparing = computed(() => ['checking', 'downloading', 'loading'].includes(props.modelProgress?.stage ?? ''))
+const modelPreparing = computed(() => isModelPreparing(props.modelProgress, props.runtimeStats))
 const visibleResults = computed(() => {
   const firstVisible = Math.floor(
     Math.max(0, scrollTop.value - resultsOffset.value) / RESULT_ROW_HEIGHT,
@@ -348,6 +350,7 @@ defineExpose({ scrollToIndex })
       <SpotlightModelDownload
         v-else-if="modelPreparing && modelProgress"
         :progress="modelProgress"
+        :runtime-stats="runtimeStats"
       />
 
       <template v-else>

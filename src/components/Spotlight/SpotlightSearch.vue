@@ -21,6 +21,7 @@ import type { SpotlightIndexJob, SpotlightView } from './types'
 import { useSpotlightResultActions } from './useSpotlightResultActions'
 import { useTranslate } from '../../i18n'
 import { spotlightSearchTiming } from '../../config/spotlight-search'
+import { isModelPreparing } from '../../utils/model-readiness'
 
 const CACHE_TTL_MS = 2_000
 const SEARCH_DEBOUNCE_MS = spotlightSearchTiming.lexicalDebounceMs
@@ -56,6 +57,7 @@ const previewImage = ref<ImageAsset | null>(null)
 const resultsScrolling = ref(false)
 const jobs = ref<SpotlightIndexJob[]>([])
 const modelProgress = ref<ModelDownloadProgress | null>(null)
+const runtimeStats = ref<RuntimeStats | null>(null)
 const inputView = ref<InstanceType<typeof SpotlightInput> | null>(null)
 const resultsView = ref<InstanceType<typeof SpotlightResults> | null>(null)
 const resultCache = new Map<string, CachedResults>()
@@ -100,7 +102,7 @@ const activeQuery = computed({
 })
 const hasFolders = computed(() => folders.value.length > 0)
 const hasActiveJobs = computed(() => jobs.value.some((job) => !['complete', 'error'].includes(job.stage)))
-const modelPreparing = computed(() => ['checking', 'downloading', 'loading'].includes(modelProgress.value?.stage ?? ''))
+const modelPreparing = computed(() => isModelPreparing(modelProgress.value, runtimeStats.value))
 const parsedFolderQuery = computed(() => parseFolderQuery(searchQuery.value, folders.value))
 const folderSuggestions = computed(() => folderQuerySuggestions(searchQuery.value, folders.value))
 const hasSearchQuery = computed(() => Boolean(
@@ -707,6 +709,7 @@ function handleIndexProgress(progress: IndexProgress) {
 }
 
 function handleRuntimeStats(stats: RuntimeStats) {
+  runtimeStats.value = stats
   const job = [...jobs.value].reverse().find((item) => item.stage === 'queued' || item.stage === 'embedding')
   if (!job) return
   if (['indexing', 'decoding', 'inference', 'saving'].includes(stats.stage)) {
@@ -911,7 +914,10 @@ onMounted(async () => {
   void platform.initialize()
   void shortcut.initialize()
   void syncFolders()
-  void imagyxApi.appInfo().then((info) => handleModelProgress(info.modelProgress)).catch(() => undefined)
+  void imagyxApi.appInfo().then((info) => {
+    handleModelProgress(info.modelProgress)
+    handleRuntimeStats(info.runtimeStats)
+  }).catch(() => undefined)
   if (import.meta.env.DEV) {
     console.info('[Imagyx][SpotlightSearch] development diagnostics enabled', {
       lexicalDebounceMs: SEARCH_DEBOUNCE_MS,
@@ -1034,6 +1040,7 @@ onBeforeUnmount(() => {
                   :file-manager-name="platform.fileManagerName"
                   :performance-mode="resultsScrolling"
                   :model-progress="modelProgress"
+                  :runtime-stats="runtimeStats"
                   @select="selectedIndex = $event"
                   @scroll-state="resultsScrolling = $event"
                   @open="openImage"

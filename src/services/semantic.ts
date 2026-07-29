@@ -470,6 +470,7 @@ class SemanticRuntime {
     if (this.textModel && this.tokenizer) return
     if (this.textLoading) return this.textLoading
     this.textLoading = (async () => {
+      this.publishProgress({ stage: 'loading', message: `Préparation de ${MODEL_NAME}…`, currentBytes: 0, totalBytes: 0, currentFile: 0, totalFiles: 0 })
       this.patchStats({ stage: 'loading-text' })
       await this.ensureModelEnvironment()
       try {
@@ -484,6 +485,7 @@ class SemanticRuntime {
           fallbackReason: `Recherche texte sur WASM: ${String(error)}`,
         })
       }
+      this.publishProgress({ stage: 'ready', message: `${MODEL_NAME} prêt hors connexion.`, currentBytes: 0, totalBytes: 0, currentFile: 6, totalFiles: 6 })
     })()
     try { await this.textLoading } finally { this.textLoading = null }
   }

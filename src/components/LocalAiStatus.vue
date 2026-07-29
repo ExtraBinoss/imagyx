@@ -5,6 +5,7 @@ import type { IndexProgress, ModelDownloadProgress, RuntimeStats } from '../type
 import { imagyxApi } from '../api/tauri'
 import { formatBytes } from '../utils'
 import { copyDebugInfoToClipboard } from '../utils/copy-information'
+import { isModelDownloading, isModelPreparing } from '../utils/model-readiness'
 import Button from './ui/Button/Button.vue'
 import Popover from './ui/Popover/Popover.vue'
 import { usePlatformStore } from '../stores/platform'
@@ -40,10 +41,8 @@ const folderIndexing = computed(() => {
   const stage = props.progress?.stage
   return stage === 'discovering' || stage === 'metadata' || stage === 'queued'
 })
-const downloading = computed(() => props.modelProgress?.stage === 'downloading')
-const preparingModel = computed(() =>
-  props.modelProgress?.stage === 'checking' || props.modelProgress?.stage === 'loading',
-)
+const downloading = computed(() => isModelDownloading(props.modelProgress))
+const preparingModel = computed(() => isModelPreparing(props.modelProgress, liveStats.value))
 const active = computed(() =>
   indexing.value || folderIndexing.value || downloading.value || preparingModel.value,
 )
