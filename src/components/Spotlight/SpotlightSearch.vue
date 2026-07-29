@@ -75,6 +75,7 @@ const {
 let searchSequence = 0
 let searchDiagnosticSequence = 0
 let pendingSearchDiagnosticId: string | undefined
+let pendingSearchAfterModelReady: string | null = null
 let lastSearchInputAt = 0
 let morphSequence = 0
 let expanded = false
@@ -238,8 +239,19 @@ watch(hasActiveJobs, (active) => {
   else if (!searchQuery.value.trim() && hasFolders.value) void closePanel(++morphSequence)
 })
 
-watch(modelPreparing, (preparing, wasPreparing) => {
-  if (wasPreparing && !preparing && searchQuery.value.trim()) void runSearch()
+watch(modelPreparing, (preparing) => {
+  if (preparing || !pendingSearchAfterModelReady) return
+  if (pendingSearchAfterModelReady !== searchQuery.value) {
+    pendingSearchAfterModelReady = null
+    return
+  }
+  pendingSearchAfterModelReady = null
+  if (import.meta.env.DEV) {
+    console.info('[Imagyx][SpotlightSearch] resuming query after model readiness', {
+      query: searchQuery.value,
+    })
+  }
+  void runSearch()
 })
 
 async function syncFolders(openWhenEmpty = false) {
@@ -372,6 +384,7 @@ async function runSearch() {
   }
 
   if (modelPreparing.value) {
+    pendingSearchAfterModelReady = searchQuery.value
     results.value = []
     searching.value = false
     if (import.meta.env.DEV) {
@@ -379,6 +392,7 @@ async function runSearch() {
     }
     return
   }
+  pendingSearchAfterModelReady = null
 
   const cached = resultCache.get(cacheKey)
   const cacheAgeMs = cached ? performance.now() - cached.storedAt : null
@@ -854,6 +868,7 @@ function prepareOpen() {
   expanded = false
   expansionPromise = null
   pendingSearchDiagnosticId = undefined
+  pendingSearchAfterModelReady = null
   lastSearchInputAt = 0
   resetActionFeedback()
   void syncFolders(true).finally(() => {
@@ -891,6 +906,7 @@ function prepareHide() {
   expanded = false
   expansionPromise = null
   pendingSearchDiagnosticId = undefined
+  pendingSearchAfterModelReady = null
   lastSearchInputAt = 0
   resetActionFeedback()
 }
