@@ -5,7 +5,7 @@
 <h1 align="center">Imagyx</h1>
 
 <p align="center">
-  <strong>Find images on your computer with natural language. Local, private, open-source.</strong>
+  <strong>Find any image on your computer with natural language.</strong>
 </p>
 
 <p align="center">
@@ -24,13 +24,22 @@
 
 ## Demo
 
-See how Imagyx lets you search your local image library instantly using natural language.
+Find a `purple sunset`, a `red texture`, a `person near the sea`, or just part of a filename — without organizing everything first.
 
 [IMAGYX-demo (1).webm](https://github.com/user-attachments/assets/cbd375ac-0d6a-4cf8-ab5b-89958bc7bdcd)
 
 <br />
 
-Imagyx lets you search the images already stored on your computer using ordinary words and descriptions. Search for things such as `purple sunset`, `red texture`, `a person near the sea`, or part of a filename—without uploading your library anywhere.
+## Why Imagyx?
+
+- 🔎 **Search how you think** — describe an image naturally, search by filename, or combine both.
+- ✨ **Find similar images** — pick any image and discover visually similar shots in your library.
+- ⚡ **Spotlight from anywhere** — open the global search overlay, type, and act without opening the full app.
+- 🖼️ **Preview instantly** — browse images full-size, inspect dimensions and tags, copy them, or reveal them in Explorer/Finder.
+- 🔄 **Convert in a click** — create a new copy as **AVIF, WebP, PNG, JPG, or ICO** directly from Spotlight.
+- 📁 **Keep your library current** — Imagyx watches followed folders and updates its index as images change.
+- 🚀 **Fast by design** — progressive results, cached thumbnails, background indexing, and a lightweight idle footprint.
+- 🎨 **Made for your desktop** — keyboard-first controls, light and dark themes, and 10 interface languages.
 
 ## Download
 
@@ -38,94 +47,34 @@ Imagyx lets you search the images already stored on your computer using ordinary
   <a href="https://github.com/ExtraBinoss/imagyx/releases"><strong>Download Imagyx from GitHub Releases →</strong></a>
 </p>
 
-Windows and macOS builds are published manually on the Releases page. Your images stay where they are; installing Imagyx does not import, move, or duplicate them.
+Windows and macOS builds are published manually on the Releases page.
 
 <h2 id="how-it-works">How it works</h2>
 
 <table>
   <thead>
     <tr>
-      <th width="33%">1 · Add a folder</th>
-      <th width="33%">2 · Let Imagyx index it</th>
-      <th width="33%">3 · Search naturally</th>
+      <th width="33%">1 · Add a folder 📁</th>
+      <th width="33%">2 · Let it index ⚙️</th>
+      <th width="33%">3 · Search anywhere 🔎</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>
-        Choose any folder that contains images. Imagyx discovers the files and automatically prepares the local search components it needs.
-      </td>
-      <td>
-        Wait for the first indexing pass to finish. Progress stays visible while image metadata and the private semantic index are created.
-      </td>
-      <td>
-        Search from the app or open Spotlight with <kbd>Ctrl</kbd> + <kbd>9</kbd> on the numeric keypad by default.
-      </td>
+      <td>Choose a folder containing images. Imagyx discovers its files and prepares the local index.</td>
+      <td>The first pass creates metadata and the semantic index. Progress stays visible, and you can keep using the app.</td>
+      <td>Search in the app, or open Spotlight with <kbd>Ctrl</kbd> + <kbd>9</kbd> by default and act on a result immediately.</td>
     </tr>
   </tbody>
 </table>
 
-After the first setup, the search engine and index live locally on your computer. New and changed images are detected automatically inside followed folders.
+The shortcut is configurable in Settings. New and changed images are detected automatically in followed folders.
 
-## Search without opening the full app
+## Private by default
 
-Use the global Spotlight shortcut:
+Your images never leave your computer. Search, indexing, thumbnails, and semantic matching all run locally; Imagyx does not upload your library to a search service. Original files are never moved, renamed, or changed.
 
-<p align="center">
-  <kbd>Ctrl</kbd> + <kbd>9</kbd>
-  <br />
-  <sub>Numeric keypad by default. The shortcut can be changed in Imagyx settings.</sub>
-</p>
-
-Type a description, move through results with the arrow keys, then open, copy, or reveal an image directly from the overlay.
-
-## Built around your privacy
-
-<table>
-  <tr>
-    <td width="33%" align="center">
-      <strong>Local</strong><br />
-      Search and indexing run on your computer.
-    </td>
-    <td width="33%" align="center">
-      <strong>Private</strong><br />
-      Your images are not uploaded to a search service.
-    </td>
-    <td width="33%" align="center">
-      <strong>Non-destructive</strong><br />
-      Original files are never renamed, moved, or modified.
-    </td>
-  </tr>
-</table>
-
-The first setup may download the files required by the local search model. Once cached, normal searching works against the local index.
-
-## Lightweight in the background
-
-Imagyx is designed to remain unobtrusive when it is waiting in the background, with an idle memory footprint of approximately **40 MB** in typical use. Indexing and the first model warm-up temporarily use more CPU and memory while work is actively being performed.
-
-Generated data is kept separately from your originals:
-
-```text
-Pictures/imagyx/
-├── models/
-├── database/imagyx.sqlite3
-├── cache/thumbnails/
-└── logs/
-```
-
-## Features
-
-- natural-language and filename search;
-- fast Spotlight-style global search;
-- automatic recursive folder watching;
-- local semantic indexing;
-- progressive results while semantic search finishes;
-- on-demand cached thumbnails;
-- keyboard-first navigation and quick actions;
-- light and dark appearance;
-- Windows and macOS desktop support;
-- multilingual interface: English, Français, Español, Deutsch, Italiano, Português, 日本語, 简体中文, العربية, Русский.
+The first setup may download the local AI model files it needs. Once cached, normal image search remains local.
 
 ## Contributing
 
