@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { AlignLeft, AlignRight, BookOpen, Check, Copy, Globe, Info, Keyboard, Layout, Monitor, Moon, Palette, SearchX, Sun } from '@lucide/vue'
 import { imagyxApi } from '../../api/tauri'
 import type { ThemeMode } from '../../stores/theme'
@@ -32,6 +32,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   shortcutChange: [value: string]
   themeChange: [value: ThemeMode]
+  scrollState: [scrolling: boolean]
 }>()
 
 const { t } = useTranslate()
@@ -39,6 +40,7 @@ const platform = usePlatformStore()
 const library = useLibraryStore()
 const copied = ref(false)
 const currentLocale = ref(getCurrentLocale())
+let scrollEndTimer: number | undefined
 
 const languageOptions = computed(() =>
   languages.map((lang) => ({
@@ -71,6 +73,12 @@ function onLocaleChange(code: string) {
   currentLocale.value = code
 }
 
+function handleScroll() {
+  emit('scrollState', true)
+  if (scrollEndTimer) window.clearTimeout(scrollEndTimer)
+  scrollEndTimer = window.setTimeout(() => emit('scrollState', false), 120)
+}
+
 const stats = computed(() => library.runtimeStats)
 const dbPath = computed(() => library.appInfo?.databasePath ?? 'Unavailable')
 
@@ -101,23 +109,39 @@ async function copyDebugInfo() {
     copied.value = false
   }, 2000)
 }
+
+onBeforeUnmount(() => {
+  if (scrollEndTimer) window.clearTimeout(scrollEndTimer)
+  emit('scrollState', false)
+})
 </script>
 
 <template>
-  <div class="spotlight-settings" :class="[`spotlight-settings--${variant}`]">
+  <div
+    class="spotlight-settings"
+    :class="[`spotlight-settings--${variant}`]"
+    @scroll.passive="handleScroll"
+  >
     <section v-if="showShortcut" class="settings-section">
       <header>
         <span class="settings-section__icon"><Keyboard :size="17" /></span>
         <div><strong>{{ t('settings.shortcut_title') }}</strong><p>{{ t('settings.shortcut_desc') }}</p></div>
       </header>
-      <ShortcutView
-        :model-value="shortcut"
-        :label="t('settings.shortcut_label')"
-        :description="t('settings.shortcut_hint')"
-        :disabled="shortcutUpdating"
-        @change="emit('shortcutChange', $event)"
-      />
-      <p v-if="shortcutError" class="settings-error">{{ shortcutError }}</p>
+      <div class="settings-shortcut-list" role="list">
+        <div class="settings-shortcut-row" role="listitem">
+          <div>
+            <strong>{{ t('settings.shortcut_label') }}</strong>
+            <small>{{ t('settings.shortcut_hint') }}</small>
+          </div>
+          <ShortcutView
+            compact
+            :model-value="shortcut"
+            :disabled="shortcutUpdating"
+            :error="shortcutError"
+            @change="emit('shortcutChange', $event)"
+          />
+        </div>
+      </div>
     </section>
 
     <section v-if="showTheme" class="settings-section">
@@ -228,7 +252,7 @@ async function copyDebugInfo() {
   max-height: 68vh;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 4px;
+  padding: 0 4px;
   box-sizing: border-box;
   scrollbar-width: thin;
 }
@@ -239,18 +263,15 @@ async function copyDebugInfo() {
   display: grid;
   width: 100%;
   box-sizing: border-box;
-  padding: 12px 14px;
+  padding: 16px 12px;
   gap: 13px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12), 0 12px 28px -24px rgb(15 23 42 / 0.42);
-  animation: settings-rise 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-.spotlight-settings--popover .settings-section {
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  background: transparent;
+  box-shadow: none;
   animation: none;
 }
-.settings-section + .settings-section { margin-top: 10px; animation-delay: 35ms; }
+.settings-section + .settings-section { margin-top: 0; }
 .settings-section header { display: flex; align-items: center; gap: 11px; }
 .settings-section__icon {
   display: grid;
@@ -275,6 +296,20 @@ async function copyDebugInfo() {
   color: var(--danger-text);
   font-size: 10px;
 }
+.settings-shortcut-list { border-top: 1px solid var(--border); }
+.settings-shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 58px;
+  padding: 10px 0;
+}
+.settings-shortcut-row > div { min-width: 0; }
+.settings-shortcut-row strong,
+.settings-shortcut-row small { display: block; }
+.settings-shortcut-row strong { color: var(--text); font-size: 11px; }
+.settings-shortcut-row small { max-width: 245px; margin-top: 3px; color: var(--text-muted); font-size: 9px; line-height: 1.4; }
 .settings-empty {
   display: grid;
   place-items: center;
@@ -286,10 +321,7 @@ async function copyDebugInfo() {
 .settings-empty svg { margin-bottom: 12px; color: var(--primary-text); }
 .settings-empty strong { color: var(--text); font-size: 13px; }
 .settings-empty span { margin-top: 6px; font-size: 10px; }
-.info-section {
-  padding: 0;
-  overflow: hidden;
-}
+.info-section { overflow: hidden; }
 .info-details {
   display: grid;
   gap: var(--space-2);
@@ -317,9 +349,5 @@ async function copyDebugInfo() {
 }
 .copy-info-btn {
   margin-top: var(--space-2);
-}
-@keyframes settings-rise {
-  from { opacity: 0; transform: translateY(7px) scale(0.992); }
-  to { opacity: 1; transform: none; }
 }
 </style>

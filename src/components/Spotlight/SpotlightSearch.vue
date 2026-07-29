@@ -775,6 +775,10 @@ function isTextEditingTarget(target: EventTarget | null): boolean {
     || Boolean(target.closest('[contenteditable="true"]'))
 }
 
+function isShortcutRecordingTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && Boolean(target.closest('[data-shortcut-recorder]'))
+}
+
 function consumePreviewEnter(event: KeyboardEvent): boolean {
   if (event.key !== 'Enter') return false
   if (previewEnterPressed || event.repeat) {
@@ -787,6 +791,10 @@ function consumePreviewEnter(event: KeyboardEvent): boolean {
 }
 
 function handleKeydown(event: KeyboardEvent) {
+  // ShortcutView owns the complete key chord, including Escape. It must not
+  // compete with Spotlight navigation or the global close handler.
+  if (isShortcutRecordingTarget(event.target)) return
+
   const editingText = isTextEditingTarget(event.target)
   if (previewImage.value) {
     if (event.key === 'Enter') {
@@ -1033,6 +1041,7 @@ onBeforeUnmount(() => {
                   :theme-mode="theme.mode"
                   @shortcut-change="shortcut.setSpotlight"
                   @theme-change="theme.setMode"
+                  @scroll-state="resultsScrolling = $event"
                 />
                 <SpotlightResults
                   v-else

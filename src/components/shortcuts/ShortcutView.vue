@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { Keyboard } from '@lucide/vue'
 import { useTranslate } from '../../i18n'
 
@@ -10,28 +10,55 @@ const props = withDefaults(defineProps<{
   label?: string
   description?: string
   disabled?: boolean
+  error?: string | null
+  compact?: boolean
 }>(), {
   label: '',
   description: '',
   disabled: false,
+  error: null,
+  compact: false,
 })
 
 const emit = defineEmits<{ change: [value: string] }>()
 const field = ref<HTMLElement | null>(null)
 const recording = ref(false)
 const message = ref('')
+const recordedTokens = ref<string[]>([])
+const pendingShortcut = ref<string | null>(null)
+const selectedModifiers = ref<string[]>([])
 
 const tokens = computed(() => displayTokens(props.modelValue))
+const visibleTokens = computed(() => {
+  if (recording.value) return recordedTokens.value
+  if (pendingShortcut.value) return displayTokens(pendingShortcut.value)
+  return tokens.value
+})
+
+watch(() => props.modelValue, (value) => {
+  if (!pendingShortcut.value) return
+  pendingShortcut.value = null
+  message.value = ''
+})
+watch(() => props.error, (error) => {
+  if (!error) return
+  pendingShortcut.value = null
+  message.value = error
+})
 
 function startRecording() {
   if (props.disabled) return
   recording.value = true
+  recordedTokens.value = []
+  selectedModifiers.value = []
   message.value = t('shortcut.press_combo')
   void nextTick(() => field.value?.focus())
 }
 
 function stopRecording() {
   recording.value = false
+  recordedTokens.value = []
+  selectedModifiers.value = []
   message.value = ''
 }
 
@@ -46,27 +73,58 @@ function capture(event: KeyboardEvent) {
   }
 
   const key = normalizeKey(event)
+  const activeModifiers = modifierTokens(event)
+  if (activeModifiers.length) {
+    selectedModifiers.value = [...new Set([...selectedModifiers.value, ...activeModifiers])]
+  }
+  const modifiers = selectedModifiers.value
+  recordedTokens.value = key
+    ? displayTokens([...modifiers, key].join('+'))
+    : displayTokens(modifiers.join('+'))
   if (!key) {
     message.value = t('shortcut.hold_modifier')
     return
   }
-
-  const modifiers = [
-    event.ctrlKey ? 'Control' : '',
-    event.altKey ? 'Alt' : '',
-    event.shiftKey ? 'Shift' : '',
-    event.metaKey ? 'Super' : '',
-  ].filter(Boolean)
 
   if (modifiers.length === 0) {
     message.value = t('shortcut.add_modifier')
     return
   }
 
-  emit('change', [...modifiers, key].join('+'))
+  const shortcut = [...modifiers, key].join('+')
+  if (shortcut === props.modelValue) {
+    recording.value = false
+    message.value = ''
+    return
+  }
+  pendingShortcut.value = shortcut
+  emit('change', shortcut)
   recording.value = false
   message.value = t('shortcut.applying')
-  window.setTimeout(() => { if (!recording.value) message.value = '' }, 1400)
+  window.setTimeout(() => {
+    if (!recording.value && !pendingShortcut.value && !props.error) message.value = ''
+  }, 1400)
+}
+
+function previewModifiers(event: KeyboardEvent) {
+  if (!recording.value) return
+  const activeModifiers = modifierTokens(event)
+  if (activeModifiers.length) {
+    selectedModifiers.value = [...new Set([...selectedModifiers.value, ...activeModifiers])]
+  }
+  recordedTokens.value = displayTokens(selectedModifiers.value.join('+'))
+  message.value = recordedTokens.value.length
+    ? t('shortcut.hold_modifier')
+    : t('shortcut.press_combo')
+}
+
+function modifierTokens(event: KeyboardEvent): string[] {
+  return [
+    event.ctrlKey ? 'Control' : '',
+    event.altKey ? 'Alt' : '',
+    event.shiftKey ? 'Shift' : '',
+    event.metaKey ? 'Super' : '',
+  ].filter(Boolean)
 }
 
 function normalizeKey(event: KeyboardEvent): string | null {
@@ -101,8 +159,8 @@ function displayTokens(shortcut: string): string[] {
 </script>
 
 <template>
-  <div class="shortcut-view">
-    <div class="shortcut-copy">
+  <div class="shortcut-view" :class="{ 'shortcut-view--compact': compact }">
+    <div v-if="!compact" class="shortcut-copy">
       <span class="shortcut-icon"><Keyboard :size="17" /></span>
       <div>
         <strong>{{ label }}</strong>
@@ -113,16 +171,21 @@ function displayTokens(shortcut: string): string[] {
     <div
       ref="field"
       class="shortcut-field"
+      data-shortcut-recorder
       :class="{ 'shortcut-field--recording': recording, 'shortcut-field--disabled': disabled }"
       role="button"
       :tabindex="disabled ? -1 : 0"
-      :aria-label="`${label || t('shortcut.press_combo')}: ${tokens.join(' + ')}`"
+      :aria-label="`${label || t('shortcut.press_combo')}: ${visibleTokens.join(' + ') || t('shortcut.press_combo')}`"
       @click="startRecording"
-      @focus="recording = true"
+      @focus="startRecording"
       @blur="stopRecording"
       @keydown="capture"
+      @keyup="previewModifiers"
     >
-      <template v-for="(token, index) in tokens" :key="`${token}-${index}`">
+      <span v-if="recording && !visibleTokens.length" class="shortcut-recording-placeholder">
+        {{ t('shortcut.press_combo') }}
+      </span>
+      <template v-for="(token, index) in visibleTokens" :key="`${token}-${index}`">
         <span class="shortcut-key">{{ token }}</span>
         <span v-if="index < tokens.length - 1" class="shortcut-plus">+</span>
       </template>
@@ -143,6 +206,16 @@ function displayTokens(shortcut: string): string[] {
   border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14), 0 8px 22px -19px rgb(15 23 42 / 0.34);
+}
+.shortcut-view--compact {
+  grid-template-columns: auto;
+  justify-items: end;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 .shortcut-copy { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .shortcut-icon {
@@ -194,6 +267,8 @@ function displayTokens(shortcut: string): string[] {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), 0 2px 0 var(--border);
 }
 .shortcut-plus { padding: 0 5px; color: var(--text-subtle); font-size: 10px; }
+.shortcut-recording-placeholder { padding: 6px 4px; color: var(--text-muted); font-size: 10px; }
 .shortcut-message { grid-column: 1 / -1; color: var(--text-muted); font-size: 10px; text-align: right; }
+.shortcut-view--compact .shortcut-message { max-width: 210px; }
 :global(:root[data-theme='dark']) .shortcut-field { background: color-mix(in srgb, var(--background) 86%, black); }
 </style>

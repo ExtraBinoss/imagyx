@@ -297,11 +297,11 @@ onBeforeUnmount(() => {
           <SpotlightSettings
             variant="popover"
             query=""
-            :shortcut="shortcut.displayShortcut || 'Ctrl+Numpad9'"
-            :shortcut-updating="shortcut.isRegistering || false"
-            :shortcut-error="shortcut.error || null"
+            :shortcut="shortcut.spotlight"
+            :shortcut-updating="shortcut.updating"
+            :shortcut-error="shortcut.error"
             :theme-mode="theme.mode || 'system'"
-            @shortcut-change="shortcut.registerShortcut"
+            @shortcut-change="shortcut.setSpotlight"
             @theme-change="theme.setMode"
           />
         </template>
