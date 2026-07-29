@@ -5,6 +5,7 @@ import type { ImageAsset, ModelDownloadProgress, QueryConcept, RuntimeStats } fr
 import { perfLog } from '../utils'
 import { requestSemanticEmbedding } from './semantic-channel'
 import { buildQueryPromptPlan, combinePromptVectors } from './query-prompts'
+import { configureLocalOnnxWasm } from './onnx-wasm-assets'
 import {
   VisionWorkerClient,
   type VisionDevice,
@@ -522,6 +523,7 @@ class SemanticRuntime {
       env.allowRemoteModels = false
       env.localModelPath = localModelPath
       env.useBrowserCache = false
+      configureLocalOnnxWasm(env)
       this.localModelPath = localModelPath
       return localModelPath
     })()

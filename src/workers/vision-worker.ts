@@ -4,6 +4,7 @@ import {
   RawImage,
   env,
 } from '@huggingface/transformers'
+import { configureLocalOnnxWasm } from '../services/onnx-wasm-assets'
 
 const IMAGE_EDGE = 224
 const IMAGE_CHANNELS = 3
@@ -189,6 +190,7 @@ async function initialize(request: InitRequest) {
       env.allowRemoteModels = false
       env.localModelPath = request.localModelPath
       env.useBrowserCache = false
+      configureLocalOnnxWasm(env)
 
       let fallbackReason: string | undefined
       let loadProfile: Omit<InitProfile, 'totalMs' | 'hardwareConcurrency' | 'webGpuExposed'>
