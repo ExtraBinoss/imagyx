@@ -96,7 +96,9 @@ pub fn set_spotlight_shortcut(
     app: AppHandle,
     preferences: State<'_, ShortcutPreferences>,
 ) -> Result<String, String> {
-    preferences.update(&app, &shortcut)
+    let updated = preferences.update(&app, &shortcut)?;
+    let _ = app.emit("spotlight-shortcut-updated", updated.clone());
+    Ok(updated)
 }
 
 #[tauri::command(rename_all = "camelCase")]

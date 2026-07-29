@@ -248,22 +248,27 @@ onBeforeUnmount(() => {
 <style scoped>
 .spotlight-settings {
   width: 100%;
+  height: 100%;
   max-width: 100%;
-  max-height: 68vh;
+  max-height: none;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 4px;
+  padding: 0;
   box-sizing: border-box;
   scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  scrollbar-color: color-mix(in srgb, var(--border-strong) 78%, transparent) transparent;
 }
 .spotlight-settings--popover {
+  height: auto;
   max-height: 480px;
 }
+.spotlight-settings--spotlight { padding-bottom: 76px; }
 .settings-section {
   display: grid;
   width: 100%;
   box-sizing: border-box;
-  padding: 16px 12px;
+  padding: 16px 14px;
   gap: 13px;
   border: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
