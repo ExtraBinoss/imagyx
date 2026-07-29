@@ -88,6 +88,7 @@ let unlistenIndex: UnlistenFn | null = null
 let unlistenRuntime: UnlistenFn | null = null
 let unlistenLibrary: UnlistenFn | null = null
 let unlistenModel: UnlistenFn | null = null
+let previewEnterPressed = false
 let spotlightOpenStartedAt = 0
 
 const activeQuery = computed({
@@ -757,10 +758,26 @@ function isTextEditingTarget(target: EventTarget | null): boolean {
     || Boolean(target.closest('[contenteditable="true"]'))
 }
 
+function consumePreviewEnter(event: KeyboardEvent): boolean {
+  if (event.key !== 'Enter') return false
+  if (previewEnterPressed || event.repeat) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    return true
+  }
+  previewEnterPressed = true
+  return false
+}
+
 function handleKeydown(event: KeyboardEvent) {
   const editingText = isTextEditingTarget(event.target)
   if (previewImage.value) {
-    if (event.key === 'Escape') {
+    if (event.key === 'Enter') {
+      if (consumePreviewEnter(event)) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      previewImage.value = null
+    } else if (event.key === 'Escape') {
       event.preventDefault()
       event.stopImmediatePropagation()
       previewImage.value = null
@@ -782,6 +799,7 @@ function handleKeydown(event: KeyboardEvent) {
     if (event.key === 'ArrowDown') { event.preventDefault(); moveSelection(1); return }
     if (event.key === 'ArrowUp') { event.preventDefault(); moveSelection(-1); return }
     if (event.key === 'Enter' && selectedImage.value) {
+      if (consumePreviewEnter(event)) return
       event.preventDefault()
       previewImage.value = selectedImage.value
     }
@@ -806,14 +824,20 @@ function handleKeydown(event: KeyboardEvent) {
   if (event.key === 'ArrowDown') { event.preventDefault(); moveSelection(1); return }
   if (event.key === 'ArrowUp') { event.preventDefault(); moveSelection(-1); return }
   if (event.key === 'Enter' && selectedImage.value) {
+    if (consumePreviewEnter(event)) return
     event.preventDefault()
     previewImage.value = selectedImage.value
   }
 }
 
+function handleKeyup(event: KeyboardEvent) {
+  if (event.key === 'Enter') previewEnterPressed = false
+}
+
 function prepareOpen() {
   spotlightOpenStartedAt = performance.now()
   resultsScrolling.value = false
+  previewEnterPressed = false
   visible.value = false
   view.value = 'search'
   searchQuery.value = ''
@@ -852,6 +876,7 @@ function animateOpen() {
 
 function prepareHide() {
   resultsScrolling.value = false
+  previewEnterPressed = false
   previewImage.value = null
   visible.value = false
   searchQuery.value = ''
@@ -898,6 +923,7 @@ onMounted(async () => {
     })
   }
   window.addEventListener('keydown', handleKeydown, { capture: true })
+  window.addEventListener('keyup', handleKeyup, { capture: true })
   const unlisteners = await Promise.all([
     listen('spotlight-will-open', prepareOpen),
     listen('spotlight-opened', animateOpen),
@@ -923,6 +949,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeydown, { capture: true })
+  window.removeEventListener('keyup', handleKeyup, { capture: true })
   unlistenWillOpen?.()
   unlistenOpened?.()
   unlistenWillHide?.()
