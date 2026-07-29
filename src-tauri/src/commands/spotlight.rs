@@ -1,7 +1,4 @@
-use std::{
-    sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
-};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow,
@@ -14,8 +11,6 @@ use crate::tracing;
 const SPOTLIGHT_WIDTH: f64 = 780.0;
 const SPOTLIGHT_COMPACT_HEIGHT: f64 = 126.0;
 const SPOTLIGHT_EXPANDED_HEIGHT: f64 = 580.0;
-const SPOTLIGHT_LISTENER_GRACE: Duration = Duration::from_millis(80);
-
 static SPOTLIGHT_CREATING: AtomicBool = AtomicBool::new(false);
 static SPOTLIGHT_READY: AtomicBool = AtomicBool::new(false);
 static SPOTLIGHT_SHOW_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -106,25 +101,8 @@ fn create_spotlight_window(app: &AppHandle) {
             return;
         }
         tracing::event("spotlight.page.loaded", window.label());
-        let ready_window = window.clone();
-        let spawn_result = std::thread::Builder::new()
-            .name("imagyx-spotlight-ready".into())
-            .spawn(move || {
-                let _trace = tracing::span("spotlight.window.ready");
-                std::thread::sleep(SPOTLIGHT_LISTENER_GRACE);
-                if SPOTLIGHT_READY.swap(true, Ordering::AcqRel) {
-                    return;
-                }
-                SPOTLIGHT_CREATING.store(false, Ordering::Release);
-                if SPOTLIGHT_SHOW_REQUESTED.swap(false, Ordering::AcqRel) {
-                    show_spotlight_window(&ready_window);
-                }
-            });
-        if let Err(error) = spawn_result {
-            SPOTLIGHT_CREATING.store(false, Ordering::Release);
-            SPOTLIGHT_SHOW_REQUESTED.store(false, Ordering::Release);
-            tracing::event("spotlight.ready_thread.failed", error);
-        }
+        // The frontend confirms readiness once its event listeners are installed.
+        // A fixed grace period races cold webview startup and can lose the open event.
     });
 
     match builder.build() {
@@ -134,6 +112,23 @@ fn create_spotlight_window(app: &AppHandle) {
             SPOTLIGHT_SHOW_REQUESTED.store(false, Ordering::Release);
             tracing::event("spotlight.build.failed", error);
         }
+    }
+}
+
+#[tauri::command]
+pub fn spotlight_frontend_ready(app: AppHandle) {
+    let Some(window) = app.get_webview_window("spotlight") else {
+        tracing::event("spotlight.frontend_ready.window_missing", "label=spotlight");
+        return;
+    };
+
+    if SPOTLIGHT_READY.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    tracing::event("spotlight.frontend.ready", window.label());
+    SPOTLIGHT_CREATING.store(false, Ordering::Release);
+    if SPOTLIGHT_SHOW_REQUESTED.swap(false, Ordering::AcqRel) {
+        show_spotlight_window(&window);
     }
 }
 

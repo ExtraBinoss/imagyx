@@ -248,6 +248,7 @@ export const imagyxApi = {
   openOnboarding: () => invoke<void>('open_onboarding'),
   setSpotlightExpanded: (expanded: boolean) =>
     invoke<void>('set_spotlight_expanded', { expanded }),
+  spotlightFrontendReady: () => invoke<void>('spotlight_frontend_ready'),
   hideSpotlight: () => (
     nativeDialogIsOpen()
       ? Promise.resolve()

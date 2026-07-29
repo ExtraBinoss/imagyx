@@ -76,6 +76,7 @@ let searchSequence = 0
 let searchDiagnosticSequence = 0
 let pendingSearchDiagnosticId: string | undefined
 let pendingSearchAfterModelReady: string | null = null
+let pendingSearchUntilLibraryReady: string | null = null
 let lastSearchInputAt = 0
 let morphSequence = 0
 let expanded = false
@@ -91,6 +92,7 @@ let unlistenIndex: UnlistenFn | null = null
 let unlistenRuntime: UnlistenFn | null = null
 let unlistenLibrary: UnlistenFn | null = null
 let unlistenModel: UnlistenFn | null = null
+let unlistenVectors: UnlistenFn | null = null
 let previewEnterPressed = false
 let spotlightOpenStartedAt = 0
 
@@ -188,6 +190,7 @@ watch(searchQuery, (value) => {
   const request = ++morphSequence
   if (!hasFolders.value) {
     pendingSearchDiagnosticId = undefined
+    pendingSearchUntilLibraryReady = value.trim() ? value : null
     results.value = []
     searching.value = false
     if (view.value === 'search') void openPanel(request)
@@ -195,6 +198,7 @@ watch(searchQuery, (value) => {
   }
   if (!value.trim()) {
     pendingSearchDiagnosticId = undefined
+    pendingSearchUntilLibraryReady = null
     results.value = []
     searching.value = false
     if (view.value === 'search' && !hasActiveJobs.value) void closePanel(request)
@@ -264,6 +268,10 @@ async function syncFolders(openWhenEmpty = false) {
     folders.value = folderList
     indexCoverage.value = coverage
     libraryReady.value = true
+    if (hasFolders.value && pendingSearchUntilLibraryReady === searchQuery.value) {
+      pendingSearchUntilLibraryReady = null
+      void runSearch()
+    }
     if (openWhenEmpty && (!hasFolders.value || hasActiveJobs.value)) {
       await openPanel(++morphSequence)
     }
@@ -383,17 +391,6 @@ async function runSearch() {
     return
   }
 
-  if (modelPreparing.value) {
-    pendingSearchAfterModelReady = searchQuery.value
-    results.value = []
-    searching.value = false
-    if (import.meta.env.DEV) {
-      console.info(`[Imagyx][SpotlightSearch][${diagnosticId ?? '-'}] search blocked: model preparing`, modelProgress.value)
-    }
-    return
-  }
-  pendingSearchAfterModelReady = null
-
   const cached = resultCache.get(cacheKey)
   const cacheAgeMs = cached ? performance.now() - cached.storedAt : null
   if (cached && cacheAgeMs != null && cacheAgeMs <= CACHE_TTL_MS) {
@@ -511,6 +508,16 @@ async function runSearch() {
   })
 
   try {
+    if (modelPreparing.value) {
+      // Filename search does not depend on MobileCLIP. Keep it available while
+      // the model downloads or warms up, then upgrade this same query later.
+      pendingSearchAfterModelReady = searchQuery.value
+      if (import.meta.env.DEV) {
+        console.info(`[Imagyx][SpotlightSearch][${diagnosticId ?? '-'}] semantic ranking deferred: model preparing`, modelProgress.value)
+      }
+      return
+    }
+    pendingSearchAfterModelReady = null
     const shouldEmbed = text.length >= 2
     let semanticWaitMs = 0
     if (shouldEmbed) {
@@ -877,6 +884,7 @@ function prepareOpen() {
   expansionPromise = null
   pendingSearchDiagnosticId = undefined
   pendingSearchAfterModelReady = null
+  pendingSearchUntilLibraryReady = null
   lastSearchInputAt = 0
   resetActionFeedback()
   void syncFolders(true).finally(() => {
@@ -962,6 +970,10 @@ onMounted(async () => {
     listen<RuntimeStats>('runtime-stats', (event) => handleRuntimeStats(event.payload)),
     listen<ModelDownloadProgress>('model-download-progress', (event) => handleModelProgress(event.payload)),
     listen('library-updated', () => { resultCache.clear(); void syncFolders() }),
+    listen('vectors-ready', () => {
+      resultCache.clear()
+      if (searchQuery.value.trim()) void runSearch()
+    }),
   ]);
   [
     unlistenWillOpen,
@@ -971,10 +983,12 @@ onMounted(async () => {
     unlistenRuntime,
     unlistenModel,
     unlistenLibrary,
+    unlistenVectors,
   ] = unlisteners
   unlistenFocus = await currentWindow.onFocusChanged(({ payload }) => {
     if (!payload && !dialogOpen.value) void imagyxApi.hideSpotlight()
   })
+  void imagyxApi.spotlightFrontendReady()
 })
 
 onBeforeUnmount(() => {
@@ -988,6 +1002,7 @@ onBeforeUnmount(() => {
   unlistenRuntime?.()
   unlistenModel?.()
   unlistenLibrary?.()
+  unlistenVectors?.()
   if (collapseTimer) window.clearTimeout(collapseTimer)
   if (jobTimer) window.clearTimeout(jobTimer)
   for (const frame of paintFrames) window.cancelAnimationFrame(frame)

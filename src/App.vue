@@ -186,9 +186,11 @@ onMounted(async () => {
   void platform.initialize();
   void shortcut.initialize();
   unlistenSemanticProvider = await registerSemanticQueryProvider();
+  // Spotlight delegates embeddings here. Start this before the main library
+  // bootstrap so the first global search does not pay the model cold-start.
+  scheduleEarlyTextWarmup();
   const initializePromise = store.initialize();
   void imagyxApi.setTrayPaused(semanticRuntime.isPaused);
-  scheduleEarlyTextWarmup();
   void initializePromise.then(() => {
     onboarding.ensureFolderSetup(store.folders.length > 0);
     perfLog("App", "Full store initial load", performance.now() - start);

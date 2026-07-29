@@ -20,7 +20,7 @@ use std::{path::PathBuf, sync::Arc};
 use paths::AppPaths;
 use preferences::ShortcutPreferences;
 use state::AppState;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::ShortcutState;
 use thiserror::Error;
 use watcher::FolderWatcher;
@@ -110,10 +110,14 @@ pub fn run() {
             };
 
             let vector_state = Arc::clone(&state);
+            let vector_app = app.handle().clone();
             tauri::async_runtime::spawn_blocking(move || {
                 let _trace = tracing::span("startup.load_vectors");
-                if let Err(error) = vector_state.load_vectors() {
-                    tracing::event("startup.load_vectors.failed", error);
+                match vector_state.load_vectors() {
+                    Ok(()) => {
+                        let _ = vector_app.emit("vectors-ready", ());
+                    }
+                    Err(error) => tracing::event("startup.load_vectors.failed", error),
                 }
             });
 
@@ -171,6 +175,7 @@ pub fn run() {
             commands::search::get_thumbnail,
             commands::search::search_images,
             commands::search::search_image_page,
+            commands::spotlight::spotlight_frontend_ready,
             commands::files::open_in_file_manager,
             commands::files::copy_image_to_clipboard,
             commands::files::convert_image,
