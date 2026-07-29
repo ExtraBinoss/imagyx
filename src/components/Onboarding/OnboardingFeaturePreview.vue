@@ -197,14 +197,14 @@ const demoImages = [
         <MovingBorder border-radius="16px" :duration="4200">
           <div class="search-demo__input">
             <Search :size="18" />
-            <span>woman green</span>
+            <span>green</span>
             <strong>{{ t("search.result_count", { count: 4 }) }}</strong>
           </div>
         </MovingBorder>
-        <span class="shortcut-hint"
-          ><KbdChip shortcut="Space" size="md" />
-          {{ t("preview.open_file_title") }}</span
-        >
+        <Button class="search-demo__similar" variant="secondary" size="sm">
+          <template #leading><WandSparkles :size="14" /></template>
+          {{ t("search.visual.find_similar") }}
+        </Button>
       </div>
       <div class="search-demo__grid">
         <article
@@ -252,8 +252,8 @@ const demoImages = [
 
     <div v-else-if="kind === 'spotlight'" class="spotlight-demo">
       <div class="spotlight-demo__shortcut">
-        <span>Open from anywhere</span
-        ><KbdChip :shortcut="shortcut" size="md" />
+        <span>{{ t("settings.shortcut_label") }}</span>
+        <KbdChip :shortcut="shortcut" size="md" />
       </div>
       <MovingBorder border-radius="20px" :duration="3600">
         <div class="spotlight-demo__surface">
@@ -356,10 +356,7 @@ const demoImages = [
               ? t("indexing.title.completed")
               : t("search.no_folder_title")
           }}</strong>
-          <span
-            >Indexing continues in the background while search remains
-            available.</span
-          >
+          <span>{{ t("onboarding.step_indexing_desc") }}</span>
         </div>
       </div>
       <div class="indexing-demo__job">
@@ -375,7 +372,7 @@ const demoImages = [
       </div>
       <Button variant="primary" size="lg" block @click="emit('addFolder')">
         <template #leading><FolderOpen :size="17" /></template>
-        {{ hasFolders ? "Add another folder" : "Choose a folder now" }}
+        {{ t("onboarding.add_folder") }}
       </Button>
     </div>
   </div>

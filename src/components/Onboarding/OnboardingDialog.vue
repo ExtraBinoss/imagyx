@@ -26,46 +26,19 @@ const { t } = useTranslate()
 
 const steps = [
   {
-    component: 'Imagyx Desktop',
-    titleKey: 'onboarding.step_welcome_title',
-    descKey: 'onboarding.step_welcome_desc',
-    kind: 'welcome' as const,
-  },
-  {
-    component: 'AppSidebar.vue',
-    titleKey: 'onboarding.step_sidebar_title',
-    descKey: 'onboarding.step_sidebar_desc',
-    kind: 'sidebar' as const,
-  },
-  {
-    component: 'SearchHeader.vue · ImageGrid.vue',
     titleKey: 'onboarding.step_search_title',
     descKey: 'onboarding.step_search_desc',
     kind: 'search' as const,
   },
   {
-    component: 'ImagePreviewDialog.vue',
-    titleKey: 'onboarding.step_preview_title',
-    descKey: 'onboarding.step_preview_desc',
-    kind: 'preview' as const,
-  },
-  {
-    component: 'SpotlightSearch.vue',
-    titleKey: 'onboarding.step_spotlight_title',
-    descKey: 'onboarding.step_spotlight_desc',
-    kind: 'spotlight' as const,
-  },
-  {
-    component: 'SpotlightSettings.vue',
-    titleKey: 'onboarding.step_settings_title',
-    descKey: 'onboarding.step_settings_desc',
-    kind: 'settings' as const,
-  },
-  {
-    component: 'Indexer · Background jobs',
     titleKey: 'onboarding.step_indexing_title',
     descKey: 'onboarding.step_indexing_desc',
     kind: 'indexing' as const,
+  },
+  {
+    titleKey: 'onboarding.step_spotlight_title',
+    descKey: 'onboarding.step_spotlight_desc',
+    kind: 'spotlight' as const,
   },
 ]
 
@@ -135,7 +108,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
           </Button>
 
           <header class="onboarding-header">
-            <span class="onboarding-component">{{ currentStep.component }}</span>
             <Transition :name="direction === 'forward' ? 'step-forward' : 'step-backward'" mode="out-in">
               <div :key="`copy-${stepIndex}`" class="onboarding-copy">
                 <h2 :id="`onboarding-title-${stepIndex}`">{{ currentStep.title }}</h2>
@@ -192,7 +164,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
               <Button v-if="!isFirst" variant="secondary" size="md" @click="goTo(stepIndex - 1)">
                 <template #leading><ArrowLeft :size="15" /></template>{{ t('onboarding.back') }}
               </Button>
-              <Button v-if="currentStep.kind === 'welcome' && !hasFolders" variant="secondary" size="md" @click="emit('addFolder')">
+              <Button v-if="currentStep.kind === 'indexing' && !hasFolders" variant="secondary" size="md" @click="emit('addFolder')">
                 <template #leading><FolderPlus :size="15" /></template>{{ t('onboarding.add_folder') }}
               </Button>
               <Button variant="primary" size="md" @click="next">
@@ -222,7 +194,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 .onboarding-dialog {
   position: relative;
   display: grid;
-  grid-template-rows: 132px minmax(0, 1fr) 44px;
+  grid-template-rows: 102px minmax(0, 1fr) 44px;
   gap: 18px;
   width: min(920px, calc(100vw - 56px));
   height: min(760px, calc(100vh - 56px));
@@ -242,20 +214,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 }
 .onboarding-close { position: absolute; z-index: 3; top: 17px; right: 17px; }
 .onboarding-header { min-height: 0; padding-right: 48px; overflow: hidden; }
-.onboarding-component {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  padding: 0 9px;
-  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border));
-  border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--primary-soft) 66%, var(--surface));
-  color: var(--primary-text);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-.onboarding-copy h2 { margin: 13px 0 0; color: var(--text); font-size: clamp(24px, 3vw, 34px); line-height: 1.08; letter-spacing: -0.04em; }
+.onboarding-copy h2 { margin: 3px 0 0; color: var(--text); font-size: clamp(24px, 3vw, 34px); line-height: 1.08; letter-spacing: -0.04em; }
 .onboarding-copy p { max-width: 790px; margin: 11px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.55; }
 .onboarding-preview { min-height: 0; overflow: hidden; }
 .onboarding-preview__content { height: 100%; }
@@ -303,7 +262,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 @media (max-width: 820px) {
   .onboarding-overlay { padding: 14px; }
   .onboarding-dialog {
-    grid-template-rows: 144px minmax(0, 1fr) auto;
+    grid-template-rows: 112px minmax(0, 1fr) auto;
     width: calc(100vw - 28px);
     height: calc(100vh - 28px);
     min-height: 0;
