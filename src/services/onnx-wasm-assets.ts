@@ -1,5 +1,8 @@
-import ortWasmModuleUrl from 'onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs?url'
-import ortWasmBinaryUrl from 'onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm?url'
+// Do not import these through `onnxruntime-web/...`: this development build
+// exposes only its public entry points, while Vite must still copy the two
+// sibling runtime files into the application bundle.
+import ortWasmModuleUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs?url'
+import ortWasmBinaryUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm?url'
 import type { env as transformersEnv } from '@huggingface/transformers'
 
 /**

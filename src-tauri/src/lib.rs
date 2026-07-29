@@ -88,6 +88,7 @@ pub fn run() {
                         .sum(),
                 }
             };
+            let should_open_main = tray_snapshot.folder_count == 0;
             let folders = {
                 let _trace = tracing::span("startup.folders");
                 state.database.folders_for_watching()?
@@ -137,12 +138,12 @@ pub fn run() {
                     }
                 });
 
-                #[cfg(debug_assertions)]
-                {
+                if cfg!(debug_assertions) || should_open_main {
                     let _ = main.show();
                     let _ = main.set_focus();
                 }
             }
+            commands::spotlight::prewarm_spotlight(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

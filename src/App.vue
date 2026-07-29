@@ -190,6 +190,7 @@ onMounted(async () => {
   void imagyxApi.setTrayPaused(semanticRuntime.isPaused);
   scheduleEarlyTextWarmup();
   void initializePromise.then(() => {
+    onboarding.ensureFolderSetup(store.folders.length > 0);
     perfLog("App", "Full store initial load", performance.now() - start);
     ensureHiddenWindowIndexing();
   });
@@ -277,6 +278,7 @@ onBeforeUnmount(() => {
         @explain="store.explainImage"
         @preview="previewImage = $event"
         @load-more="store.loadMoreImages"
+        @add-folder="addFolder"
       />
       <StatusBar
         :progress="null"

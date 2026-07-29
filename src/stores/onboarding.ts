@@ -16,6 +16,12 @@ export const useOnboardingStore = defineStore('onboarding', {
       this.initialized = true
     },
 
+    ensureFolderSetup(hasFolders: boolean) {
+      if (hasFolders) return
+      this.neverAskAgain = false
+      this.open = true
+    },
+
     show() {
       this.neverAskAgain = false
       this.open = true

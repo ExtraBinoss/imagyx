@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { FolderIndexCoverage, FollowedFolder, ImageAsset, IndexProgress, RuntimeStats } from '../../types'
+import type { FolderIndexCoverage, FollowedFolder, ImageAsset, IndexProgress, ModelDownloadProgress, RuntimeStats } from '../../types'
 import { imagyxApi } from '../../api/tauri'
 import { semanticRuntime } from '../../services/semantic'
 import { usePlatformStore } from '../../stores/platform'
@@ -55,6 +55,7 @@ const dialogOpen = ref(false)
 const previewImage = ref<ImageAsset | null>(null)
 const resultsScrolling = ref(false)
 const jobs = ref<SpotlightIndexJob[]>([])
+const modelProgress = ref<ModelDownloadProgress | null>(null)
 const inputView = ref<InstanceType<typeof SpotlightInput> | null>(null)
 const resultsView = ref<InstanceType<typeof SpotlightResults> | null>(null)
 const resultCache = new Map<string, CachedResults>()
@@ -86,7 +87,8 @@ let unlistenFocus: UnlistenFn | null = null
 let unlistenIndex: UnlistenFn | null = null
 let unlistenRuntime: UnlistenFn | null = null
 let unlistenLibrary: UnlistenFn | null = null
-let spacePressed = false
+let unlistenModel: UnlistenFn | null = null
+let spotlightOpenStartedAt = 0
 
 const activeQuery = computed({
   get: () => view.value === 'settings' ? settingsQuery.value : searchQuery.value,
@@ -97,6 +99,7 @@ const activeQuery = computed({
 })
 const hasFolders = computed(() => folders.value.length > 0)
 const hasActiveJobs = computed(() => jobs.value.some((job) => !['complete', 'error'].includes(job.stage)))
+const modelPreparing = computed(() => ['checking', 'downloading', 'loading'].includes(modelProgress.value?.stage ?? ''))
 const parsedFolderQuery = computed(() => parseFolderQuery(searchQuery.value, folders.value))
 const folderSuggestions = computed(() => folderQuerySuggestions(searchQuery.value, folders.value))
 const hasSearchQuery = computed(() => Boolean(
@@ -232,7 +235,12 @@ watch(hasActiveJobs, (active) => {
   else if (!searchQuery.value.trim() && hasFolders.value) void closePanel(++morphSequence)
 })
 
+watch(modelPreparing, (preparing, wasPreparing) => {
+  if (wasPreparing && !preparing && searchQuery.value.trim()) void runSearch()
+})
+
 async function syncFolders(openWhenEmpty = false) {
+  const startedAt = import.meta.env.DEV ? performance.now() : 0
   try {
     const [folderList, coverage] = await Promise.all([
       imagyxApi.folders(),
@@ -244,10 +252,17 @@ async function syncFolders(openWhenEmpty = false) {
     if (openWhenEmpty && (!hasFolders.value || hasActiveJobs.value)) {
       await openPanel(++morphSequence)
     }
+    if (import.meta.env.DEV) {
+      perfLog('Spotlight', 'folder state IPC', performance.now() - startedAt, {
+        folders: folderList.length,
+        openWhenEmpty,
+      })
+    }
   } catch (reason) {
     libraryReady.value = true
     error.value = String(reason)
     if (openWhenEmpty) await openPanel(++morphSequence)
+    if (import.meta.env.DEV) perfLog('Spotlight', 'folder state IPC failed', performance.now() - startedAt, { openWhenEmpty })
   }
 }
 
@@ -278,8 +293,12 @@ async function closePanel(request = ++morphSequence) {
 async function ensureExpanded() {
   if (expanded) return
   if (!expansionPromise) {
+    const startedAt = import.meta.env.DEV ? performance.now() : 0
     expansionPromise = imagyxApi.setSpotlightExpanded(true)
-      .then(() => { expanded = true })
+      .then(() => {
+        expanded = true
+        if (import.meta.env.DEV) perfLog('Spotlight', 'native window expand', performance.now() - startedAt)
+      })
       .finally(() => { expansionPromise = null })
   }
   await expansionPromise
@@ -346,6 +365,15 @@ async function runSearch() {
   if (!hasFolders.value || (!text && !folderId)) {
     results.value = []
     searching.value = false
+    return
+  }
+
+  if (modelPreparing.value) {
+    results.value = []
+    searching.value = false
+    if (import.meta.env.DEV) {
+      console.info(`[Imagyx][SpotlightSearch][${diagnosticId ?? '-'}] search blocked: model preparing`, modelProgress.value)
+    }
     return
   }
 
@@ -692,6 +720,20 @@ function handleRuntimeStats(stats: RuntimeStats) {
   }
 }
 
+function handleModelProgress(progress: ModelDownloadProgress) {
+  const previousStage = modelProgress.value?.stage
+  modelProgress.value = progress
+  if (import.meta.env.DEV && previousStage !== progress.stage) {
+    console.info('[Imagyx][SpotlightSearch] model progress', {
+      stage: progress.stage,
+      file: progress.fileName ?? null,
+      currentBytes: progress.currentBytes,
+      totalBytes: progress.totalBytes,
+      message: progress.message,
+    })
+  }
+}
+
 function upsertJob(job: SpotlightIndexJob) {
   const index = jobs.value.findIndex((item) => item.folderId === job.folderId)
   if (index < 0) jobs.value = [job, ...jobs.value]
@@ -709,22 +751,43 @@ function moveSelection(delta: number) {
   resultsView.value?.scrollToIndex(selectedIndex.value)
 }
 
+function isTextEditingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return target.matches('input, textarea, select, [contenteditable="true"]')
+    || Boolean(target.closest('[contenteditable="true"]'))
+}
+
 function handleKeydown(event: KeyboardEvent) {
-  const isSpace = event.code === 'Space' || event.key === ' '
-  if (isSpace && (spacePressed || event.repeat)) {
-    event.preventDefault()
-    event.stopImmediatePropagation()
-    return
-  }
-  if (isSpace) spacePressed = true
+  const editingText = isTextEditingTarget(event.target)
   if (previewImage.value) {
-    if (isSpace || event.key === 'Escape') {
+    if (event.key === 'Escape') {
       event.preventDefault()
       event.stopImmediatePropagation()
       previewImage.value = null
     }
     return
   }
+
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    if (view.value === 'settings') void backToSearch()
+    else void imagyxApi.hideSpotlight()
+    return
+  }
+
+  // Text always belongs to the field. Result navigation remains available
+  // from it, but folder-query suggestions keep their own arrow/Enter handling.
+  if (editingText) {
+    if (view.value !== 'search' || folderSuggestions.value.length) return
+    if (event.key === 'ArrowDown') { event.preventDefault(); moveSelection(1); return }
+    if (event.key === 'ArrowUp') { event.preventDefault(); moveSelection(-1); return }
+    if (event.key === 'Enter' && selectedImage.value) {
+      event.preventDefault()
+      previewImage.value = selectedImage.value
+    }
+    return
+  }
+
   if (view.value === 'search' && (event.ctrlKey || event.metaKey) && selectedImage.value) {
     const key = event.key.toLocaleLowerCase()
     if (key === 'c' || event.code === 'KeyC') {
@@ -738,34 +801,19 @@ function handleKeydown(event: KeyboardEvent) {
     }
   }
 
-  if (event.key === 'Escape') {
-    event.preventDefault()
-    if (view.value === 'settings') void backToSearch()
-    else void imagyxApi.hideSpotlight()
-    return
-  }
   if (view.value !== 'search') return
   if (folderSuggestions.value.length && ['ArrowDown', 'ArrowUp', 'Enter', 'Tab'].includes(event.key)) return
   if (event.key === 'ArrowDown') { event.preventDefault(); moveSelection(1); return }
   if (event.key === 'ArrowUp') { event.preventDefault(); moveSelection(-1); return }
   if (event.key === 'Enter' && selectedImage.value) {
     event.preventDefault()
-    void openImage(selectedImage.value)
-    return
-  }
-  if (isSpace && selectedImage.value) {
-    event.preventDefault()
     previewImage.value = selectedImage.value
   }
 }
 
-function handleKeyup(event: KeyboardEvent) {
-  if (event.code === 'Space' || event.key === ' ') spacePressed = false
-}
-
 function prepareOpen() {
+  spotlightOpenStartedAt = performance.now()
   resultsScrolling.value = false
-  spacePressed = false
   visible.value = false
   view.value = 'search'
   searchQuery.value = ''
@@ -781,17 +829,29 @@ function prepareOpen() {
   pendingSearchDiagnosticId = undefined
   lastSearchInputAt = 0
   resetActionFeedback()
-  void syncFolders(true)
+  void syncFolders(true).finally(() => {
+    if (!import.meta.env.DEV) return
+    perfLog('Spotlight', 'open folder state ready', performance.now() - spotlightOpenStartedAt, {
+      hasFolders: hasFolders.value,
+    })
+  })
 }
 
 function animateOpen() {
-  prepareOpen()
-  void nextPaint(2).then(() => { visible.value = true; inputView.value?.focus() })
+  void nextPaint(2).then(() => {
+    visible.value = true
+    inputView.value?.focus()
+    if (import.meta.env.DEV) {
+      perfLog('Spotlight', 'open first paint', performance.now() - spotlightOpenStartedAt, {
+        resultsOpen: resultsOpen.value,
+        hasFolders: hasFolders.value,
+      })
+    }
+  })
 }
 
 function prepareHide() {
   resultsScrolling.value = false
-  spacePressed = false
   previewImage.value = null
   visible.value = false
   searchQuery.value = ''
@@ -826,6 +886,7 @@ onMounted(async () => {
   void platform.initialize()
   void shortcut.initialize()
   void syncFolders()
+  void imagyxApi.appInfo().then((info) => handleModelProgress(info.modelProgress)).catch(() => undefined)
   if (import.meta.env.DEV) {
     console.info('[Imagyx][SpotlightSearch] development diagnostics enabled', {
       lexicalDebounceMs: SEARCH_DEBOUNCE_MS,
@@ -837,13 +898,13 @@ onMounted(async () => {
     })
   }
   window.addEventListener('keydown', handleKeydown, { capture: true })
-  window.addEventListener('keyup', handleKeyup, { capture: true })
   const unlisteners = await Promise.all([
     listen('spotlight-will-open', prepareOpen),
     listen('spotlight-opened', animateOpen),
     listen('spotlight-will-hide', prepareHide),
     listen<IndexProgress>('index-progress', (event) => handleIndexProgress(event.payload)),
     listen<RuntimeStats>('runtime-stats', (event) => handleRuntimeStats(event.payload)),
+    listen<ModelDownloadProgress>('model-download-progress', (event) => handleModelProgress(event.payload)),
     listen('library-updated', () => { resultCache.clear(); void syncFolders() }),
   ]);
   [
@@ -852,6 +913,7 @@ onMounted(async () => {
     unlistenWillHide,
     unlistenIndex,
     unlistenRuntime,
+    unlistenModel,
     unlistenLibrary,
   ] = unlisteners
   unlistenFocus = await currentWindow.onFocusChanged(({ payload }) => {
@@ -861,13 +923,13 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeydown, { capture: true })
-  window.removeEventListener('keyup', handleKeyup, { capture: true })
   unlistenWillOpen?.()
   unlistenOpened?.()
   unlistenWillHide?.()
   unlistenFocus?.()
   unlistenIndex?.()
   unlistenRuntime?.()
+  unlistenModel?.()
   unlistenLibrary?.()
   if (collapseTimer) window.clearTimeout(collapseTimer)
   if (jobTimer) window.clearTimeout(jobTimer)
@@ -944,6 +1006,7 @@ onBeforeUnmount(() => {
                   :jobs="jobs"
                   :file-manager-name="platform.fileManagerName"
                   :performance-mode="resultsScrolling"
+                  :model-progress="modelProgress"
                   @select="selectedIndex = $event"
                   @scroll-state="resultsScrolling = $event"
                   @open="openImage"

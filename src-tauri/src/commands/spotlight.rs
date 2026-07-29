@@ -28,6 +28,23 @@ pub(crate) fn show_spotlight(app: AppHandle) {
     request_spotlight(app, false);
 }
 
+pub(crate) fn prewarm_spotlight(app: AppHandle) {
+    if app.get_webview_window("spotlight").is_some() {
+        return;
+    }
+    SPOTLIGHT_READY.store(false, Ordering::Release);
+    if SPOTLIGHT_CREATING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let spawn_result = std::thread::Builder::new()
+        .name("imagyx-spotlight-prewarm".into())
+        .spawn(move || create_spotlight_window(&app));
+    if let Err(error) = spawn_result {
+        SPOTLIGHT_CREATING.store(false, Ordering::Release);
+        tracing::event("spotlight.prewarm_thread.failed", error);
+    }
+}
+
 fn request_spotlight(app: AppHandle, toggle_existing: bool) {
     if let Some(window) = app.get_webview_window("spotlight") {
         if !SPOTLIGHT_READY.load(Ordering::Acquire) {
@@ -60,6 +77,7 @@ fn request_spotlight(app: AppHandle, toggle_existing: bool) {
 }
 
 fn create_spotlight_window(app: &AppHandle) {
+    let _trace = tracing::span("spotlight.window.create");
     let Some(config) = app
         .config()
         .app
@@ -87,10 +105,12 @@ fn create_spotlight_window(app: &AppHandle) {
         if payload.event() != PageLoadEvent::Finished {
             return;
         }
+        tracing::event("spotlight.page.loaded", window.label());
         let ready_window = window.clone();
         let spawn_result = std::thread::Builder::new()
             .name("imagyx-spotlight-ready".into())
             .spawn(move || {
+                let _trace = tracing::span("spotlight.window.ready");
                 std::thread::sleep(SPOTLIGHT_LISTENER_GRACE);
                 if SPOTLIGHT_READY.swap(true, Ordering::AcqRel) {
                     return;
@@ -140,6 +160,7 @@ fn toggle_existing_window(window: &WebviewWindow) {
 }
 
 fn show_spotlight_window(window: &WebviewWindow) {
+    let _trace = tracing::span("spotlight.window.show");
     let _ = window.emit("spotlight-will-open", ());
     if let Err(error) = layout_spotlight_window(window, false) {
         tracing::event("spotlight.layout.failed", error);

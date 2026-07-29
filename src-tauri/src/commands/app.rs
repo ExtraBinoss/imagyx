@@ -78,9 +78,11 @@ pub fn update_runtime_stats(
 #[tauri::command]
 pub fn update_model_progress(
     progress: ModelDownloadProgress,
+    app: AppHandle,
     state: State<'_, Arc<AppState>>,
 ) {
-    *state.model_progress.write() = progress;
+    *state.model_progress.write() = progress.clone();
+    let _ = app.emit("model-download-progress", progress);
 }
 
 #[tauri::command]

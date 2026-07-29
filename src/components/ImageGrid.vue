@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ExternalLink, FileImage, SearchX, Sparkles } from '@lucide/vue'
+import { ExternalLink, FileImage, FolderPlus, SearchX, Sparkles } from '@lucide/vue'
 import type { ImageAsset } from '../types'
 import { imagyxApi } from '../api/tauri'
 import { visualSearch } from '../services/visual-search'
@@ -14,7 +14,12 @@ import { useTranslate } from '../i18n'
 
 const { t } = useTranslate()
 const props = defineProps<{ images: ImageAsset[]; loading: boolean; hasFolders: boolean; viewKey: string }>()
-const emit = defineEmits<{ explain: [imageId: string]; preview: [image: ImageAsset]; loadMore: [] }>()
+const emit = defineEmits<{
+  explain: [imageId: string]
+  preview: [image: ImageAsset]
+  loadMore: []
+  addFolder: []
+}>()
 const GAP = 16
 const MIN_CARD_WIDTH = 180
 const META_HEIGHT = 66
@@ -381,6 +386,10 @@ watch(() => props.images.length, () => {
       <component :is="hasFolders ? SearchX : FileImage" :size="34" :stroke-width="1.5" />
       <strong>{{ hasFolders ? t('search.no_images_title') : t('search.no_folder_title') }}</strong>
       <p>{{ hasFolders ? t('search.no_images_desc') : t('search.no_folder_desc') }}</p>
+      <Button v-if="!hasFolders" variant="primary" size="md" @click="emit('addFolder')">
+        <template #leading><FolderPlus :size="16" /></template>
+        {{ t('add_folder') }}
+      </Button>
     </div>
   </section>
 
