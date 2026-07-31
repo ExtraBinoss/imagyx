@@ -427,8 +427,6 @@ onBeforeUnmount(() => {
   z-index: 2;
   display: flex;
   align-items: center;
-  border-radius: var(--radius-full);
-  backdrop-filter: blur(8px);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
