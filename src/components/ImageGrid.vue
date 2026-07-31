@@ -194,9 +194,9 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 
 function updateVirtualWindow(scrollTop: number, force = false) {
   const stride = Math.max(1, rowStride.value)
-  const nextDirection = scrollTop > lastVirtualScrollTop + 1
+  const nextDirection = scrollTop > lastVirtualScrollTop
     ? 1
-    : scrollTop < lastVirtualScrollTop - 1
+    : scrollTop < lastVirtualScrollTop
       ? -1
       : scrollDirection.value
   const firstVisible = Math.max(0, Math.floor(scrollTop / stride))
@@ -231,23 +231,23 @@ function handleScroll() {
   scrollTimeout = window.setTimeout(() => {
     isScrolling.value = false
     scrollDirection.value = 0
-    updateVirtualWindow(latestScrollTop, true)
-  }, 120)
+  }, 100)
+
+  const element = viewport.value
+  if (!element) return
+  latestScrollTop = element.scrollTop
+  updateVirtualWindow(latestScrollTop)
 
   if (scrollFrame) return
   scrollFrame = requestAnimationFrame(() => {
     scrollFrame = 0
-    const element = viewport.value
-    if (!element) return
-
-    latestScrollTop = element.scrollTop
-    updateVirtualWindow(latestScrollTop)
-    const distanceToBottom = spacerHeight.value - (latestScrollTop + viewportHeight.value)
+    const currentElem = viewport.value
+    if (!currentElem) return
+    const distanceToBottom = spacerHeight.value - (currentElem.scrollTop + viewportHeight.value)
     if (distanceToBottom < 600) {
       const now = performance.now()
       if (now - lastLoadMore > 300) {
         lastLoadMore = now
-        perfLog('ImageGrid', 'LoadMore triggered', 0, { displayed: props.images.length })
         emit('loadMore')
       }
     }
