@@ -154,21 +154,17 @@ function openImageFromSpotlight(image: ImageAsset) {
 }
 
 function scheduleEarlyTextWarmup() {
-  window.requestAnimationFrame(() =>
-    window.requestAnimationFrame(() => {
-      const started = performance.now();
-      void semanticRuntime
-        .prewarmText()
-        .then(() =>
-          perfLog(
-            "SemanticIA",
-            "early text warmup",
-            performance.now() - started,
-          ),
-        )
-        .catch(() => undefined);
-    }),
-  );
+  const started = performance.now();
+  void semanticRuntime
+    .prewarmText()
+    .then(() =>
+      perfLog(
+        "SemanticIA",
+        "early text warmup",
+        performance.now() - started,
+      ),
+    )
+    .catch(() => undefined);
 }
 
 function ensureHiddenWindowIndexing() {

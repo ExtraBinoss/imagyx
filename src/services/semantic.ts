@@ -250,6 +250,8 @@ class SemanticRuntime {
   private indexing: Promise<void> | null = null
   private pendingIndexFolders = new Set<string>()
   private pendingIndexAll = false
+  private activeSearchEmbeddings = 0
+  private searchPriorityWaiters = new Set<() => void>()
   private genericConcepts: QueryConcept[] | null = null
   private callbacks: RuntimeCallbacks | null = null
   private queryCache = new Map<string, EmbeddedQuery>()
@@ -382,6 +384,10 @@ class SemanticRuntime {
         return
       }
 
+      // A Spotlight query may arrive while a folder is being indexed. Let the
+      // current batch finish, then reserve the GPU for the text embedding.
+      await this.waitForSearchPriority()
+
       const batchStarted = performance.now()
       const batch = pending.slice(processed, processed + batchSize)
       batchCurrent += 1
@@ -439,41 +445,69 @@ class SemanticRuntime {
       return cached
     }
 
-    await this.prewarmText()
-    const plan = buildQueryPromptPlan(query)
-    const texts = [
-      ...plan.positivePrompts,
-      ...plan.negativePrompts,
-      ...plan.conceptPrompts,
-    ]
-    const inputs = this.tokenizer(texts, {
-      padding: 'max_length',
-      truncation: true,
-      max_length: 77,
-    })
-    const output = await this.textModel(inputs)
-    const vectors = tensorRows(output.text_embeds)
-    const positiveEnd = plan.positivePrompts.length
-    const negativeEnd = positiveEnd + plan.negativePrompts.length
-    const queryVector = combinePromptVectors(
-      vectors.slice(0, positiveEnd),
-      vectors.slice(positiveEnd, negativeEnd),
-      plan.negativeWeight,
-    )
-    if (!queryVector.length) throw new Error('Embedding de recherche vide')
+    this.activeSearchEmbeddings += 1
+    try {
+      const embeddingStartedAt = performance.now()
+      const warmupStartedAt = performance.now()
+      await this.prewarmText()
+      const warmupMs = performance.now() - warmupStartedAt
+      const plan = buildQueryPromptPlan(query)
+      const texts = [
+        ...plan.positivePrompts,
+        ...plan.negativePrompts,
+        ...plan.conceptPrompts,
+      ]
+      const tokenizationStartedAt = performance.now()
+      const inputs = this.tokenizer(texts, {
+        padding: 'max_length',
+        truncation: true,
+        max_length: 77,
+      })
+      const tokenizationMs = performance.now() - tokenizationStartedAt
+      const inferenceStartedAt = performance.now()
+      const output = await this.textModel(inputs)
+      const inferenceMs = performance.now() - inferenceStartedAt
+      const vectors = tensorRows(output.text_embeds)
+      const positiveEnd = plan.positivePrompts.length
+      const negativeEnd = positiveEnd + plan.negativePrompts.length
+      const queryVector = combinePromptVectors(
+        vectors.slice(0, positiveEnd),
+        vectors.slice(positiveEnd, negativeEnd),
+        plan.negativeWeight,
+      )
+      if (!queryVector.length) throw new Error('Embedding de recherche vide')
 
-    const concepts = plan.conceptLabels.flatMap((label, index) => {
-      const vector = vectors[negativeEnd + index]
-      return vector ? [{ label, vector }] : []
-    })
-    const embedded = { queryVector, concepts }
-    this.queryCache.set(cacheKey, embedded)
-    while (this.queryCache.size > QUERY_CACHE_CAPACITY) {
-      const oldest = this.queryCache.keys().next().value as string | undefined
-      if (!oldest) break
-      this.queryCache.delete(oldest)
+      const concepts = plan.conceptLabels.flatMap((label, index) => {
+        const vector = vectors[negativeEnd + index]
+        return vector ? [{ label, vector }] : []
+      })
+      const embedded = { queryVector, concepts }
+      this.queryCache.set(cacheKey, embedded)
+      while (this.queryCache.size > QUERY_CACHE_CAPACITY) {
+        const oldest = this.queryCache.keys().next().value as string | undefined
+        if (!oldest) break
+        this.queryCache.delete(oldest)
+      }
+      perfLog('SemanticIA', 'text query embedding', performance.now() - embeddingStartedAt, {
+        query,
+        prompts: texts.length,
+        warmupMs,
+        tokenizationMs,
+        inferenceMs,
+      })
+      return embedded
+    } finally {
+      this.activeSearchEmbeddings -= 1
+      if (this.activeSearchEmbeddings === 0) {
+        for (const resolve of this.searchPriorityWaiters) resolve()
+        this.searchPriorityWaiters.clear()
+      }
     }
-    return embedded
+  }
+
+  private waitForSearchPriority(): Promise<void> {
+    if (this.activeSearchEmbeddings === 0) return Promise.resolve()
+    return new Promise((resolve) => this.searchPriorityWaiters.add(resolve))
   }
 
   async genericImageConcepts(): Promise<QueryConcept[]> {
@@ -494,6 +528,7 @@ class SemanticRuntime {
     if (this.textModel && this.tokenizer) return
     if (this.textLoading) return this.textLoading
     this.textLoading = (async () => {
+      const startedAt = performance.now()
       this.publishProgress({ stage: 'loading', message: `Préparation de ${MODEL_NAME}…`, currentBytes: 0, totalBytes: 0, currentFile: 0, totalFiles: 0 })
       this.patchStats({ stage: 'loading-text' })
       await this.ensureModelEnvironment()
@@ -510,6 +545,9 @@ class SemanticRuntime {
         })
       }
       this.publishProgress({ stage: 'ready', message: `${MODEL_NAME} prêt hors connexion.`, currentBytes: 0, totalBytes: 0, currentFile: 6, totalFiles: 6 })
+      perfLog('SemanticIA', 'text model load', performance.now() - startedAt, {
+        device: this.textModel ? 'ready' : 'unavailable',
+      })
     })()
     try { await this.textLoading } finally { this.textLoading = null }
   }

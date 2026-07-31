@@ -1,4 +1,8 @@
-use std::{fs, path::Path, sync::Arc};
+use std::{
+    fs,
+    path::Path,
+    sync::Arc,
+};
 
 use chrono::Utc;
 use tauri::{AppHandle, Emitter, State};

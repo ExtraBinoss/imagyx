@@ -72,4 +72,6 @@ export default {
   'spotlight.index_message.embedding': 'فهرسة الذكاء الاصطناعي · {current} من {total}',
   'spotlight.index_message.queued': '{total} صورة جاهزة · انتظار فهرسة الذكاء الاصطناعي',
   'spotlight.index_message.paused': 'الفهرسة متوقفة مؤقتًا · {current} من {total}',
+  'spotlight.semantic_searching': 'جارٍ البحث عن تطابقات بصرية…',
+  'spotlight.semantic_searching_desc': 'يعمل الذكاء الاصطناعي المحلي على تحسين هذا البحث.',
 } as const

@@ -72,4 +72,6 @@ export default {
   'spotlight.index_message.embedding': 'ИИ-индексация · {current} из {total}',
   'spotlight.index_message.queued': '{total} изображений готово · ожидание ИИ-индексации',
   'spotlight.index_message.paused': 'Индексация приостановлена · {current} из {total}',
+  'spotlight.semantic_searching': 'Поиск визуальных совпадений…',
+  'spotlight.semantic_searching_desc': 'Локальный ИИ уточняет этот поиск.',
 } as const

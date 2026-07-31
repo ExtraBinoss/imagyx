@@ -40,6 +40,7 @@ const props = defineProps<{
   results: ImageAsset[];
   selectedIndex: number;
   searching: boolean;
+  semanticSearching: boolean;
   hasSearchQuery: boolean;
   error: string | null;
   copiedImageId: string | null;
@@ -486,6 +487,15 @@ defineExpose({ scrollToIndex });
           </div>
         </div>
 
+        <aside
+          v-if="semanticSearching && hasSearchQuery && results.length > 0"
+          class="spotlight-semantic-searching"
+          aria-live="polite"
+        >
+          <LoaderCircle class="spin" :size="16" />
+          <span>{{ t("spotlight.semantic_searching") }}</span>
+        </aside>
+
         <div
           v-if="searching && hasSearchQuery && results.length === 0"
           class="spotlight-loading-list"
@@ -499,9 +509,20 @@ defineExpose({ scrollToIndex });
         </div>
 
         <div
+          v-else-if="semanticSearching && hasSearchQuery && results.length === 0"
+          class="spotlight-semantic-empty"
+          aria-live="polite"
+        >
+          <LoaderCircle class="spin" :size="24" />
+          <strong>{{ t("spotlight.semantic_searching") }}</strong>
+          <span>{{ t("spotlight.semantic_searching_desc") }}</span>
+        </div>
+
+        <div
           v-else-if="
             hasSearchQuery &&
             !searching &&
+            !semanticSearching &&
             !results.length &&
             !error &&
             !showAddAction &&
@@ -1061,6 +1082,19 @@ defineExpose({ scrollToIndex });
   background-size: 260% 100%;
   animation: skeleton-shimmer 1.35s linear infinite;
 }
+.spotlight-semantic-searching {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 10px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.spotlight-semantic-searching .spin { color: var(--primary-text); }
+.spotlight-semantic-empty { display: grid; place-items: center; align-content: center; min-height: 260px; padding: 32px; color: var(--text-muted); text-align: center; }
+.spotlight-semantic-empty svg { margin-bottom: 13px; color: var(--primary-text); }
+.spotlight-semantic-empty strong { color: var(--text); font-size: 14px; }
+.spotlight-semantic-empty span { max-width: 310px; margin-top: 7px; font-size: 11px; line-height: 1.5; }
 .spotlight-empty {
   display: grid;
   place-items: center;

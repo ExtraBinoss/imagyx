@@ -72,4 +72,6 @@ export default {
   'spotlight.index_message.embedding': 'Indexação IA · {current} de {total}',
   'spotlight.index_message.queued': '{total} imagens prontas · aguardando indexação IA',
   'spotlight.index_message.paused': 'Indexação pausada · {current} de {total}',
+  'spotlight.semantic_searching': 'A procurar correspondências visuais…',
+  'spotlight.semantic_searching_desc': 'A IA local está a refinar esta pesquisa.',
 } as const

@@ -72,4 +72,6 @@ export default {
   'spotlight.index_message.embedding': 'KI-Indizierung · {current} von {total}',
   'spotlight.index_message.queued': '{total} Bilder bereit · warte auf KI-Indizierung',
   'spotlight.index_message.paused': 'Indizierung pausiert · {current} von {total}',
+  'spotlight.semantic_searching': 'Visuelle Treffer werden gesucht…',
+  'spotlight.semantic_searching_desc': 'Die lokale KI verfeinert diese Suche.',
 } as const

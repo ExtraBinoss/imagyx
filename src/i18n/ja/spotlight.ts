@@ -72,4 +72,6 @@ export default {
   'spotlight.index_message.embedding': 'AIインデックス · {current} / {total}',
   'spotlight.index_message.queued': '{total}枚の画像準備完了 · AIインデックス待機中',
   'spotlight.index_message.paused': 'インデックス一時停止 · {current} / {total}',
+  'spotlight.semantic_searching': '視覚的な一致を検索中…',
+  'spotlight.semantic_searching_desc': 'ローカル AI が検索を絞り込んでいます。',
 } as const

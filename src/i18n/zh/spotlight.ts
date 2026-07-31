@@ -72,4 +72,6 @@ export default {
   'spotlight.index_message.embedding': 'AI索引 · {current} / {total}',
   'spotlight.index_message.queued': '{total} 张图片已就绪 · 等待AI索引',
   'spotlight.index_message.paused': '索引已暂停 · {current} / {total}',
+  'spotlight.semantic_searching': '正在寻找视觉匹配…',
+  'spotlight.semantic_searching_desc': '本地 AI 正在优化此次搜索。',
 } as const

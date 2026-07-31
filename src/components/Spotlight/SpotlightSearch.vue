@@ -21,7 +21,6 @@ import type { SpotlightIndexJob, SpotlightView } from './types'
 import { useSpotlightResultActions } from './useSpotlightResultActions'
 import { useTranslate } from '../../i18n'
 import { spotlightSearchTiming } from '../../config/spotlight-search'
-import { isModelPreparing } from '../../utils/model-readiness'
 
 const CACHE_TTL_MS = 2_000
 const SEARCH_DEBOUNCE_MS = spotlightSearchTiming.lexicalDebounceMs
@@ -48,6 +47,7 @@ const libraryReady = ref(false)
 const selectedIndex = ref(0)
 const folderSuggestionIndex = ref(0)
 const searching = ref(false)
+const semanticSearching = ref(false)
 const error = ref<string | null>(null)
 const visible = ref(false)
 const resultsOpen = ref(false)
@@ -75,7 +75,6 @@ const {
 let searchSequence = 0
 let searchDiagnosticSequence = 0
 let pendingSearchDiagnosticId: string | undefined
-let pendingSearchAfterModelReady: string | null = null
 let pendingSearchUntilLibraryReady: string | null = null
 let lastSearchInputAt = 0
 let morphSequence = 0
@@ -105,7 +104,6 @@ const activeQuery = computed({
 })
 const hasFolders = computed(() => folders.value.length > 0)
 const hasActiveJobs = computed(() => jobs.value.some((job) => !['complete', 'error'].includes(job.stage)))
-const modelPreparing = computed(() => isModelPreparing(modelProgress.value, runtimeStats.value))
 const parsedFolderQuery = computed(() => parseFolderQuery(searchQuery.value, folders.value))
 const folderSuggestions = computed(() => folderQuerySuggestions(searchQuery.value, folders.value))
 const hasSearchQuery = computed(() => Boolean(
@@ -121,6 +119,7 @@ const resultLabel = computed(() => {
   if (!libraryReady.value) return t('spotlight.placeholder.loading')
   if (!hasFolders.value) return t('spotlight.setup_required')
   if (searching.value && results.value.length === 0) return t('spotlight.searching')
+  if (semanticSearching.value && results.value.length === 0) return t('spotlight.semantic_searching')
   return t('spotlight.result_count', { count: results.value.length })
 })
 const placeholder = computed(() => {
@@ -187,12 +186,14 @@ watch(searchQuery, (value) => {
   selectedIndex.value = 0
   error.value = null
   searchSequence += 1
+  semanticSearching.value = false
   const request = ++morphSequence
   if (!hasFolders.value) {
     pendingSearchDiagnosticId = undefined
     pendingSearchUntilLibraryReady = value.trim() ? value : null
     results.value = []
     searching.value = false
+    semanticSearching.value = false
     if (view.value === 'search') void openPanel(request)
     return
   }
@@ -201,6 +202,7 @@ watch(searchQuery, (value) => {
     pendingSearchUntilLibraryReady = null
     results.value = []
     searching.value = false
+    semanticSearching.value = false
     if (view.value === 'search' && !hasActiveJobs.value) void closePanel(request)
     return
   }
@@ -241,21 +243,6 @@ watch(hasActiveJobs, (active) => {
   if (view.value !== 'search') return
   if (active) void openPanel(++morphSequence)
   else if (!searchQuery.value.trim() && hasFolders.value) void closePanel(++morphSequence)
-})
-
-watch(modelPreparing, (preparing) => {
-  if (preparing || !pendingSearchAfterModelReady) return
-  if (pendingSearchAfterModelReady !== searchQuery.value) {
-    pendingSearchAfterModelReady = null
-    return
-  }
-  pendingSearchAfterModelReady = null
-  if (import.meta.env.DEV) {
-    console.info('[Imagyx][SpotlightSearch] resuming query after model readiness', {
-      query: searchQuery.value,
-    })
-  }
-  void runSearch()
 })
 
 async function syncFolders(openWhenEmpty = false) {
@@ -393,6 +380,7 @@ async function runSearch() {
   if (cached && cacheAgeMs != null && cacheAgeMs <= CACHE_TTL_MS) {
     results.value = cached.images
     searching.value = false
+    semanticSearching.value = false
     if (import.meta.env.DEV) {
       const cacheDurationMs = performance.now() - startedAt
       perfLog('Spotlight', 'result cache hit', cacheDurationMs, {
@@ -474,6 +462,7 @@ async function runSearch() {
     }
     if (!matchesActiveSearch(sequence, text, folderId, diagnosticId)) return
     results.value = images
+    searching.value = false
     void nextPaint().then(() => {
       if (!import.meta.env.DEV) return
       const inputToPaintMs = inputStartedAt > 0
@@ -495,6 +484,7 @@ async function runSearch() {
       })
     })
   }).catch((reason) => {
+    if (matchesActiveSearch(sequence, text, folderId, diagnosticId)) searching.value = false
     if (import.meta.env.DEV) {
       console.error(`[Imagyx][SpotlightSearch][${diagnosticId ?? '-'}] lexical request failed`, {
         query: text,
@@ -505,17 +495,9 @@ async function runSearch() {
   })
 
   try {
-    if (modelPreparing.value) {
-      // Filename search does not depend on MobileCLIP. Keep it available while
-      // the model downloads or warms up, then upgrade this same query later.
-      pendingSearchAfterModelReady = searchQuery.value
-      if (import.meta.env.DEV) {
-        console.info(`[Imagyx][SpotlightSearch][${diagnosticId ?? '-'}] semantic ranking deferred: model preparing`, modelProgress.value)
-      }
-      return
-    }
-    pendingSearchAfterModelReady = null
     const shouldEmbed = text.length >= 2
+    if (!shouldEmbed) return
+    semanticSearching.value = true
     let semanticWaitMs = 0
     if (shouldEmbed) {
       const semanticWaitStartedAt = performance.now()
@@ -605,7 +587,7 @@ async function runSearch() {
       })
     }
   } finally {
-    if (sequence === searchSequence) searching.value = false
+    if (sequence === searchSequence) semanticSearching.value = false
   }
 }
 
@@ -874,13 +856,13 @@ function prepareOpen() {
   results.value = []
   selectedIndex.value = 0
   searching.value = false
+  semanticSearching.value = false
   error.value = null
   resultsOpen.value = false
   shellMerged.value = false
   expanded = false
   expansionPromise = null
   pendingSearchDiagnosticId = undefined
-  pendingSearchAfterModelReady = null
   pendingSearchUntilLibraryReady = null
   lastSearchInputAt = 0
   resetActionFeedback()
@@ -914,12 +896,12 @@ function prepareHide() {
   settingsQuery.value = ''
   results.value = []
   searching.value = false
+  semanticSearching.value = false
   resultsOpen.value = false
   shellMerged.value = false
   expanded = false
   expansionPromise = null
   pendingSearchDiagnosticId = undefined
-  pendingSearchAfterModelReady = null
   lastSearchInputAt = 0
   resetActionFeedback()
 }
@@ -1030,7 +1012,7 @@ onBeforeUnmount(() => {
             v-model="activeQuery"
             :view="view"
             :placeholder="placeholder"
-            :searching="searching"
+            :searching="searching || semanticSearching"
             :result-label="resultLabel"
             :folder-suggestions="folderSuggestions"
             :folder-suggestion-index="folderSuggestionIndex"
@@ -1063,6 +1045,7 @@ onBeforeUnmount(() => {
                   :results="results"
                   :selected-index="selectedIndex"
                   :searching="searching"
+                  :semantic-searching="semanticSearching"
                   :has-search-query="hasSearchQuery"
                   :error="error"
                   :copied-image-id="copiedImageId"
