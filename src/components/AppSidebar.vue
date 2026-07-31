@@ -389,9 +389,31 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   width: 100%;
+  min-width: 0;
 }
 .folder-entry .folder-row {
   width: 100%;
+  min-width: 0;
+  padding-right: var(--space-8);
+  justify-content: flex-start;
+}
+.folder-entry .folder-row :deep(.ui-button__content) {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.folder-entry .folder-row :deep(.folder-name) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-entry .folder-row :deep(.folder-count) {
+  flex-shrink: 0;
+  margin-left: auto;
 }
 .folder-index-spinner {
   animation: folder-index-spin 0.8s linear infinite;

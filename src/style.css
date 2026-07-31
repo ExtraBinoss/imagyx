@@ -191,7 +191,6 @@ body,
   background: var(--sidebar);
   border-radius: 0;
   box-shadow: var(--sidebar-shadow);
-  margin-right: -12px;
 }
 
 .sidebar-bottom-actions {
