@@ -5,13 +5,13 @@ use std::time::Instant;
 
 use tauri::State;
 
+#[cfg(debug_assertions)]
+use crate::tracing;
 use crate::{
     indexer,
     models::{ImageAsset, SearchPage, SearchRequest},
     state::AppState,
 };
-#[cfg(debug_assertions)]
-use crate::tracing;
 
 #[tauri::command(rename_all = "camelCase")]
 pub async fn get_thumbnail(
@@ -56,6 +56,12 @@ async fn execute_search_page(
     let received_at = Instant::now();
 
     tauri::async_runtime::spawn_blocking(move || {
+        if request.query_vector.is_some()
+            || request.mode.as_deref() == Some("visual")
+            || request.colors.as_ref().is_some_and(|colors| !colors.is_empty())
+        {
+            state.load_vectors()?;
+        }
         #[cfg(debug_assertions)]
         let diagnostic_label = diagnostic_id.as_deref().unwrap_or("-");
         #[cfg(debug_assertions)]
@@ -95,6 +101,8 @@ async fn execute_search_page(
             request.folder_id.as_deref(),
             request.mode.as_deref(),
             request.exclude_image_id.as_deref(),
+            request.colors.as_deref(),
+            request.dominant_color,
             limit,
             offset,
             diagnostic_id.as_deref(),

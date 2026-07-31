@@ -1,4 +1,5 @@
 mod commands;
+mod color_store;
 mod database;
 mod fuzzy;
 mod indexer;

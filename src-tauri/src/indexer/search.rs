@@ -1,11 +1,14 @@
-use std::collections::{HashMap, HashSet};
-
-#[cfg(debug_assertions)]
-use std::time::Instant;
+use std::{
+    collections::{HashMap, HashSet},
+    time::Instant,
+};
 
 use crate::{
     AppError,
-    fuzzy::{exact_name_bonus, fts_query, normalize_query, reciprocal_rank},
+    fuzzy::{
+        dominance_requested, fts_query, fts_query_or, name_match_quality, normalize_query,
+        parse_colors, reciprocal_rank, token_coverage,
+    },
     models::SearchPage,
     state::AppState,
     tracing,
@@ -15,7 +18,9 @@ const MAX_QUERY_PAGE_SIZE: usize = 200;
 const MAX_SEARCH_WINDOW: usize = 50_000;
 const MIN_SEARCH_CANDIDATES: usize = 200;
 const CANDIDATE_OVERSAMPLE: usize = 4;
+const COLOR_CANDIDATE_LIMIT: usize = 800;
 
+#[allow(clippy::too_many_arguments)]
 pub fn search_page_with_diagnostics(
     state: &AppState,
     query: &str,
@@ -23,136 +28,46 @@ pub fn search_page_with_diagnostics(
     folder_id: Option<&str>,
     requested_mode: Option<&str>,
     exclude_image_id: Option<&str>,
+    requested_colors: Option<&[String]>,
+    dominant_color: bool,
     requested_limit: usize,
     requested_offset: usize,
-    _diagnostic_id: Option<&str>,
+    diagnostic_id: Option<&str>,
 ) -> Result<SearchPage, AppError> {
-    #[cfg(debug_assertions)]
-    let diagnostic_id = _diagnostic_id;
-    #[cfg(debug_assertions)]
-    let total_started_at = Instant::now();
-
-    let visual_mode = requested_mode == Some("visual")
-        || (query.trim().is_empty() && query_vector.is_some());
+    let started = Instant::now();
+    let visual_mode =
+        requested_mode == Some("visual") || (query.trim().is_empty() && query_vector.is_some());
     if visual_mode {
-        let limit = requested_limit.clamp(1, MAX_QUERY_PAGE_SIZE);
-        let offset = requested_offset.min(MAX_SEARCH_WINDOW);
-        let window_end = offset.saturating_add(limit).min(MAX_SEARCH_WINDOW);
-        let Some(query_vector) = query_vector else {
-            return Ok(SearchPage {
-                items: Vec::new(),
-                total: 0,
-            });
-        };
-
-        #[cfg(debug_assertions)]
-        let vector_lock_started_at = Instant::now();
-        let vectors = state.vectors.read();
-        #[cfg(debug_assertions)]
-        let vector_lock_wait_ms = vector_lock_started_at.elapsed().as_secs_f64() * 1_000.0;
-        let excluded_in_scope = exclude_image_id
-            .is_some_and(|image_id| vectors.contains_in_scope(image_id, folder_id));
-        let excluded_count = if excluded_in_scope { 1 } else { 0 };
-        let total = vectors.count(folder_id).saturating_sub(excluded_count);
-        let exclusion_overscan = if exclude_image_id.is_some() { 1 } else { 0 };
-        let candidate_limit = window_end
-            .saturating_add(exclusion_overscan)
-            .min(MAX_SEARCH_WINDOW);
-
-        #[cfg(debug_assertions)]
-        let vector_scan_started_at = Instant::now();
-        let matches = vectors
-            .top_k_with_diagnostics(query_vector, folder_id, candidate_limit, _diagnostic_id)
-            .into_iter()
-            .filter(|item| exclude_image_id != Some(item.image_id.as_str()))
-            .skip(offset)
-            .take(limit)
-            .collect::<Vec<_>>();
-        #[cfg(debug_assertions)]
-        let vector_scan_ms = vector_scan_started_at.elapsed().as_secs_f64() * 1_000.0;
-        drop(vectors);
-
-        let ordered_ids = matches
-            .iter()
-            .map(|item| item.image_id.clone())
-            .collect::<Vec<_>>();
-        #[cfg(debug_assertions)]
-        let database_started_at = Instant::now();
-        let by_id = state
-            .database
-            .images_by_ids(&ordered_ids)?
-            .into_iter()
-            .map(|image| (image.id.clone(), image))
-            .collect::<HashMap<_, _>>();
-        let items = matches
-            .into_iter()
-            .filter_map(|item| {
-                let mut image = by_id.get(&item.image_id)?.clone();
-                image.semantic_score = Some(item.score);
-                Some(image)
-            })
-            .collect::<Vec<_>>();
-        #[cfg(debug_assertions)]
-        let database_ms = database_started_at.elapsed().as_secs_f64() * 1_000.0;
-
-        #[cfg(debug_assertions)]
-        tracing::event(
-            "search.pipeline",
-            format!(
-                "id={} mode=visual folder_id={folder_id:?} exclude_image_id={exclude_image_id:?} requested_limit={requested_limit} effective_limit={limit} offset={offset} window_end={window_end} total_available={total} query_vector_dimensions={} vector_lock_wait_ms={vector_lock_wait_ms:.2} vector_scan_ms={vector_scan_ms:.2} database_ms={database_ms:.2} results={} total_ms={:.2}",
-                diagnostic_id.unwrap_or("-"),
-                query_vector.len(),
-                items.len(),
-                total_started_at.elapsed().as_secs_f64() * 1_000.0,
-            ),
+        return visual_search(
+            state,
+            query_vector,
+            folder_id,
+            exclude_image_id,
+            requested_limit,
+            requested_offset,
+            diagnostic_id,
+            started,
         );
-        return Ok(SearchPage { items, total });
     }
 
-    #[cfg(debug_assertions)]
-    let normalize_started_at = Instant::now();
     let tokens = normalize_query(query);
-    #[cfg(debug_assertions)]
-    let normalize_ms = normalize_started_at.elapsed().as_secs_f64() * 1_000.0;
-
-    if tokens.is_empty() {
-        let _trace = tracing::span("search.browse");
-        let limit = requested_limit.max(1).min(MAX_SEARCH_WINDOW);
+    if query.trim().is_empty() {
+        let limit = requested_limit.clamp(1, MAX_SEARCH_WINDOW);
         let offset = requested_offset.min(MAX_SEARCH_WINDOW);
-        #[cfg(debug_assertions)]
-        let count_started_at = Instant::now();
         let total = state.database.image_count(folder_id)?;
-        #[cfg(debug_assertions)]
-        let count_ms = count_started_at.elapsed().as_secs_f64() * 1_000.0;
-        #[cfg(debug_assertions)]
-        let database_started_at = Instant::now();
         let items = state.database.recent_images(folder_id, limit, offset)?;
-
-        #[cfg(debug_assertions)]
-        tracing::event(
-            "search.pipeline",
-            format!(
-                "id={} mode=browse query={query:?} folder_id={folder_id:?} requested_limit={requested_limit} effective_limit={limit} offset={offset} normalize_ms={normalize_ms:.2} count_ms={count_ms:.2} database_ms={:.2} results={} total_available={total} total_ms={:.2}",
-                diagnostic_id.unwrap_or("-"),
-                database_started_at.elapsed().as_secs_f64() * 1_000.0,
-                items.len(),
-                total_started_at.elapsed().as_secs_f64() * 1_000.0,
-            ),
-        );
+        trace_search(diagnostic_id, "browse", query, items.len(), total, started);
         return Ok(SearchPage { items, total });
     }
-
-    #[cfg(debug_assertions)]
-    let mode = if query_vector.is_some() {
-        "hybrid"
-    } else {
-        "lexical"
-    };
-    let _trace = if query_vector.is_some() {
-        tracing::span("search.hybrid")
-    } else {
-        tracing::span("search.lexical")
-    };
+    // A non-empty query with no FTS tokens is punctuation, not a request to
+    // browse the library.
+    if tokens.is_empty() {
+        trace_search(diagnostic_id, "empty", query, 0, 0, started);
+        return Ok(SearchPage {
+            items: Vec::new(),
+            total: 0,
+        });
+    }
 
     let limit = requested_limit.clamp(1, MAX_QUERY_PAGE_SIZE);
     let offset = requested_offset.min(MAX_SEARCH_WINDOW);
@@ -161,76 +76,75 @@ pub fn search_page_with_diagnostics(
         .saturating_mul(CANDIDATE_OVERSAMPLE)
         .max(MIN_SEARCH_CANDIDATES)
         .min(MAX_SEARCH_WINDOW);
-
-    #[cfg(debug_assertions)]
-    let fts_started_at = Instant::now();
-    let prepared_fts_query = fts_query(query);
-    #[cfg(debug_assertions)]
-    let fts_prepare_ms = fts_started_at.elapsed().as_secs_f64() * 1_000.0;
-
-    #[cfg(debug_assertions)]
-    let count_started_at = Instant::now();
-    let total = if query_vector.is_some() {
-        state
-            .database
-            .hybrid_search_count(prepared_fts_query.as_deref(), folder_id)?
+    let colors = requested_colors
+        .map(|values| parse_colors(&values.join(" ")))
+        .filter(|values| !values.is_empty())
+        .unwrap_or_else(|| parse_colors(query));
+    let dominant = dominant_color || dominance_requested(query);
+    let color_limit = if colors.is_empty() {
+        0
     } else {
-        match prepared_fts_query.as_deref() {
-            Some(prepared_query) => state.database.lexical_search_count(prepared_query, folder_id)?,
-            None => 0,
-        }
+        COLOR_CANDIDATE_LIMIT.max(candidate_limit)
     };
-    #[cfg(debug_assertions)]
-    let count_ms = count_started_at.elapsed().as_secs_f64() * 1_000.0;
 
-    #[cfg(debug_assertions)]
-    let lexical_started_at = Instant::now();
-    let lexical = match prepared_fts_query.as_deref() {
-        Some(prepared_query) => state
-            .database
-            .lexical_search(prepared_query, folder_id, candidate_limit)?,
-        None => Vec::new(),
-    };
-    #[cfg(debug_assertions)]
-    let lexical_ms = lexical_started_at.elapsed().as_secs_f64() * 1_000.0;
-    #[cfg(debug_assertions)]
-    let lexical_count = lexical.len();
+    let strict_query = fts_query(query);
+    let mut prepared_query = strict_query;
+    let mut lexical = prepared_query
+        .as_deref()
+        .map(|fts| {
+            state
+                .database
+                .lexical_search(fts, folder_id, candidate_limit)
+        })
+        .transpose()?
+        .unwrap_or_default();
+    // FTS AND is the precise path. If it is too strict, OR keeps a useful
+    // lexical result visible while the semantic/color ranker fills the gaps.
+    if lexical.is_empty() && tokens.len() > 1 {
+        prepared_query = fts_query_or(query);
+        lexical = prepared_query
+            .as_deref()
+            .map(|fts| {
+                state
+                    .database
+                    .lexical_search(fts, folder_id, candidate_limit)
+            })
+            .transpose()?
+            .unwrap_or_default();
+    }
+    if lexical.is_empty() && query_vector.is_none() {
+        // Keep the normal FTS path immediate, but make a first typo query
+        // able to use the lazily loaded fuzzy index as well.
+        state.load_vectors()?;
+    }
 
-    #[cfg(debug_assertions)]
-    let mut vector_lock_wait_ms = 0.0;
-    #[cfg(debug_assertions)]
-    let mut vector_scan_ms = 0.0;
-    #[cfg(debug_assertions)]
-    let mut vector_store_len = 0usize;
+    let lexical_total = prepared_query
+        .as_deref()
+        .map(|fts| state.database.lexical_search_count(fts, folder_id))
+        .transpose()?
+        .unwrap_or(0);
 
-    let semantic = query_vector.map_or_else(Vec::new, |query_vector| {
-        #[cfg(debug_assertions)]
-        let vector_lock_started_at = Instant::now();
-        let vectors = state.vectors.read();
-        #[cfg(debug_assertions)]
-        {
-            vector_lock_wait_ms = vector_lock_started_at.elapsed().as_secs_f64() * 1_000.0;
-            vector_store_len = vectors.len();
-        }
-        #[cfg(debug_assertions)]
-        let vector_scan_started_at = Instant::now();
-        let matches = vectors.top_k_with_diagnostics(
-            query_vector,
+    let semantic = query_vector.map_or_else(Vec::new, |vector| {
+        state.vectors.read().top_k_with_diagnostics(
+            vector,
             folder_id,
             candidate_limit,
-            _diagnostic_id,
-        );
-        #[cfg(debug_assertions)]
-        {
-            vector_scan_ms = vector_scan_started_at.elapsed().as_secs_f64() * 1_000.0;
-        }
-        matches
+            diagnostic_id,
+        )
     });
-    #[cfg(debug_assertions)]
-    let semantic_count = semantic.len();
+    let fuzzy = state
+        .fuzzy
+        .read()
+        .search(&tokens, folder_id, candidate_limit);
+    let color_matches = if colors.is_empty() {
+        Vec::new()
+    } else {
+        state
+            .colors
+            .read()
+            .top_k(&colors, dominant, folder_id, color_limit)
+    };
 
-    #[cfg(debug_assertions)]
-    let rank_maps_started_at = Instant::now();
     let lexical_ranks = lexical
         .iter()
         .enumerate()
@@ -241,96 +155,169 @@ pub fn search_page_with_diagnostics(
         .enumerate()
         .map(|(rank, item)| (item.image_id.clone(), (rank, item.score)))
         .collect::<HashMap<_, _>>();
+    let fuzzy_scores = fuzzy
+        .into_iter()
+        .map(|item| (item.image_id, item.score))
+        .collect::<HashMap<_, _>>();
+    let color_scores = color_matches
+        .into_iter()
+        .map(|item| (item.image_id, item.score))
+        .collect::<HashMap<_, _>>();
 
-    let lexical_ids = lexical
+    let mut candidate_ids = lexical
         .iter()
-        .map(|asset| asset.id.as_str())
+        .map(|asset| asset.id.clone())
         .collect::<HashSet<_>>();
-    let missing_ids = semantic
+    candidate_ids.extend(semantic.iter().map(|item| item.image_id.clone()));
+    candidate_ids.extend(fuzzy_scores.keys().cloned());
+    candidate_ids.extend(color_scores.keys().cloned());
+    let missing_ids = candidate_ids
         .iter()
-        .filter(|item| !lexical_ids.contains(item.image_id.as_str()))
-        .map(|item| item.image_id.clone())
+        .filter(|id| !lexical_ranks.contains_key(*id))
+        .cloned()
         .collect::<Vec<_>>();
-    #[cfg(debug_assertions)]
-    let rank_maps_ms = rank_maps_started_at.elapsed().as_secs_f64() * 1_000.0;
-    #[cfg(debug_assertions)]
-    let missing_count = missing_ids.len();
-
-    #[cfg(debug_assertions)]
-    let missing_lookup_started_at = Instant::now();
-    let missing_assets = state.database.images_by_ids(&missing_ids)?;
-    #[cfg(debug_assertions)]
-    let missing_lookup_ms = missing_lookup_started_at.elapsed().as_secs_f64() * 1_000.0;
-
     let mut candidates = lexical;
-    candidates.extend(missing_assets);
-    #[cfg(debug_assertions)]
-    let candidate_count = candidates.len();
+    candidates.extend(state.database.images_by_ids(&missing_ids)?);
+    let mut seen = HashSet::new();
+    candidates.retain(|asset| seen.insert(asset.id.clone()));
 
-    #[cfg(debug_assertions)]
-    let ranking_started_at = Instant::now();
     let mut ranked = candidates
         .into_iter()
         .map(|mut asset| {
             let lexical_rank = lexical_ranks.get(&asset.id).copied();
-            let semantic = semantic_ranks.get(&asset.id).copied();
-            let score = reciprocal_rank(lexical_rank)
-                + reciprocal_rank(semantic.map(|(rank, _)| rank))
-                + exact_name_bonus(&asset, &tokens);
-            asset.semantic_score = semantic.map(|(_, semantic_score)| semantic_score);
+            let semantic_match = semantic_ranks.get(&asset.id).copied();
+            let semantic_score = semantic_match.map(|(_, score)| score).unwrap_or(0.0);
+            let color_score = color_scores.get(&asset.id).copied().unwrap_or(0.0);
+            let fuzzy_score = fuzzy_scores.get(&asset.id).copied().unwrap_or(0.0);
+            let name_score = name_match_quality(&asset, &tokens);
+            let coverage = token_coverage(&asset, &tokens);
+            let score = 0.40 * name_score
+                + 0.16 * coverage
+                + 0.25 * semantic_score
+                + 0.12 * color_score
+                + 0.05 * fuzzy_score
+                + 0.015 * reciprocal_rank(lexical_rank)
+                    / reciprocal_rank(Some(0)).max(f32::EPSILON)
+                + 0.005 * reciprocal_rank(semantic_match.map(|(rank, _)| rank))
+                    / reciprocal_rank(Some(0)).max(f32::EPSILON);
+            asset.semantic_score = semantic_match.map(|(_, score)| score);
             (asset, score)
         })
         .collect::<Vec<_>>();
-    #[cfg(debug_assertions)]
-    let ranking_ms = ranking_started_at.elapsed().as_secs_f64() * 1_000.0;
-
-    #[cfg(debug_assertions)]
-    let sort_started_at = Instant::now();
     ranked.sort_by(|(left_asset, left_score), (right_asset, right_score)| {
         right_score
             .total_cmp(left_score)
             .then_with(|| right_asset.modified_at.cmp(&left_asset.modified_at))
+            .then_with(|| left_asset.id.cmp(&right_asset.id))
     });
-    let page = ranked
+
+    let vector_count = query_vector.map_or(0, |_| state.vectors.read().count(folder_id));
+    let lexical_only = if query_vector.is_some() {
+        prepared_query
+            .as_deref()
+            .map(|fts| {
+                state
+                    .database
+                    .lexical_search_count_without_embeddings(fts, folder_id)
+            })
+            .transpose()?
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    let total = if query_vector.is_some() {
+        vector_count.saturating_add(lexical_only).max(ranked.len())
+    } else {
+        lexical_total.max(ranked.len())
+    };
+    let items = ranked
         .into_iter()
         .skip(offset)
         .take(limit)
-        .collect::<Vec<_>>();
-
-    #[cfg(debug_assertions)]
-    let top_results = page
-        .iter()
-        .take(8)
-        .enumerate()
-        .map(|(index, (asset, score))| {
-            format!(
-                "{}:{}:{}:{score:.4}",
-                offset + index + 1,
-                asset.id,
-                asset.name,
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(" | ");
-
-    let items = page
-        .into_iter()
         .map(|(asset, _)| asset)
         .collect::<Vec<_>>();
-    #[cfg(debug_assertions)]
-    let sort_ms = sort_started_at.elapsed().as_secs_f64() * 1_000.0;
+    let mode = if query_vector.is_some() {
+        "hybrid"
+    } else {
+        "lexical"
+    };
+    trace_search(diagnostic_id, mode, query, items.len(), total, started);
+    Ok(SearchPage { items, total })
+}
 
+#[allow(clippy::too_many_arguments)]
+fn visual_search(
+    state: &AppState,
+    query_vector: Option<&[f32]>,
+    folder_id: Option<&str>,
+    exclude_image_id: Option<&str>,
+    requested_limit: usize,
+    requested_offset: usize,
+    diagnostic_id: Option<&str>,
+    started: Instant,
+) -> Result<SearchPage, AppError> {
+    let Some(query_vector) = query_vector else {
+        return Ok(SearchPage {
+            items: Vec::new(),
+            total: 0,
+        });
+    };
+    let limit = requested_limit.clamp(1, MAX_QUERY_PAGE_SIZE);
+    let offset = requested_offset.min(MAX_SEARCH_WINDOW);
+    let vectors = state.vectors.read();
+    let excluded_count =
+        exclude_image_id.is_some_and(|id| vectors.contains_in_scope(id, folder_id)) as usize;
+    let total = vectors.count(folder_id).saturating_sub(excluded_count);
+    let matches = vectors
+        .top_k_with_diagnostics(
+            query_vector,
+            folder_id,
+            offset.saturating_add(limit).saturating_add(excluded_count),
+            diagnostic_id,
+        )
+        .into_iter()
+        .filter(|item| exclude_image_id != Some(item.image_id.as_str()))
+        .skip(offset)
+        .take(limit)
+        .collect::<Vec<_>>();
+    drop(vectors);
+    let ids = matches
+        .iter()
+        .map(|item| item.image_id.clone())
+        .collect::<Vec<_>>();
+    let assets = state
+        .database
+        .images_by_ids(&ids)?
+        .into_iter()
+        .map(|asset| (asset.id.clone(), asset))
+        .collect::<HashMap<_, _>>();
+    let items = matches
+        .into_iter()
+        .filter_map(|item| {
+            let mut asset = assets.get(&item.image_id)?.clone();
+            asset.semantic_score = Some(item.score);
+            Some(asset)
+        })
+        .collect::<Vec<_>>();
+    trace_search(diagnostic_id, "visual", "", items.len(), total, started);
+    Ok(SearchPage { items, total })
+}
+
+fn trace_search(
+    diagnostic_id: Option<&str>,
+    mode: &str,
+    query: &str,
+    results: usize,
+    total: usize,
+    started: Instant,
+) {
     #[cfg(debug_assertions)]
     tracing::event(
         "search.pipeline",
         format!(
-            "id={} mode={mode} query={query:?} folder_id={folder_id:?} requested_limit={requested_limit} effective_limit={limit} offset={offset} window_end={window_end} candidate_limit={candidate_limit} total_available={total} query_vector_dimensions={} normalize_ms={normalize_ms:.2} fts_prepare_ms={fts_prepare_ms:.2} count_ms={count_ms:.2} lexical_db_ms={lexical_ms:.2} lexical_candidates={lexical_count} vector_lock_wait_ms={vector_lock_wait_ms:.2} vector_scan_ms={vector_scan_ms:.2} vector_store_len={vector_store_len} semantic_candidates={semantic_count} rank_maps_ms={rank_maps_ms:.2} missing_semantic_ids={missing_count} missing_lookup_ms={missing_lookup_ms:.2} merged_candidates={candidate_count} ranking_ms={ranking_ms:.2} sort_page_ms={sort_ms:.2} results={} total_ms={:.2} top_results={top_results:?}",
+            "id={} mode={mode} query={query:?} results={results} total_available={total} total_ms={:.2}",
             diagnostic_id.unwrap_or("-"),
-            query_vector.map_or(0, |vector| vector.len()),
-            items.len(),
-            total_started_at.elapsed().as_secs_f64() * 1_000.0,
+            started.elapsed().as_secs_f64() * 1_000.0,
         ),
     );
-
-    Ok(SearchPage { items, total })
 }

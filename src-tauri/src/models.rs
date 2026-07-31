@@ -31,6 +31,8 @@ pub struct ImageAsset {
     pub size_bytes: u64,
     pub modified_at: i64,
     pub thumbnail_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color_signature: Option<Vec<u8>>,
     pub semantic_score: Option<f32>,
 }
 
@@ -73,6 +75,10 @@ pub struct SearchRequest {
     pub query_vector: Option<Vec<f32>>,
     pub mode: Option<String>,
     pub exclude_image_id: Option<String>,
+    #[serde(default)]
+    pub colors: Option<Vec<String>>,
+    #[serde(default)]
+    pub dominant_color: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

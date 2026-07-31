@@ -8,6 +8,10 @@ import {
 
 const pendingEmbeddings = new Map<string, Promise<Awaited<ReturnType<typeof semanticRuntime.embedDelegatedQuery>>>>()
 
+function queryKey(query: string): string {
+  return query.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr')
+}
+
 async function handleSemanticQueryRequest(request: SemanticQueryRequest): Promise<void> {
   const startedAt = import.meta.env.DEV ? performance.now() : 0
   const target = request.replyTo === 'spotlight' ? 'spotlight' : 'main'
@@ -20,11 +24,12 @@ async function handleSemanticQueryRequest(request: SemanticQueryRequest): Promis
   }
 
   try {
-    let embedding = pendingEmbeddings.get(request.requestId)
+    const key = queryKey(request.query)
+    let embedding = pendingEmbeddings.get(key)
     if (!embedding) {
       embedding = semanticRuntime.embedDelegatedQuery(request.query)
-        .finally(() => pendingEmbeddings.delete(request.requestId))
-      pendingEmbeddings.set(request.requestId, embedding)
+        .finally(() => pendingEmbeddings.delete(key))
+      pendingEmbeddings.set(key, embedding)
     }
     // Acknowledge receipt immediately so Spotlight knows the event was not
     // lost while the main window was starting or being hot-reloaded.

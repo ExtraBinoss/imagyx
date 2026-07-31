@@ -4,7 +4,7 @@ use crate::{AppError, ml::MODEL_ID};
 
 use super::Database;
 
-const FTS_SCHEMA_VERSION: i64 = 1;
+const FTS_SCHEMA_VERSION: i64 = 2;
 
 pub(super) fn migrate(database: &Database) -> Result<(), AppError> {
     let connection = database.connect()?;
@@ -26,6 +26,7 @@ pub(super) fn migrate(database: &Database) -> Result<(), AppError> {
             size_bytes INTEGER NOT NULL,
             modified_at INTEGER NOT NULL,
             thumbnail_path TEXT NOT NULL,
+            color_signature BLOB,
             search_text TEXT NOT NULL,
             indexed_at INTEGER NOT NULL
         );
@@ -73,6 +74,16 @@ pub(super) fn migrate(database: &Database) -> Result<(), AppError> {
             VALUES (new.rowid, new.name, new.path, new.search_text);
         END;",
     )?;
+
+    let has_color_signature = connection
+        .prepare("PRAGMA table_info(images)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?
+        .iter()
+        .any(|column| column == "color_signature");
+    if !has_color_signature {
+        connection.execute("ALTER TABLE images ADD COLUMN color_signature BLOB", [])?;
+    }
 
     // Older builds installed this trigger and consequently relabelled every new
     // embedding as `mobileclip2-s0`. Keep the embeddings (they were produced by

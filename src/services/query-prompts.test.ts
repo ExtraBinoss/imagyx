@@ -32,9 +32,19 @@ describe('buildQueryPromptPlan', () => {
     expect(plan.positivePrompts).toEqual([
       'mountain lake',
       'a photo of mountain lake',
+      'une photo de mountain lake',
       'an image showing mountain lake',
+      'une image montrant mountain lake',
     ])
     expect(plan.negativePrompts).toEqual([])
+  })
+
+  it('keeps every explicitly requested colour positive', () => {
+    const plan = buildQueryPromptPlan('red and green')
+
+    expect(plan.detectedColors).toEqual(['red', 'green'])
+    expect(plan.negativePrompts).toEqual([])
+    expect(plan.negativeWeight).toBe(0)
   })
 })
 

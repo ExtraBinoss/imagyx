@@ -77,6 +77,7 @@ mod tests {
             size_bytes: 1,
             modified_at: 1,
             thumbnail_path: String::new(),
+            color_signature: None,
             semantic_score: None,
         };
         database

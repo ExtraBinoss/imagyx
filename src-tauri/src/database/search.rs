@@ -145,44 +145,51 @@ impl Database {
         Ok(count_to_usize(count))
     }
 
-    pub fn hybrid_search_count(
+    pub fn lexical_search_count_without_embeddings(
         &self,
-        fts_query: Option<&str>,
+        fts_query: &str,
         folder_id: Option<&str>,
     ) -> Result<usize, AppError> {
+        if fts_query.is_empty() { return Ok(0); }
         let connection = self.connect()?;
-        let count = match (fts_query, folder_id) {
-            (Some(fts_query), Some(folder_id)) => connection.query_row(
-                "SELECT COUNT(*) FROM images i
-                 WHERE i.folder_id = ?2 AND (
-                   EXISTS (SELECT 1 FROM embeddings e WHERE e.image_id = i.id)
-                   OR i.rowid IN (SELECT rowid FROM images_fts WHERE images_fts MATCH ?1)
-                 )",
+        let count = if let Some(folder_id) = folder_id {
+            connection.query_row(
+                "SELECT COUNT(*) FROM images_fts JOIN images i ON i.rowid = images_fts.rowid
+                 WHERE images_fts MATCH ?1 AND i.folder_id = ?2
+                   AND NOT EXISTS (SELECT 1 FROM embeddings e WHERE e.image_id = i.id)",
                 params![fts_query, folder_id],
                 |row| row.get::<_, i64>(0),
-            )?,
-            (Some(fts_query), None) => connection.query_row(
-                "SELECT COUNT(*) FROM images i
-                 WHERE EXISTS (SELECT 1 FROM embeddings e WHERE e.image_id = i.id)
-                    OR i.rowid IN (SELECT rowid FROM images_fts WHERE images_fts MATCH ?1)",
+            )?
+        } else {
+            connection.query_row(
+                "SELECT COUNT(*) FROM images_fts JOIN images i ON i.rowid = images_fts.rowid
+                 WHERE images_fts MATCH ?1
+                   AND NOT EXISTS (SELECT 1 FROM embeddings e WHERE e.image_id = i.id)",
                 params![fts_query],
                 |row| row.get::<_, i64>(0),
-            )?,
-            (None, Some(folder_id)) => connection.query_row(
-                "SELECT COUNT(*) FROM images i
-                 WHERE i.folder_id = ?1
-                   AND EXISTS (SELECT 1 FROM embeddings e WHERE e.image_id = i.id)",
-                params![folder_id],
-                |row| row.get::<_, i64>(0),
-            )?,
-            (None, None) => connection.query_row(
-                "SELECT COUNT(*) FROM images i
-                 WHERE EXISTS (SELECT 1 FROM embeddings e WHERE e.image_id = i.id)",
-                [],
-                |row| row.get::<_, i64>(0),
-            )?,
+            )?
         };
         Ok(count_to_usize(count))
+    }
+
+    pub fn fuzzy_entries(&self) -> Result<Vec<(String, String, String)>, AppError> {
+        let connection = self.connect()?;
+        let mut statement = connection.prepare("SELECT id, folder_id, name FROM images")?;
+        statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(AppError::from)
+    }
+
+    pub fn color_signatures(&self) -> Result<Vec<(String, String, Vec<u8>)>, AppError> {
+        let connection = self.connect()?;
+        let mut statement = connection.prepare(
+            "SELECT id, folder_id, color_signature FROM images WHERE color_signature IS NOT NULL",
+        )?;
+        statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(AppError::from)
     }
 
     pub fn image_path_is_known(&self, image_id: &str, path: &str) -> Result<bool, AppError> {

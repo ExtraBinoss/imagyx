@@ -1,3 +1,4 @@
+use super::normalize_query;
 use crate::models::ImageAsset;
 
 const RRF_K: f32 = 60.0;
@@ -6,18 +7,45 @@ pub fn reciprocal_rank(rank: Option<usize>) -> f32 {
     rank.map_or(0.0, |rank| 1.0 / (RRF_K + rank as f32 + 1.0))
 }
 
-pub fn exact_name_bonus(asset: &ImageAsset, tokens: &[String]) -> f32 {
+pub fn name_match_quality(asset: &ImageAsset, tokens: &[String]) -> f32 {
     if tokens.is_empty() {
         return 0.0;
     }
-    let name = asset.name.to_lowercase();
-    let matched = tokens.iter().filter(|token| name.contains(token.as_str())).count();
-    0.004 * matched as f32 / tokens.len() as f32
+    let name_tokens = normalize_query(&asset.name);
+    let matched = tokens
+        .iter()
+        .filter_map(|token| {
+            if name_tokens.iter().any(|name| name == token) {
+                Some(1.0)
+            } else if name_tokens.iter().any(|name| name.starts_with(token)) {
+                Some(0.75)
+            } else {
+                None
+            }
+        })
+        .sum::<f32>();
+    (matched / tokens.len() as f32).clamp(0.0, 1.0)
+}
+
+pub fn token_coverage(asset: &ImageAsset, tokens: &[String]) -> f32 {
+    if tokens.is_empty() {
+        return 0.0;
+    }
+    let name_tokens = normalize_query(&asset.name);
+    let matched = tokens
+        .iter()
+        .filter(|token| {
+            name_tokens
+                .iter()
+                .any(|name| name == *token || name.starts_with(token.as_str()))
+        })
+        .count();
+    matched as f32 / tokens.len() as f32
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{exact_name_bonus, reciprocal_rank};
+    use super::{name_match_quality, reciprocal_rank};
     use crate::models::ImageAsset;
 
     #[test]
@@ -39,8 +67,10 @@ mod tests {
             size_bytes: 1,
             modified_at: 1,
             thumbnail_path: String::new(),
+            color_signature: None,
             semantic_score: None,
         };
-        assert!(exact_name_bonus(&asset, &["green".into(), "woman".into()]) > 0.0);
+        assert!(name_match_quality(&asset, &["green".into(), "woman".into()]) > 0.0);
+        assert!(name_match_quality(&asset, &["art".into()]) == 0.0);
     }
 }

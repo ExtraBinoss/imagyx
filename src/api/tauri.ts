@@ -19,6 +19,7 @@ import { perfLog } from '../utils'
 import { nativeDialogIsOpen } from '../services/native-dialog-state'
 import { spotlightSearchPagination } from '../services/spotlight-search-pagination'
 import { visualSearchSession } from '../services/visual-search-session'
+import { extractQueryColorIntent } from '../services/query-prompts'
 
 type SearchMode = 'browse' | 'lexical' | 'hybrid' | 'visual'
 
@@ -28,6 +29,13 @@ function searchMode(request: SearchRequest): SearchMode {
   if (request.mode === 'visual') return 'visual'
   if (!request.query.trim()) return 'browse'
   return request.queryVector?.length ? 'hybrid' : 'lexical'
+}
+
+function withQueryIntent(request: SearchRequest): SearchRequest {
+  if (!request.query.trim() || request.colors) return request
+  const intent = extractQueryColorIntent(request.query)
+  if (!intent.colors.length && !intent.dominant) return request
+  return { ...request, colors: intent.colors, dominantColor: intent.dominant }
 }
 
 function nextSearchDiagnosticId(mode: SearchMode): string | undefined {
@@ -86,7 +94,7 @@ async function invokeSearchPage(
   request: SearchRequest,
   trackAsInitialSearch: boolean,
 ): Promise<SearchPage> {
-  const sessionRequest = visualSearchSession.requestForActiveSession(request)
+  const sessionRequest = withQueryIntent(visualSearchSession.requestForActiveSession(request))
   const mode = searchMode(sessionRequest)
   const diagnosticId = import.meta.env.DEV
     ? sessionRequest.diagnosticId ?? nextSearchDiagnosticId(mode)
@@ -136,6 +144,8 @@ async function invokeSearchPage(
         queryVector: normalizedRequest.queryVector ?? null,
         mode: normalizedRequest.mode ?? null,
         excludeImageId: normalizedRequest.excludeImageId ?? null,
+        colors: normalizedRequest.colors ?? null,
+        dominantColor: normalizedRequest.dominantColor ?? false,
       },
       diagnosticId: import.meta.env.DEV ? diagnosticId ?? null : null,
     })

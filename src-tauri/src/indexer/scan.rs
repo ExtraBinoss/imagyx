@@ -66,6 +66,7 @@ pub fn index_folder(
                     .collect::<Vec<_>>();
                 state.database.save_assets(&prepared, &[])?;
                 state.vectors.write().remove_ids(invalidated);
+                state.upsert_search_assets(&prepared);
             }
             processed = (processed + batch.len()).min(total);
             progress::emit(
@@ -84,6 +85,7 @@ pub fn index_folder(
         .vectors
         .write()
         .remove_ids(deleted.iter().map(String::as_str));
+    state.remove_search_ids(deleted.iter().map(String::as_str));
 
     let pending = pending_assets(state, Some(&folder.id))?;
     let _ = app.emit("library-updated", ());

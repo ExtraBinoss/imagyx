@@ -45,8 +45,8 @@ impl Database {
             let mut statement = transaction.prepare(
                 "INSERT INTO images (
                     id, folder_id, path, name, extension, width, height, size_bytes,
-                    modified_at, thumbnail_path, search_text, indexed_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                    modified_at, thumbnail_path, color_signature, search_text, indexed_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
                  ON CONFLICT(path) DO UPDATE SET
                     id = excluded.id,
                     folder_id = excluded.folder_id,
@@ -57,6 +57,7 @@ impl Database {
                     size_bytes = excluded.size_bytes,
                     modified_at = excluded.modified_at,
                     thumbnail_path = excluded.thumbnail_path,
+                    color_signature = excluded.color_signature,
                     search_text = excluded.search_text,
                     indexed_at = excluded.indexed_at",
             )?;
@@ -77,6 +78,7 @@ impl Database {
                     i64::try_from(asset.size_bytes).unwrap_or(i64::MAX),
                     asset.modified_at,
                     asset.thumbnail_path,
+                    asset.color_signature,
                     search_text,
                     now,
                 ])?;

@@ -48,18 +48,6 @@ document.documentElement.dataset.window = currentWindowLabel;
 document.documentElement.style.colorScheme = resolvedTheme;
 
 installUnifiedSearchEngine();
-if (currentWindowLabel === "main") {
-  // Spotlight is a separate WebView and can be opened before App.vue mounts.
-  // Install the bridge before publishing readiness so its first semantic query
-  // never waits for an interaction with the main window.
-  void registerSemanticQueryProvider()
-    .then(() => imagyxApi.setSemanticProviderReady(true))
-    .catch(() => undefined);
-
-  // Start loading before Vue mounts the main UI so an immediately opened
-  // Spotlight has the shortest possible path to a text embedding.
-  void semanticRuntime.prewarmText().catch(() => undefined);
-}
 if (currentWindowLabel === "spotlight") {
   installSpotlightConverterKeyboardGuard();
   void listen("spotlight-opened", () => {
@@ -79,4 +67,27 @@ if (currentWindowLabel === "spotlight") {
 const i18n = initI18n();
 const RootComponent =
   currentWindowLabel === "spotlight" ? SpotlightSearch : App;
-createApp(RootComponent).use(createPinia()).use(i18n).mount("#app");
+
+async function mountApplication() {
+  if (currentWindowLabel === "main") {
+    // Spotlight is a separate WebView and can be opened before App.vue mounts.
+    // Register the bridge first, then publish readiness. This removes the
+    // cold-launch race where Spotlight has already sent its first query while
+    // the main window is still mounting.
+    try {
+      await registerSemanticQueryProvider();
+      await imagyxApi.setSemanticProviderReady(true);
+    } catch {
+      // The browser/demo build has no Tauri event bus. In the desktop build a
+      // later Spotlight request still reports the provider startup failure.
+    }
+
+    // Start loading in parallel with Vue's first render after the provider is
+    // installed, so the first semantic query can share the same warm runtime.
+    void semanticRuntime.prewarmText().catch(() => undefined);
+  }
+
+  createApp(RootComponent).use(createPinia()).use(i18n).mount("#app");
+}
+
+void mountApplication();

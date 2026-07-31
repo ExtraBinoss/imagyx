@@ -22,10 +22,11 @@ pub(super) fn map_image(row: &rusqlite::Row<'_>) -> rusqlite::Result<ImageAsset>
         size_bytes: row.get::<_, i64>(7)?.try_into().unwrap_or_default(),
         modified_at: row.get(8)?,
         thumbnail_path: row.get(9)?,
+        color_signature: row.get(10)?,
         semantic_score: None,
     })
 }
 
 pub(super) const IMAGE_COLUMNS: &str =
     "i.id, i.folder_id, i.path, i.name, i.extension, i.width, i.height, i.size_bytes, \
-     i.modified_at, i.thumbnail_path";
+     i.modified_at, i.thumbnail_path, i.color_signature";

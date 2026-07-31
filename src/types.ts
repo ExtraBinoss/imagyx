@@ -34,6 +34,7 @@ export interface ImageAsset {
   sizeBytes: number
   modifiedAt: number
   thumbnailPath: string
+  colorSignature?: number[]
   semanticScore?: number
   semanticMatches?: SemanticMatch[]
 }
@@ -146,6 +147,8 @@ export interface SearchRequest {
   diagnosticId?: string
   mode?: SearchMode
   excludeImageId?: string
+  colors?: string[]
+  dominantColor?: boolean
 }
 
 export interface SearchPage {

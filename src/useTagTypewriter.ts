@@ -1,6 +1,4 @@
 import { onBeforeUnmount, onMounted, ref } from "vue";
-import { imagyxApi } from "./api/tauri";
-import { semanticRuntime } from "./services/semantic";
 
 const TAG_CACHE_KEY = "imagyx.spotlight-top-tags.v1";
 const FALLBACK_TAGS = [
@@ -52,21 +50,6 @@ export function useTagTypewriter() {
   let characterIndex = typedTag.value.length;
   let deleting = false;
 
-  async function warmTags() {
-    try {
-      await semanticRuntime.prewarmText();
-      const concepts = await semanticRuntime.genericImageConcepts();
-      const ranked = await imagyxApi.topImageTags(concepts, 10);
-      if (ranked.length) {
-        topTags.value = ranked;
-        localStorage.setItem(TAG_CACHE_KEY, JSON.stringify(ranked));
-        tagIndex %= ranked.length;
-      }
-    } catch {
-      /* fallback conservé */
-    }
-  }
-
   function runTypewriter() {
     const tags = topTags.value.length ? topTags.value : FALLBACK_TAGS;
     const target = tags[tagIndex % tags.length] ?? "image";
@@ -93,7 +76,6 @@ export function useTagTypewriter() {
   }
 
   onMounted(() => {
-    void warmTags();
     typewriterTimer = window.setTimeout(runTypewriter, 320);
   });
 

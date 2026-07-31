@@ -29,6 +29,7 @@ fn asset(folder_id: &str, id: &str, name: &str, modified_at: i64) -> ImageAsset 
         size_bytes: 10,
         modified_at,
         thumbnail_path: String::new(),
+        color_signature: None,
         semantic_score: None,
     }
 }

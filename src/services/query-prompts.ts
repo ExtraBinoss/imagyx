@@ -41,63 +41,89 @@ export interface QueryPromptPlan {
   positivePrompts: string[]
   negativePrompts: string[]
   conceptLabels: string[]
-  conceptPrompts: string[]
   detectedColor?: CanonicalColor
+  detectedColors: CanonicalColor[]
+  dominantColor: boolean
   negativeWeight: number
+}
+
+export type QueryColor = CanonicalColor
+
+export interface QueryColorIntent {
+  colors: QueryColor[]
+  dominant: boolean
 }
 
 export function buildQueryPromptPlan(query: string): QueryPromptPlan {
   const trimmed = query.trim()
   const conceptLabels = extractConceptLabels(trimmed)
-  const detected = detectColor(conceptLabels)
+  const detectedColors = detectColors(conceptLabels)
+  const detected = detectedColors[0]
+  const dominantColor = isDominanceQuery(trimmed)
 
   if (!detected) {
     return {
       positivePrompts: unique([
         trimmed,
         `a photo of ${trimmed}`,
+        `une photo de ${trimmed}`,
         `an image showing ${trimmed}`,
+        `une image montrant ${trimmed}`,
       ]),
       negativePrompts: [],
       conceptLabels,
-      conceptPrompts: conceptLabels.map((label) => `a photo of ${label}`),
+      detectedColors: [],
+      dominantColor,
       negativeWeight: 0,
     }
   }
 
-  const canonicalQuery = replaceFirstColor(trimmed, detected.alias, detected.color)
-  const colorOnly = conceptLabels.length === 1
+  const canonicalQuery = replaceColors(trimmed, conceptLabels, detectedColors)
+  const colorOnly = conceptLabels.length === detectedColors.length
   const positivePrompts = colorOnly
-    ? [
-        detected.color,
-        `the color ${detected.color}`,
-        `a ${detected.color} image`,
-        `an image dominated by ${detected.color}`,
-        `a photo with mostly ${detected.color} colors`,
-      ]
+    ? detectedColors.flatMap((color) => [
+        color,
+        `the color ${color}`,
+        `a ${color} image`,
+        `une image ${color}`,
+        `an image dominated by ${color}`,
+        `a photo with mostly ${color} colors`,
+      ])
     : [
         canonicalQuery,
         `a photo of ${canonicalQuery}`,
+        `une photo de ${canonicalQuery}`,
         `an image showing ${canonicalQuery}`,
-        `an image where ${detected.color} is visually prominent`,
+        `une image montrant ${canonicalQuery}`,
+        ...detectedColors.map((color) => `an image where ${color} is visually prominent`),
       ]
 
-  const negativePrompts = COLOR_CONTRASTS[detected.color].map((contrast) =>
+  // A multi-colour query describes a positive combination. Subtracting a
+  // contrast such as "red -> green" would erase one of the requested colors.
+  const negativePrompts = detectedColors.length === 1
+    ? COLOR_CONTRASTS[detected].map((contrast) =>
     colorOnly
       ? `an image dominated by ${contrast}`
-      : `a photo of ${replaceFirstColor(canonicalQuery, detected.color, contrast)}`,
-  )
+      : `a photo of ${replaceFirstColor(canonicalQuery, detected, contrast)}`,
+      )
+    : []
 
   return {
     positivePrompts: unique(positivePrompts),
     negativePrompts: unique(negativePrompts),
     conceptLabels,
-    conceptPrompts: conceptLabels.map((label) => {
-      const color = ALIAS_TO_COLOR.get(normalizeWord(label))
-      return color ? `an image dominated by ${color}` : `a photo of ${label}`
-    }),
-    detectedColor: detected.color,
-    negativeWeight: 0.35,
+    detectedColors,
+    dominantColor,
+    detectedColor: detected,
+    negativeWeight: detectedColors.length === 1 ? 0.35 : 0,
+  }
+}
+
+export function extractQueryColorIntent(query: string): QueryColorIntent {
+  const labels = extractConceptLabels(query.trim())
+  return {
+    colors: detectColors(labels),
+    dominant: isDominanceQuery(query),
   }
 }
 
@@ -131,17 +157,27 @@ function extractConceptLabels(query: string): string[] {
     .slice(0, 6)
 }
 
-function detectColor(labels: string[]): { color: CanonicalColor; alias: string } | undefined {
-  for (const label of labels) {
+function detectColors(labels: string[]): CanonicalColor[] {
+  return [...new Set(labels.flatMap((label) => {
     const color = ALIAS_TO_COLOR.get(normalizeWord(label))
-    if (color) return { color, alias: label }
-  }
-  return undefined
+    return color ? [color] : []
+  }))]
 }
 
 function replaceFirstColor(query: string, from: string, to: string): string {
   const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   return query.replace(new RegExp(`\\b${escaped}\\b`, 'iu'), to)
+}
+
+function replaceColors(query: string, labels: string[], colors: CanonicalColor[]): string {
+  return colors.reduce((result, color) => {
+    const alias = labels.find((label) => ALIAS_TO_COLOR.get(normalizeWord(label)) === color)
+    return alias ? replaceFirstColor(result, alias, color) : result
+  }, query)
+}
+
+function isDominanceQuery(query: string): boolean {
+  return /\b(?:dominant(?:e)?|mostly|principal(?:e|ement)?|predominant(?:e|ly)?)\b/iu.test(query)
 }
 
 function meanVector(vectors: number[][]): number[] {

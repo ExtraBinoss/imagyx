@@ -73,6 +73,7 @@ const {
 } = useSpotlightResultActions((reason) => { error.value = String(reason) })
 
 let searchSequence = 0
+let hybridFinalSequence = 0
 let searchDiagnosticSequence = 0
 let pendingSearchDiagnosticId: string | undefined
 let pendingSearchUntilLibraryReady: string | null = null
@@ -460,7 +461,7 @@ async function runSearch() {
         results: images.length,
       })
     }
-    if (!matchesActiveSearch(sequence, text, folderId, diagnosticId)) return
+    if (!matchesActiveSearch(sequence, text, folderId, diagnosticId) || hybridFinalSequence === sequence) return
     results.value = images
     searching.value = false
     void nextPaint().then(() => {
@@ -547,7 +548,9 @@ async function runSearch() {
       : await lexicalPromise
     const hybridMs = import.meta.env.DEV ? performance.now() - hybridStartedAt : 0
     if (!matchesActiveSearch(sequence, text, folderId, diagnosticId)) return
+    hybridFinalSequence = sequence
     results.value = images
+    searching.value = false
     rememberResults(cacheKey, images)
     if (import.meta.env.DEV) {
       const totalMs = performance.now() - startedAt
@@ -576,7 +579,9 @@ async function runSearch() {
   } catch (reason) {
     if (sequence === searchSequence) {
       error.value = String(reason)
-      try { results.value = await lexicalPromise } catch { /* the primary error remains visible */ }
+      if (hybridFinalSequence !== sequence) {
+        try { results.value = await lexicalPromise } catch { /* the primary error remains visible */ }
+      }
     }
     if (import.meta.env.DEV) {
       console.error(`[Imagyx][SpotlightSearch][${diagnosticId ?? '-'}] semantic search failed`, {

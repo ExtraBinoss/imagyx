@@ -264,6 +264,7 @@ fn convert_image_blocking(
             .write()
             .upsert([(asset.id.clone(), asset.folder_id.clone(), vector)]);
     }
+    state.upsert_search_assets(std::slice::from_ref(&asset));
 
     emit_conversion_progress(app, image_id, target_format, 1.0, "complete");
     let _ = app.emit("library-updated", ());

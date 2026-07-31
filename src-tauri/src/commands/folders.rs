@@ -82,6 +82,8 @@ pub fn remove_folder(
         .remove_folder(&folder_id)
         .map_err(|error| error.to_string())?;
     state.vectors.write().remove_folder(&folder_id);
+    state.fuzzy.write().remove_folder(&folder_id);
+    state.colors.write().remove_folder(&folder_id);
     Ok(())
 }
 

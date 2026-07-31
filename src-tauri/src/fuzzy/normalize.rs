@@ -1,18 +1,44 @@
 pub fn normalize_query(query: &str) -> Vec<String> {
-    query
-        .to_lowercase()
-        .split_whitespace()
-        .map(|token| {
-            token
-                .chars()
-                .filter(|character| character.is_alphanumeric() || matches!(character, '-' | '_'))
-                .collect::<String>()
-        })
-        .filter(|token| !token.is_empty())
-        .collect()
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    for character in query.chars().flat_map(char::to_lowercase) {
+        if character.is_alphanumeric() {
+            current.extend(strip_diacritic(character).chars());
+        } else if !current.is_empty() {
+            tokens.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens
+}
+
+fn strip_diacritic(character: char) -> String {
+    match character {
+        'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => "a".into(),
+        'ç' => "c".into(),
+        'è' | 'é' | 'ê' | 'ë' => "e".into(),
+        'ì' | 'í' | 'î' | 'ï' => "i".into(),
+        'ñ' => "n".into(),
+        'ò' | 'ó' | 'ô' | 'õ' | 'ö' => "o".into(),
+        'ù' | 'ú' | 'û' | 'ü' => "u".into(),
+        'ý' | 'ÿ' => "y".into(),
+        'æ' => "ae".into(),
+        'œ' => "oe".into(),
+        _ => character.to_string(),
+    }
 }
 
 pub fn fts_query(query: &str) -> Option<String> {
+    build_fts_query(query, " AND ")
+}
+
+pub fn fts_query_or(query: &str) -> Option<String> {
+    build_fts_query(query, " OR ")
+}
+
+fn build_fts_query(query: &str, operator: &str) -> Option<String> {
     let tokens = normalize_query(query);
     if tokens.is_empty() {
         return None;
@@ -22,19 +48,19 @@ pub fn fts_query(query: &str) -> Option<String> {
             .iter()
             .map(|token| format!("\"{}\"*", token.replace('"', "\"\"")))
             .collect::<Vec<_>>()
-            .join(" AND "),
+            .join(operator),
     )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{fts_query, normalize_query};
+    use super::{fts_query, fts_query_or, normalize_query};
 
     #[test]
     fn strips_punctuation_but_keeps_useful_separators() {
         assert_eq!(
-            normalize_query("  Woman, green-blue!  "),
-            vec!["woman", "green-blue"]
+            normalize_query("  Woman, green-blue_été!  "),
+            vec!["woman", "green", "blue", "ete"]
         );
     }
 
@@ -49,5 +75,13 @@ mod tests {
     #[test]
     fn empty_queries_do_not_hit_fts() {
         assert_eq!(fts_query(" .. "), None);
+    }
+
+    #[test]
+    fn can_fallback_to_any_token() {
+        assert_eq!(
+            fts_query_or("woman green").as_deref(),
+            Some("\"woman\"* OR \"green\"*")
+        );
     }
 }

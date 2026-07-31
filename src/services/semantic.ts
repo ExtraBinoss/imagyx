@@ -20,6 +20,7 @@ const MIN_WEBGPU_BATCH_SIZE = 8
 const INITIAL_WASM_BATCH_SIZE = 4
 const MIN_WASM_BATCH_SIZE = 2
 const MAX_BATCH_SIZE = 16
+const MAX_SEARCH_PRIORITY_WAIT_MS = 200
 const AI_IMAGE_EDGE = 224
 const AI_IMAGE_CHANNELS = 3
 const AI_IMAGE_BYTES = AI_IMAGE_EDGE * AI_IMAGE_EDGE * AI_IMAGE_CHANNELS
@@ -255,6 +256,7 @@ class SemanticRuntime {
   private genericConcepts: QueryConcept[] | null = null
   private callbacks: RuntimeCallbacks | null = null
   private queryCache = new Map<string, EmbeddedQuery>()
+  private queryInFlight = new Map<string, Promise<EmbeddedQuery>>()
   private paused = localStorage.getItem(INDEX_PAUSED_KEY) === 'true'
   private stats: RuntimeStats = { ...defaultStats(), stage: this.paused ? 'paused' : 'idle' }
 
@@ -384,8 +386,10 @@ class SemanticRuntime {
         return
       }
 
-      // A Spotlight query may arrive while a folder is being indexed. Let the
-      // current batch finish, then reserve the GPU for the text embedding.
+      // Give a currently running Spotlight embedding a short head start, but
+      // never let a stream of searches starve the image-indexing queue. Query
+      // embeddings can include cold model loading, so this wait must be
+      // bounded rather than tied exclusively to their completion.
       await this.waitForSearchPriority()
 
       const batchStarted = performance.now()
@@ -454,6 +458,20 @@ class SemanticRuntime {
       return cached
     }
 
+    const inFlight = this.queryInFlight.get(cacheKey)
+    if (inFlight) return inFlight
+
+    const embedding = this.computeLocalQuery(query, cacheKey)
+    this.queryInFlight.set(cacheKey, embedding)
+    try {
+      return await embedding
+    } finally {
+      if (this.queryInFlight.get(cacheKey) === embedding) this.queryInFlight.delete(cacheKey)
+    }
+  }
+
+  private async computeLocalQuery(query: string, cacheKey: string): Promise<EmbeddedQuery> {
+
     this.activeSearchEmbeddings += 1
     try {
       const embeddingStartedAt = performance.now()
@@ -464,7 +482,6 @@ class SemanticRuntime {
       const texts = [
         ...plan.positivePrompts,
         ...plan.negativePrompts,
-        ...plan.conceptPrompts,
       ]
       const tokenizationStartedAt = performance.now()
       const inputs = this.tokenizer(texts, {
@@ -486,11 +503,10 @@ class SemanticRuntime {
       )
       if (!queryVector.length) throw new Error('Embedding de recherche vide')
 
-      const concepts = plan.conceptLabels.flatMap((label, index) => {
-        const vector = vectors[negativeEnd + index]
-        return vector ? [{ label, vector }] : []
-      })
-      const embedded = { queryVector, concepts }
+      // Concepts are intentionally not part of the hot search path. They are
+      // generated lazily by genericImageConcepts() only when the user asks for
+      // an explanation of a concrete result.
+      const embedded: EmbeddedQuery = { queryVector, concepts: [] }
       this.queryCache.set(cacheKey, embedded)
       while (this.queryCache.size > QUERY_CACHE_CAPACITY) {
         const oldest = this.queryCache.keys().next().value as string | undefined
@@ -500,6 +516,7 @@ class SemanticRuntime {
       perfLog('SemanticIA', 'text query embedding', performance.now() - embeddingStartedAt, {
         query,
         prompts: texts.length,
+        conceptsDeferred: plan.conceptLabels.length,
         warmupMs,
         tokenizationMs,
         inferenceMs,
@@ -516,7 +533,20 @@ class SemanticRuntime {
 
   private waitForSearchPriority(): Promise<void> {
     if (this.activeSearchEmbeddings === 0) return Promise.resolve()
-    return new Promise((resolve) => this.searchPriorityWaiters.add(resolve))
+    return new Promise((resolve) => {
+      let settled = false
+      let timeout: number | undefined
+      const release = () => {
+        if (settled) return
+        settled = true
+        if (timeout !== undefined) window.clearTimeout(timeout)
+        this.searchPriorityWaiters.delete(release)
+        resolve()
+      }
+
+      this.searchPriorityWaiters.add(release)
+      timeout = window.setTimeout(release, MAX_SEARCH_PRIORITY_WAIT_MS)
+    })
   }
 
   async genericImageConcepts(): Promise<QueryConcept[]> {

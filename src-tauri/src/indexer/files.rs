@@ -8,6 +8,7 @@ use walkdir::WalkDir;
 
 use crate::{
     AppError,
+    fuzzy::signature_for_path,
     models::{FollowedFolder, ImageAsset},
 };
 
@@ -62,6 +63,7 @@ pub(crate) fn prepare_asset(folder: &FollowedFolder, path: &Path) -> Result<Imag
         size_bytes: metadata.len(),
         modified_at: modified_millis(&metadata),
         thumbnail_path: String::new(),
+        color_signature: signature_for_path(path).ok(),
         semantic_score: None,
     })
 }
