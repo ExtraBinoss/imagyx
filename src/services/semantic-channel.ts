@@ -14,7 +14,8 @@ export interface SemanticQueryRequest {
 
 const PROVIDER_READY_POLL_MS = 25
 const REQUEST_RETRY_MS = 250
-const RESPONSE_TIMEOUT_MS = 10_000
+const PROVIDER_TIMEOUT_MS = 10_000
+const EMBEDDING_TIMEOUT_MS = 60_000
 
 async function waitForSemanticProvider(timeoutMs: number): Promise<void> {
   const startedAt = performance.now()
@@ -34,7 +35,7 @@ interface SemanticQueryResponse {
 
 export async function requestSemanticEmbedding(
   query: string,
-  timeoutMs = RESPONSE_TIMEOUT_MS,
+  providerTimeoutMs = PROVIDER_TIMEOUT_MS,
 ): Promise<EmbeddedQuery | undefined> {
   const requestId = crypto.randomUUID()
   const replyEvent = `semantic-query-response:${requestId}`
@@ -51,20 +52,25 @@ export async function requestSemanticEmbedding(
   })
 
   if (import.meta.env.DEV) {
-    console.info(`[Imagyx][SemanticQuery][${requestId}] start`, { query, timeoutMs })
+    console.info(`[Imagyx][SemanticQuery][${requestId}] start`, { query, providerTimeoutMs })
   }
 
   try {
     // Spotlight and the main window start independently. Do not emit before the
     // main window has installed its reply listener: Tauri events are not queued
     // for listeners that do not yet exist.
-    await waitForSemanticProvider(timeoutMs)
+    await waitForSemanticProvider(providerTimeoutMs)
     const listenerStartedAt = import.meta.env.DEV ? performance.now() : 0
     unlisten = await listen<SemanticQueryResponse>(replyEvent, (event) => {
       if (event.payload.requestId !== requestId) return
       if (event.payload.status === 'accepted') {
         acknowledged = true
         if (retry) window.clearInterval(retry)
+        if (timeout) window.clearTimeout(timeout)
+        timeout = window.setTimeout(
+          () => rejectResponse(new Error('Le moteur de recherche sémantique ne répond pas')),
+          EMBEDDING_TIMEOUT_MS,
+        )
         return
       }
       if (import.meta.env.DEV) {
@@ -90,7 +96,7 @@ export async function requestSemanticEmbedding(
 
     timeout = window.setTimeout(
       () => rejectResponse(new Error('Le moteur de recherche sémantique ne répond pas')),
-      timeoutMs,
+      providerTimeoutMs,
     )
 
     const dispatch = async () => {

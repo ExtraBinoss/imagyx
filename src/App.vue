@@ -153,20 +153,6 @@ function openImageFromSpotlight(image: ImageAsset) {
   void store.refreshImages();
 }
 
-function scheduleEarlyTextWarmup() {
-  const started = performance.now();
-  void semanticRuntime
-    .prewarmText()
-    .then(() =>
-      perfLog(
-        "SemanticIA",
-        "early text warmup",
-        performance.now() - started,
-      ),
-    )
-    .catch(() => undefined);
-}
-
 function ensureHiddenWindowIndexing() {
   if (document.visibilityState !== "hidden") return;
   void semanticRuntime
@@ -183,9 +169,6 @@ onMounted(async () => {
   void shortcut.initialize();
   unlistenSemanticProvider = await registerSemanticQueryProvider();
   void imagyxApi.setSemanticProviderReady(true).catch(() => undefined);
-  // Spotlight delegates embeddings here. Start this before the main library
-  // bootstrap so the first global search does not pay the model cold-start.
-  scheduleEarlyTextWarmup();
   const initializePromise = store.initialize();
   void imagyxApi.setTrayPaused(semanticRuntime.isPaused);
   void initializePromise.then(() => {

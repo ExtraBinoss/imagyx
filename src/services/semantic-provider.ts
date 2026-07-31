@@ -6,6 +6,8 @@ import {
   type SemanticQueryRequest,
 } from './semantic-channel'
 
+const pendingEmbeddings = new Map<string, Promise<Awaited<ReturnType<typeof semanticRuntime.embedQuery>>>>()
+
 async function handleSemanticQueryRequest(request: SemanticQueryRequest): Promise<void> {
   const startedAt = import.meta.env.DEV ? performance.now() : 0
   const target = request.replyTo === 'spotlight' ? 'spotlight' : 'main'
@@ -18,6 +20,12 @@ async function handleSemanticQueryRequest(request: SemanticQueryRequest): Promis
   }
 
   try {
+    let embedding = pendingEmbeddings.get(request.requestId)
+    if (!embedding) {
+      embedding = semanticRuntime.embedQuery(request.query)
+        .finally(() => pendingEmbeddings.delete(request.requestId))
+      pendingEmbeddings.set(request.requestId, embedding)
+    }
     // Acknowledge receipt immediately so Spotlight knows the event was not
     // lost while the main window was starting or being hot-reloaded.
     await emitTo(target, request.replyEvent, {
@@ -25,7 +33,7 @@ async function handleSemanticQueryRequest(request: SemanticQueryRequest): Promis
       status: 'accepted',
     })
     const embeddingStartedAt = import.meta.env.DEV ? performance.now() : 0
-    const result = await semanticRuntime.embedQuery(request.query)
+    const result = await embedding
     if (import.meta.env.DEV) {
       const embeddingMs = performance.now() - embeddingStartedAt
       perfLog('SemanticProvider', 'text embedding', embeddingMs, {

@@ -5,6 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App.vue";
 import SpotlightSearch from "./components/Spotlight/SpotlightSearch.vue";
 import { installSpotlightConverterKeyboardGuard } from "./services/spotlight-converter-keyboard";
+import { semanticRuntime } from "./services/semantic";
 import { installUnifiedSearchEngine } from "./services/unified-search-engine";
 import { visualSearchSession } from "./services/visual-search-session";
 import { installPerformanceDiagnostics } from "./utils";
@@ -45,6 +46,11 @@ document.documentElement.dataset.window = currentWindowLabel;
 document.documentElement.style.colorScheme = resolvedTheme;
 
 installUnifiedSearchEngine();
+if (currentWindowLabel === "main") {
+  // Start loading before Vue mounts the main UI so an immediately opened
+  // Spotlight has the shortest possible path to a text embedding.
+  void semanticRuntime.prewarmText().catch(() => undefined);
+}
 if (currentWindowLabel === "spotlight") {
   installSpotlightConverterKeyboardGuard();
   void listen("spotlight-opened", () => {
