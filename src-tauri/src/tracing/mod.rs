@@ -1,3 +1,4 @@
+#[cfg(debug_assertions)]
 mod helpers;
 
 #[cfg(debug_assertions)]

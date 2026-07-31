@@ -11,8 +11,10 @@ use crate::{
     },
     models::SearchPage,
     state::AppState,
-    tracing,
 };
+
+#[cfg(debug_assertions)]
+use crate::tracing;
 
 const MAX_QUERY_PAGE_SIZE: usize = 200;
 const MAX_SEARCH_WINDOW: usize = 50_000;
@@ -369,20 +371,20 @@ fn visual_search(
 }
 
 fn trace_search(
-    diagnostic_id: Option<&str>,
-    mode: &str,
-    query: &str,
-    results: usize,
-    total: usize,
-    started: Instant,
+    _diagnostic_id: Option<&str>,
+    _mode: &str,
+    _query: &str,
+    _results: usize,
+    _total: usize,
+    _started: Instant,
 ) {
     #[cfg(debug_assertions)]
     tracing::event(
         "search.pipeline",
         format!(
-            "id={} mode={mode} query={query:?} results={results} total_available={total} total_ms={:.2}",
-            diagnostic_id.unwrap_or("-"),
-            started.elapsed().as_secs_f64() * 1_000.0,
+            "id={} mode={_mode} query={_query:?} results={_results} total_available={_total} total_ms={:.2}",
+            _diagnostic_id.unwrap_or("-"),
+            _started.elapsed().as_secs_f64() * 1_000.0,
         ),
     );
 }
