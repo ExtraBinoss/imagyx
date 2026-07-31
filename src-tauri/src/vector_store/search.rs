@@ -14,15 +14,6 @@ use crate::tracing;
 use super::{VectorMatch, VectorStore, maintenance::normalize_in_place};
 
 impl VectorStore {
-    pub fn top_k(
-        &self,
-        query: &[f32],
-        folder_id: Option<&str>,
-        limit: usize,
-    ) -> Vec<VectorMatch> {
-        self.top_k_with_diagnostics(query, folder_id, limit, None)
-    }
-
     pub fn top_k_with_diagnostics(
         &self,
         query: &[f32],

@@ -185,16 +185,6 @@ impl Database {
         Ok(count_to_usize(count))
     }
 
-    pub fn image_exists(&self, image_id: &str) -> Result<bool, AppError> {
-        self.connect()?
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM images WHERE id = ?1)",
-                params![image_id],
-                |row| row.get(0),
-            )
-            .map_err(AppError::from)
-    }
-
     pub fn image_path_is_known(&self, image_id: &str, path: &str) -> Result<bool, AppError> {
         self.connect()?
             .query_row(

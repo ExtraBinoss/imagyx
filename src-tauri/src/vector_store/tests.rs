@@ -16,7 +16,7 @@ fn keeps_vectors_contiguous_and_returns_top_k() {
         entry("y", "a", vec![0.0, 1.0]),
         entry("z", "b", vec![0.8, 0.2]),
     ]);
-    let matches = store.top_k(&[1.0, 0.0], None, 2);
+    let matches = store.top_k_with_diagnostics(&[1.0, 0.0], None, 2, None);
     assert_eq!(matches.len(), 2);
     assert_eq!(matches[0].image_id, "x");
     assert_eq!(matches[1].image_id, "z");
@@ -27,7 +27,7 @@ fn upsert_replaces_without_growing() {
     let mut store = VectorStore::from_entries(vec![entry("x", "a", vec![1.0, 0.0])]);
     store.upsert([("x".into(), "b".into(), vec![0.0, 1.0])]);
     assert_eq!(store.len(), 1);
-    assert_eq!(store.top_k(&[0.0, 1.0], Some("b"), 1)[0].image_id, "x");
+    assert_eq!(store.top_k_with_diagnostics(&[0.0, 1.0], Some("b"), 1, None)[0].image_id, "x");
 }
 
 #[test]
