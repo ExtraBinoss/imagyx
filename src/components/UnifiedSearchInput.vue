@@ -274,8 +274,8 @@ defineExpose({ focus, select, chooseImage, leaveVisualSearch })
     <template v-else>
       <div class="unified-search-input__leading">
         <Transition name="icon-swap" mode="out-in">
-          <LoaderCircle v-if="searching" key="loader" class="spin" :size="variant === 'spotlight' ? 22 : 18" :stroke-width="2.2" />
-          <Search v-else key="search" :size="variant === 'spotlight' ? 22 : 18" :stroke-width="1.9" />
+          <LoaderCircle v-if="searching" key="loader" class="spin" :size="variant === 'spotlight' ? 24 : 18" :stroke-width="2.2" />
+          <Search v-else key="search" :size="variant === 'spotlight' ? 24 : 18" :stroke-width="1.9" />
         </Transition>
       </div>
 
@@ -365,9 +365,9 @@ defineExpose({ focus, select, chooseImage, leaveVisualSearch })
   box-shadow: 0 4px 20px -4px rgb(0 0 0 / 0.1);
 }
 .unified-search-input--spotlight {
-  min-height: 70px;
-  gap: 12px;
-  padding: 0 15px 0 18px;
+  min-height: 74px;
+  gap: 14px;
+  padding: 0 18px 0 22px;
 }
 .unified-search-input--focused.unified-search-input--app,
 .unified-search-input--app:hover { border-color: transparent; }
@@ -383,8 +383,8 @@ defineExpose({ focus, select, chooseImage, leaveVisualSearch })
   display: grid;
   flex: 0 0 auto;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
 }
 .unified-search-input input {
   flex: 1;
@@ -397,7 +397,7 @@ defineExpose({ focus, select, chooseImage, leaveVisualSearch })
   caret-color: var(--primary);
 }
 .unified-search-input--app input { font-size: 14px; font-weight: 530; letter-spacing: -0.12px; }
-.unified-search-input--spotlight input { font-size: 20px; font-weight: 570; letter-spacing: -0.38px; }
+.unified-search-input--spotlight input { font-size: 22px; font-weight: 570; letter-spacing: -0.42px; }
 .unified-search-input input::-webkit-search-cancel-button { display: none; }
 .unified-search-input input::placeholder { color: var(--text-subtle); opacity: 1; }
 .unified-search-input__count {

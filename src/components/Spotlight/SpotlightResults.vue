@@ -582,11 +582,11 @@ defineExpose({ scrollToIndex });
                   </span>
                 </template>
                 <span class="spotlight-action-popover__copy">
-                  <strong>{{ t("search.visual.find_similar") }}</strong>
-                  <small>{{ t("search.visual.find_similar_desc") }}</small>
+                  <strong><span class="spotlight-action-marquee-inner">{{ t("search.visual.find_similar") }}</span></strong>
+                  <small><span class="spotlight-action-marquee-inner">{{ t("search.visual.find_similar_desc") }}</span></small>
                 </span>
                 <template #trailing
-                  ><KbdChip shortcut="Ctrl+Shift+S" size="sm"
+                  ><KbdChip shortcut="Ctrl+Shift+S" size="sm" variant="primary"
                 /></template>
               </Button>
 
@@ -601,7 +601,7 @@ defineExpose({ scrollToIndex });
                 <template #leading><RefreshCw :size="16" /></template>
                 {{ t("spotlight.convert.action") }}
                 <template #trailing
-                  ><KbdChip shortcut="Ctrl+Shift+C" size="sm"
+                  ><KbdChip shortcut="Ctrl+Shift+C" size="sm" variant="primary"
                 /></template>
               </Button>
 
@@ -616,7 +616,7 @@ defineExpose({ scrollToIndex });
                 <template #leading><FolderOpen :size="16" /></template>
                 {{ t("open_in_file_manager", { name: fileManagerName }) }}
                 <template #trailing
-                  ><KbdChip shortcut="Ctrl+E" size="sm"
+                  ><KbdChip shortcut="Ctrl+E" size="sm" variant="primary"
                 /></template>
               </Button>
 
@@ -631,7 +631,7 @@ defineExpose({ scrollToIndex });
                 <template #leading><ExternalLink :size="16" /></template>
                 {{ t("open_in_imagyx") }}
                 <template #trailing
-                  ><KbdChip shortcut="Ctrl+I" size="sm"
+                  ><KbdChip shortcut="Ctrl+I" size="sm" variant="primary"
                 /></template>
               </Button>
             </div>
@@ -651,7 +651,7 @@ defineExpose({ scrollToIndex });
             <template #leading><Ellipsis :size="17" /></template>
             {{ t("spotlight.actions.more") }}
             <template #trailing
-              ><KbdChip shortcut="Ctrl+K" size="sm"
+              ><KbdChip shortcut="Ctrl+K" size="sm" variant="primary"
             /></template>
           </Button>
         </div>
@@ -964,15 +964,28 @@ defineExpose({ scrollToIndex });
   margin-left: auto;
 }
 .spotlight-action-popover__copy {
+  position: relative;
   display: block;
   min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  mask-image: linear-gradient(to right, #000 0px, #000 calc(100% - 14px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, #000 0px, #000 calc(100% - 14px), transparent 100%);
+}
+.spotlight-action-menu-button:hover .spotlight-action-popover__copy {
+  animation: folder-mask-fade 5.5s linear infinite alternate;
 }
 .spotlight-action-popover__copy strong,
 .spotlight-action-popover__copy small {
   display: block;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.spotlight-action-menu-button:hover .spotlight-action-popover__copy strong,
+.spotlight-action-menu-button:hover .spotlight-action-popover__copy small {
+  text-overflow: clip;
 }
 .spotlight-action-popover__copy strong {
   font-size: 11px;
@@ -982,6 +995,14 @@ defineExpose({ scrollToIndex });
   margin-top: 2px;
   color: var(--text-muted);
   font-size: 9px;
+}
+.spotlight-action-marquee-inner {
+  display: inline-block;
+  white-space: nowrap;
+  will-change: transform;
+}
+.spotlight-action-menu-button:hover .spotlight-action-marquee-inner {
+  animation: folder-name-bounce 5.5s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate;
 }
 .spotlight-action-popover__preview {
   position: relative;
@@ -1119,6 +1140,36 @@ defineExpose({ scrollToIndex });
     background-position: -160% 0;
   }
 }
+@keyframes folder-name-bounce {
+  0%, 15% {
+    transform: translateX(0%);
+  }
+  85%, 100% {
+    transform: translateX(calc(-100% + 75px));
+  }
+}
+@keyframes folder-mask-fade {
+  0%, 12% {
+    mask-image: linear-gradient(to right, #000 0px, #000 calc(100% - 14px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, #000 0px, #000 calc(100% - 14px), transparent 100%);
+  }
+  24% {
+    mask-image: linear-gradient(to right, transparent 0px, #000 6px, #000 calc(100% - 14px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0px, #000 6px, #000 calc(100% - 14px), transparent 100%);
+  }
+  35%, 65% {
+    mask-image: linear-gradient(to right, transparent 0px, #000 14px, #000 calc(100% - 14px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0px, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  }
+  76% {
+    mask-image: linear-gradient(to right, transparent 0px, #000 14px, #000 calc(100% - 6px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0px, #000 14px, #000 calc(100% - 6px), transparent 100%);
+  }
+  88%, 100% {
+    mask-image: linear-gradient(to right, transparent 0px, #000 14px, #000 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0px, #000 14px, #000 100%);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .spotlight-dock-button--success,
   .action-popover-enter-active,
@@ -1126,6 +1177,10 @@ defineExpose({ scrollToIndex });
   .spin {
     animation-duration: 0.01ms;
     transition-duration: 0.01ms;
+  }
+  .spotlight-action-menu-button:hover .spotlight-action-marquee,
+  .spotlight-action-menu-button:hover .spotlight-action-marquee-inner {
+    animation: none;
   }
 }
 </style>

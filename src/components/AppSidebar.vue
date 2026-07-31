@@ -188,7 +188,7 @@ onBeforeUnmount(() => {
             <TriangleAlert class="folder-index-warning" :size="17" />
           </Tooltip>
           <Folder v-else :size="17" />
-          <span class="folder-name">{{ folder.name }}</span>
+          <span class="folder-name"><span class="folder-name-inner">{{ folder.name }}</span></span>
           <span class="folder-count">{{ folder.imageCount }}</span>
         </Button>
         <div class="folder-actions" @click.stop @pointerdown.stop>
@@ -405,11 +405,29 @@ onBeforeUnmount(() => {
   gap: var(--space-2);
 }
 .folder-entry .folder-row :deep(.folder-name) {
+  position: relative;
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  --mask-left: 0px;
+  --mask-right: 12px;
+  mask-image: linear-gradient(to right, transparent 0px, #000 var(--mask-left), #000 calc(100% - var(--mask-right)), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0px, #000 var(--mask-left), #000 calc(100% - var(--mask-right)), transparent 100%);
+  transition: --mask-left 250ms ease, --mask-right 250ms ease;
+}
+.folder-entry .folder-row :deep(.folder-name-inner) {
+  display: inline-block;
+  white-space: nowrap;
+  will-change: transform;
+}
+.folder-entry:hover .folder-row :deep(.folder-name) {
+  text-overflow: clip;
+  animation: folder-mask-fade 5.5s linear infinite alternate;
+}
+.folder-entry:hover .folder-row :deep(.folder-name-inner) {
+  animation: folder-name-bounce 5.5s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate;
 }
 .folder-entry .folder-row :deep(.folder-count) {
   flex-shrink: 0;
@@ -489,8 +507,40 @@ onBeforeUnmount(() => {
     transform: rotate(1turn);
   }
 }
+@keyframes folder-name-bounce {
+  0%, 15% {
+    transform: translateX(0%);
+  }
+  85%, 100% {
+    transform: translateX(calc(-100% + 75px));
+  }
+}
+@keyframes folder-mask-fade {
+  0%, 12% {
+    mask-image: linear-gradient(to right, #000 0px, #000 calc(100% - 14px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, #000 0px, #000 calc(100% - 14px), transparent 100%);
+  }
+  24% {
+    mask-image: linear-gradient(to right, transparent 0px, #000 6px, #000 calc(100% - 14px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0px, #000 6px, #000 calc(100% - 14px), transparent 100%);
+  }
+  35%, 65% {
+    mask-image: linear-gradient(to right, transparent 0px, #000 14px, #000 calc(100% - 14px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0px, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  }
+  76% {
+    mask-image: linear-gradient(to right, transparent 0px, #000 14px, #000 calc(100% - 6px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0px, #000 14px, #000 calc(100% - 6px), transparent 100%);
+  }
+  88%, 100% {
+    mask-image: linear-gradient(to right, transparent 0px, #000 14px, #000 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0px, #000 14px, #000 100%);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .folder-context-menu-enter-active,
   .folder-context-menu-leave-active { transition-duration: 0.01ms; }
+  .folder-entry:hover .folder-row :deep(.folder-name),
+  .folder-entry:hover .folder-row :deep(.folder-name-inner) { animation: none; }
 }
 </style>

@@ -6,11 +6,13 @@ const props = withDefaults(
     borderRadius?: string
     duration?: number
     active?: boolean
+    size?: 'sm' | 'md' | 'lg'
   }>(),
   {
     borderRadius: '20px',
     duration: 4200,
     active: true,
+    size: 'sm',
   },
 )
 
@@ -23,7 +25,10 @@ const styleVariables = computed(() => ({
 <template>
   <div
     class="moving-border"
-    :class="{ 'moving-border--active': active }"
+    :class="[
+      `moving-border--${size}`,
+      { 'moving-border--active': active }
+    ]"
     :style="styleVariables"
   >
     <svg
@@ -79,8 +84,8 @@ const styleVariables = computed(() => ({
 }
 
 .moving-border__track {
-  stroke: color-mix(in srgb, var(--primary) 25%, var(--border));
-  stroke-width: 1.5;
+  stroke: color-mix(in srgb, var(--primary) 28%, var(--border));
+  stroke-width: 1.25px;
   opacity: 0.8;
 }
 
@@ -91,11 +96,28 @@ const styleVariables = computed(() => ({
   transition: opacity 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.moving-border__beam {
+.moving-border--sm .moving-border__beam {
   stroke: var(--primary);
-  stroke-width: 2.5;
-  stroke-dasharray: 16 84;
-  opacity: 0.82;
+  stroke-width: 2px;
+  stroke-dasharray: 14 86;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 2px var(--primary));
+}
+
+.moving-border--md .moving-border__beam {
+  stroke: var(--primary);
+  stroke-width: 2.5px;
+  stroke-dasharray: 18 82;
+  opacity: 0.92;
+  filter: drop-shadow(0 0 3px var(--primary));
+}
+
+.moving-border--lg .moving-border__beam {
+  stroke: var(--primary);
+  stroke-width: 3.5px;
+  stroke-dasharray: 24 76;
+  opacity: 0.95;
+  filter: drop-shadow(0 0 4px var(--primary));
 }
 
 .moving-border:not(.moving-border--active) .moving-border__beam {
