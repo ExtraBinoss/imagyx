@@ -10,6 +10,7 @@ import {
   Plus,
   RefreshCw,
   Settings,
+  Sparkles,
   TriangleAlert,
   Trash2,
 } from "@lucide/vue";
@@ -23,6 +24,7 @@ import type {
 import SpotlightSettings from "@/components/Spotlight/SpotlightSettings.vue";
 import LocalAiStatus from "@/components/LocalAiStatus.vue";
 import Button from "@/components/ui/Button/Button.vue";
+import KbdChip from "@/components/ui/KbdChip/KbdChip.vue";
 import Popover from "@/components/ui/Popover/Popover.vue";
 import Tooltip from "@/components/ui/Tooltip/Tooltip.vue";
 import { useThemeStore } from "@/stores/theme";
@@ -278,6 +280,13 @@ onBeforeUnmount(() => {
         @resume="emit('resumeIndexing')"
       />
 
+      <div class="spotlight-shortcut-card">
+        <div class="spotlight-shortcut-card__info">
+          <span>Spotlight</span>
+        </div>
+        <KbdChip :shortcut="shortcut.spotlight" size="sm" variant="primary" />
+      </div>
+
       <Popover
         side="top"
         align="start"
@@ -475,14 +484,25 @@ onBeforeUnmount(() => {
   background: var(--surface-elevated);
   box-shadow: var(--shadow-popover);
 }
-.folder-context-menu-enter-active,
-.folder-context-menu-leave-active {
-  transition: opacity 140ms ease, transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+.spotlight-shortcut-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
 }
-.folder-context-menu-enter-from,
-.folder-context-menu-leave-to {
-  opacity: 0;
-  transform: translate3d(0, -4px, 0) scale(0.985);
+.spotlight-shortcut-card__info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 580;
+}
+.spotlight-shortcut-card__icon {
+  color: var(--primary);
 }
 
 .settings-trigger-btn {
