@@ -32,4 +32,5 @@ export default {
 
   'settings.no_results_title': 'Настройки не найдены',
   'settings.no_results_desc': 'Попробуйте «сочетание», «тема», «обучение» или «внешний вид».',
+  'settings.app_settings_notice': 'Остальные настройки (язык, папки и элементы управления окном) в любое время доступны в приложении Imagyx.',
 } as const

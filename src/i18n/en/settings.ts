@@ -31,5 +31,6 @@ export default {
   'settings.info_library': 'Library',
 
   'settings.no_results_title': 'No settings found',
-  'settings.no_results_desc': 'Try "shortcut", "theme", "onboarding", or "appearance".',
+  'settings.no_results_desc': 'Try searching for "shortcut", "theme", "tutorial", or "appearance".',
+  'settings.app_settings_notice': 'The rest of your settings (language, folders, window controls) remain available anytime inside the Imagyx application.',
 } as const

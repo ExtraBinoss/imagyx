@@ -32,4 +32,5 @@ export default {
 
   'settings.no_results_title': 'Nessuna impostazione trovata',
   'settings.no_results_desc': 'Prova «scorciatoia», «tema», «tutorial» o «aspetto».',
+  'settings.app_settings_notice': 'Le altre impostazioni (lingua, cartelle e controlli della finestra) restano disponibili in qualsiasi momento nell’app Imagyx.',
 } as const

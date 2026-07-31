@@ -32,4 +32,5 @@ export default {
 
   'settings.no_results_title': 'No se encontraron ajustes',
   'settings.no_results_desc': 'Prueba «atajo», «tema», «tutorial» o «apariencia».',
+  'settings.app_settings_notice': 'El resto de tus ajustes (idioma, carpetas y controles de ventana) sigue disponible en cualquier momento dentro de Imagyx.',
 } as const

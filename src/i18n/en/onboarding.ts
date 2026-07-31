@@ -23,8 +23,8 @@ export default {
   'onboarding.step_preview_desc': 'Select or hover a card and press Space. The full preview opens inside Imagyx and closes with Space, Escape, or a click outside.',
   'onboarding.step_spotlight_title': 'Find and use an image from anywhere',
   'onboarding.step_spotlight_desc': 'Imagyx stays available from the Windows tray. Use the global shortcut to search without interrupting what you are doing.',
-  'onboarding.step_settings_title': 'Make Imagyx fit your desktop',
-  'onboarding.step_settings_desc': 'Change the Spotlight shortcut, theme, and window controls instantly. Your preferences stay local and persist across restarts.',
+  'onboarding.step_settings_title': 'Customize your experience',
+  'onboarding.step_settings_desc': 'Configure your Spotlight shortcut and theme right now. All remaining settings (language, folders, window controls) are accessible anytime inside Imagyx.',
   'onboarding.step_indexing_title': 'Add a folder to analyze',
   'onboarding.step_indexing_desc': 'Choose a folder of images. Imagyx indexes it locally in the background so it becomes searchable.',
 } as const

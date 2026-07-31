@@ -32,4 +32,5 @@ export default {
 
   'settings.no_results_title': 'Keine Einstellungen gefunden',
   'settings.no_results_desc': 'Versuche «Kurzbefehl», «Design», «Tour» oder «Erscheinungsbild».',
+  'settings.app_settings_notice': 'Die übrigen Einstellungen (Sprache, Ordner und Fenstersteuerung) bleiben jederzeit in der Imagyx-App verfügbar.',
 } as const

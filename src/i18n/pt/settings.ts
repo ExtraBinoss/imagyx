@@ -32,4 +32,5 @@ export default {
 
   'settings.no_results_title': 'Nenhuma configuração encontrada',
   'settings.no_results_desc': 'Tente «atalho», «tema», «tutorial» ou «aparência».',
+  'settings.app_settings_notice': 'As restantes definições (idioma, pastas e controlos de janela) permanecem disponíveis a qualquer momento na aplicação Imagyx.',
 } as const

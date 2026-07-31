@@ -32,4 +32,5 @@ export default {
 
   'settings.no_results_title': '未找到设置',
   'settings.no_results_desc': '试试「快捷键」「主题」「教程」或「外观」。',
+  'settings.app_settings_notice': '其余设置（语言、文件夹和窗口控件）始终可在 Imagyx 应用中访问。',
 } as const

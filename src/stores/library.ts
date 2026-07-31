@@ -322,13 +322,6 @@ export const useLibraryStore = defineStore("library", {
       const toasts = useToastStore();
       if (progress.stage === "idle") return;
       if (progress.stage === "ready") {
-        toasts.upsert({
-          id: "model-download",
-          title: storeT('indexing.toast.model_ready'),
-          description: progress.message,
-          kind: "success",
-          duration: 3200,
-        });
         return;
       }
       if (progress.stage === "error") {

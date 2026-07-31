@@ -3,6 +3,7 @@ import {
   Check,
   Copy,
   Ellipsis,
+  ExternalLink,
   Folder,
   FolderOpen,
   FolderPlus,
@@ -12,12 +13,18 @@ import {
   Moon,
   MoreHorizontal,
   Plus,
+  RefreshCw,
   Search,
+  SlidersHorizontal,
   Sun,
   WandSparkles,
 } from "@lucide/vue";
-import { computed } from "vue";
-import type { IndexProgress, ModelDownloadProgress, RuntimeStats } from "../../types";
+import { computed, ref } from "vue";
+import type {
+  IndexProgress,
+  ModelDownloadProgress,
+  RuntimeStats,
+} from "../../types";
 import type { ThemeMode } from "../../stores/theme";
 import tribalPortrait from "../../assets/onboarding_assets/99003f6e5f05348d1852c38ed196d988.jpg";
 import womanGreen from "../../assets/onboarding_assets/girl_train_segmented.png";
@@ -26,6 +33,7 @@ import greenFashion from "../../assets/onboarding_assets/téléchargement (2).jp
 import imagyxLogo from "../../../src-tauri/icons/imagyx-bigger.avif";
 import ShortcutView from "../shortcuts/ShortcutView.vue";
 import SpotlightInput from "../Spotlight/SpotlightInput.vue";
+import SpotlightSettings from "../Spotlight/SpotlightSettings.vue";
 import Button from "../ui/Button/Button.vue";
 import CopyButton from "../ui/Button/CopyButton.vue";
 import ButtonGroup from "../ui/ButtonGroup/ButtonGroup.vue";
@@ -33,7 +41,10 @@ import KbdChip from "../ui/KbdChip/KbdChip.vue";
 import MovingBorder from "../ui/MovingBorder/MovingBorder.vue";
 import LocalAiStatus from "../LocalAiStatus.vue";
 import { useTranslate } from "../../i18n";
-import { isModelDownloading, isModelPreparing } from "../../utils/model-readiness";
+import {
+  isModelDownloading,
+  isModelPreparing,
+} from "../../utils/model-readiness";
 
 const { t } = useTranslate();
 
@@ -63,14 +74,18 @@ const props = defineProps<{
   runtimeStats: RuntimeStats | null;
 }>();
 
-const isFolderIndexing = computed(() => Boolean(
-  props.progress
-  && !['complete', 'error'].includes(props.progress.stage),
-));
-const modelNeedsPreparation = computed(() =>
-  isModelDownloading(props.modelProgress)
-  || isModelPreparing(props.modelProgress, props.runtimeStats),
+const isFolderIndexing = computed(() =>
+  Boolean(
+    props.progress && !["complete", "error"].includes(props.progress.stage),
+  ),
 );
+const modelNeedsPreparation = computed(
+  () =>
+    isModelDownloading(props.modelProgress) ||
+    isModelPreparing(props.modelProgress, props.runtimeStats),
+);
+
+const spotlightActionsOpen = ref(false);
 
 const demoImages = [
   {
@@ -309,13 +324,107 @@ const demoImages = [
           <div class="spotlight-demo__action-dock" role="toolbar">
             <div class="spotlight-demo__action-bar">
               <CopyButton variant="ghost" size="md">
-                <template #trailing><KbdChip shortcut="Ctrl+C" size="sm" /></template>
+                <template #trailing
+                  ><KbdChip shortcut="Ctrl+C" size="sm"
+                /></template>
               </CopyButton>
-              <Button variant="ghost" size="md" :depth="false">
-                <template #leading><Ellipsis :size="17" /></template>
-                {{ t("spotlight.actions.more") }}
-                <template #trailing><KbdChip shortcut="Ctrl+K" size="sm" /></template>
-              </Button>
+
+              <div class="spotlight-demo__action-hub">
+                <Transition name="action-popover">
+                  <div
+                    v-if="spotlightActionsOpen"
+                    class="spotlight-demo__action-popover"
+                    role="menu"
+                  >
+                    <Button
+                      class="spotlight-demo__action-menu-button spotlight-demo__action-menu-button--featured"
+                      variant="ghost"
+                      size="md"
+                      :depth="false"
+                      role="menuitem"
+                      @click="spotlightActionsOpen = false"
+                    >
+                      <template #leading>
+                        <span class="spotlight-demo__action-popover__preview">
+                          <img
+                            class="spotlight-demo__action-popover__preview-image"
+                            :src="demoImages[1].src"
+                            :alt="demoImages[1].label"
+                          />
+                        </span>
+                      </template>
+                      <span class="spotlight-demo__action-popover__copy">
+                        <strong>{{ t("search.visual.find_similar") }}</strong>
+                        <small>{{
+                          t("search.visual.find_similar_desc")
+                        }}</small>
+                      </span>
+                      <template #trailing
+                        ><KbdChip shortcut="Ctrl+Shift+S" size="sm"
+                      /></template>
+                    </Button>
+
+                    <Button
+                      class="spotlight-demo__action-menu-button"
+                      variant="ghost"
+                      size="md"
+                      :depth="false"
+                      role="menuitem"
+                      @click="spotlightActionsOpen = false"
+                    >
+                      <template #leading><RefreshCw :size="16" /></template>
+                      {{ t("spotlight.convert.action") }}
+                      <template #trailing
+                        ><KbdChip shortcut="Ctrl+Shift+C" size="sm"
+                      /></template>
+                    </Button>
+
+                    <Button
+                      class="spotlight-demo__action-menu-button"
+                      variant="ghost"
+                      size="md"
+                      :depth="false"
+                      role="menuitem"
+                      @click="spotlightActionsOpen = false"
+                    >
+                      <template #leading><FolderOpen :size="16" /></template>
+                      {{ t("open_in_file_manager", { name: "Explorer" }) }}
+                      <template #trailing
+                        ><KbdChip shortcut="Ctrl+E" size="sm"
+                      /></template>
+                    </Button>
+
+                    <Button
+                      class="spotlight-demo__action-menu-button"
+                      variant="ghost"
+                      size="md"
+                      :depth="false"
+                      role="menuitem"
+                      @click="spotlightActionsOpen = false"
+                    >
+                      <template #leading><ExternalLink :size="16" /></template>
+                      {{ t("open_in_imagyx") }}
+                      <template #trailing
+                        ><KbdChip shortcut="Ctrl+I" size="sm"
+                      /></template>
+                    </Button>
+                  </div>
+                </Transition>
+
+                <Button
+                  variant="ghost"
+                  size="md"
+                  :depth="false"
+                  :pressed="spotlightActionsOpen"
+                  @click="spotlightActionsOpen = !spotlightActionsOpen"
+                >
+                  <template #leading><Ellipsis :size="17" /></template>
+                  {{ t("spotlight.actions.more") }}
+                  <template #trailing
+                    ><KbdChip shortcut="Ctrl+K" size="sm"
+                  /></template>
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -323,82 +432,54 @@ const demoImages = [
     </div>
 
     <div v-else-if="kind === 'settings'" class="settings-demo">
-      <div class="settings-demo__shortcut-summary">
-        <div>
-          <Keyboard :size="16" /><span
-            ><strong>{{ t("settings.shortcut_title") }}</strong
-            ><small>{{ t("settings.shortcut_desc") }}</small></span
-          >
-        </div>
-        <KbdChip :shortcut="shortcut" size="md" />
-      </div>
-      <ShortcutView
-        :model-value="shortcut"
-        :label="t('settings.shortcut_label')"
-        :description="t('settings.shortcut_desc')"
-        disabled
+      <SpotlightSettings
+        variant="embedded"
+        :shortcut="shortcut"
+        :theme-mode="themeMode"
+        @shortcut-change="emit('shortcutChange', $event)"
+        @theme-change="emit('themeChange', $event)"
       />
-      <div class="settings-demo__section">
-        <header>
-          <Keyboard :size="16" />
-          <div>
-            <strong>{{ t("settings.appearance_title") }}</strong
-            ><small>{{ t("settings.appearance_desc") }}</small>
-          </div>
-        </header>
-        <ButtonGroup full>
-          <Button
-            variant="ghost"
-            size="sm"
-            :pressed="themeMode === 'system'"
-            @click="emit('themeChange', 'system')"
-          >
-            <template #leading
-              ><Check v-if="themeMode === 'system'" :size="13" /></template
-            >System
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            :pressed="themeMode === 'light'"
-            @click="emit('themeChange', 'light')"
-          >
-            <template #leading><Sun :size="13" /></template>Light
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            :pressed="themeMode === 'dark'"
-            @click="emit('themeChange', 'dark')"
-          >
-            <template #leading><Moon :size="13" /></template>Dark
-          </Button>
-        </ButtonGroup>
+      <div class="settings-demo__app-notice">
+        <SlidersHorizontal :size="15" />
+        <span>{{ t("settings.app_settings_notice") }}</span>
       </div>
     </div>
 
     <div v-else class="indexing-demo">
       <template v-if="!hasFolders">
-        <LocalAiStatus
-          v-if="modelNeedsPreparation"
-          class="indexing-demo__model-status"
-          :progress="progress"
-          :model-progress="modelProgress"
-          :runtime-stats="runtimeStats"
-          @pause="emit('pauseIndexing')"
-          @resume="emit('resumeIndexing')"
-        />
-        <div class="indexing-demo__hero">
-          <FolderOpen :size="23" />
-          <div>
-            <strong>{{ t("onboarding.first_folder_title") }}</strong>
-            <span>{{ t("onboarding.step_indexing_desc") }}</span>
+        <div class="indexing-demo__empty-wrapper">
+          <LocalAiStatus
+            v-if="modelNeedsPreparation"
+            class="indexing-demo__model-status"
+            :progress="progress"
+            :model-progress="modelProgress"
+            :runtime-stats="runtimeStats"
+            @pause="emit('pauseIndexing')"
+            @resume="emit('resumeIndexing')"
+          />
+
+          <div class="indexing-demo__setup-card">
+            <span class="indexing-demo__icon">
+              <FolderPlus :size="28" />
+            </span>
+            <div class="indexing-demo__setup-copy">
+              <strong>{{ t("onboarding.first_folder_title") }}</strong>
+              <p>{{ t("onboarding.step_indexing_desc") }}</p>
+            </div>
+            <Button
+              class="indexing-demo__add-folder"
+              variant="primary"
+              size="lg"
+              @click="emit('addFolder')"
+            >
+              <template #leading><FolderPlus :size="18" /></template>
+              {{ t("onboarding.add_folder") }}
+            </Button>
+            <small class="indexing-demo__privacy">{{
+              t("spotlight.no_folder_privacy")
+            }}</small>
           </div>
         </div>
-        <Button class="indexing-demo__add-folder" variant="primary" size="lg" @click="emit('addFolder')">
-          <template #leading><FolderOpen :size="20" /></template>
-          {{ t("onboarding.add_folder") }}
-        </Button>
       </template>
       <template v-else>
         <div v-if="isFolderIndexing" class="indexing-demo__folder">
@@ -417,8 +498,10 @@ const demoImages = [
           />
         </div>
         <div v-else class="indexing-demo__waiting">
-          <FolderOpen :size="23" />
-          <strong>{{ t("onboarding.indexing_complete_title", { count: totalImages }) }}</strong>
+          <FolderOpen :size="28" />
+          <strong>{{
+            t("onboarding.indexing_complete_title", { count: totalImages })
+          }}</strong>
           <span>{{ t("onboarding.indexing_complete_desc") }}</span>
           <div class="indexing-demo__complete-actions">
             <Button variant="secondary" size="md" @click="emit('openLibrary')">
@@ -911,9 +994,12 @@ const demoImages = [
   left: 0;
   z-index: 2;
   padding: 6px 10px 7px;
-  border-top: 1px solid color-mix(in srgb, var(--border-strong) 34%, transparent);
+  border-top: 1px solid
+    color-mix(in srgb, var(--border-strong) 34%, transparent);
   background: color-mix(in srgb, var(--surface-elevated) 82%, transparent);
-  box-shadow: 0 -8px 22px -17px rgb(2 6 23 / 0.42), inset 0 1px rgb(255 255 255 / 0.055);
+  box-shadow:
+    0 -8px 22px -17px rgb(2 6 23 / 0.42),
+    inset 0 1px rgb(255 255 255 / 0.055);
   backdrop-filter: blur(18px) saturate(1.1);
 }
 .spotlight-demo__action-bar {
@@ -923,52 +1009,128 @@ const demoImages = [
   gap: 2px;
   width: 100%;
 }
-.settings-demo {
-  display: grid;
-  align-content: center;
-  gap: 13px;
-  height: 100%;
-  padding: 22px;
-}
-.settings-demo__shortcut-summary {
+.spotlight-demo__action-hub {
+  position: relative;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface);
 }
-.settings-demo__shortcut-summary > div {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.spotlight-demo__action-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  width: 290px;
+  padding: 6px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 82%, transparent);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--surface-elevated) 94%, transparent);
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.08),
+    0 22px 48px -24px rgb(2 6 23 / 0.72);
+  backdrop-filter: blur(28px) saturate(1.18);
+  transform-origin: calc(100% - 34px) 100%;
 }
-.settings-demo__shortcut-summary span {
-  display: grid;
+.spotlight-demo__action-menu-button {
+  width: 100%;
+  min-height: 40px;
+  justify-content: flex-start;
+  padding-inline: 8px;
+  text-align: left;
 }
-.settings-demo__shortcut-summary strong {
+.spotlight-demo__action-menu-button + .spotlight-demo__action-menu-button {
+  margin-top: 2px;
+}
+.spotlight-demo__action-menu-button--featured {
+  min-height: 46px;
+  margin-bottom: 4px;
+}
+.spotlight-demo__action-menu-button :deep(.ui-button__content) {
+  flex: 1;
+  justify-content: flex-start;
+  min-width: 0;
+  text-align: left;
+}
+.spotlight-demo__action-menu-button :deep(.ui-button__icon:last-child) {
+  margin-left: auto;
+}
+.spotlight-demo__action-popover__copy {
+  display: block;
+  min-width: 0;
+}
+.spotlight-demo__action-popover__copy strong,
+.spotlight-demo__action-popover__copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spotlight-demo__action-popover__copy strong {
   font-size: 11px;
+  font-weight: 650;
 }
-.settings-demo__shortcut-summary small {
-  margin-top: 4px;
+.spotlight-demo__action-popover__copy small {
+  margin-top: 2px;
   color: var(--text-muted);
   font-size: 9px;
 }
-.settings-demo__section {
+.spotlight-demo__action-popover__preview {
+  position: relative;
   display: grid;
-  gap: 13px;
-  padding: 14px;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface);
-  box-shadow: var(--btn-depth-shadow);
+  border-radius: 8px;
+  background: var(--surface-hover);
 }
-.settings-demo__section header {
+.spotlight-demo__action-popover__preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.action-popover-enter-active,
+.action-popover-leave-active {
+  transition:
+    opacity 120ms ease,
+    transform 170ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 120ms ease;
+}
+.action-popover-enter-from,
+.action-popover-leave-to {
+  opacity: 0;
+  transform: scale(0.95) translateY(6px);
+  filter: blur(4px);
+}
+.settings-demo {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  width: min(520px, 100%);
+  height: 100%;
+  margin: 0 auto;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.settings-demo :deep(.spotlight-settings) {
+  padding: 0;
+  overflow: visible;
+}
+.settings-demo__app-notice {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 12px 14px;
+  border: 1px dashed color-mix(in srgb, var(--border-strong) 60%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.settings-demo__app-notice svg {
+  flex-shrink: 0;
+  color: var(--primary-text);
 }
 .settings-demo__section header div {
   display: grid;
@@ -982,61 +1144,108 @@ const demoImages = [
   font-size: 9px;
 }
 .indexing-demo {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  align-content: stretch;
-  gap: 16px;
-  width: min(510px, calc(100% - 52px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
   height: 100%;
-  margin: 0 auto;
-  padding: 24px 0;
+  padding: 20px;
   box-sizing: border-box;
 }
-.indexing-demo__hero {
+.indexing-demo__empty-wrapper {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 14px;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 440px;
+}
+.indexing-demo__setup-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 28px 24px;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.08),
+    0 20px 40px -28px rgb(15 23 42 / 0.4);
+  text-align: center;
+}
+.indexing-demo__icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 14px;
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--primary-soft) 72%, var(--surface));
+  color: var(--primary-text);
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.1),
+    0 12px 24px -20px rgb(15 23 42 / 0.45);
+}
+.indexing-demo__setup-copy strong {
+  color: var(--text);
+  font-size: 16px;
+  letter-spacing: -0.2px;
+}
+.indexing-demo__setup-copy p {
+  max-width: 320px;
+  margin: 8px 0 18px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.indexing-demo__privacy {
+  margin-top: 13px;
+  color: var(--text-subtle);
+  font-size: 9px;
 }
 .indexing-demo__folder {
   display: grid;
   align-content: center;
   gap: 14px;
-  width: min(360px, 100%);
+  width: min(380px, 100%);
   margin: auto;
 }
 .indexing-demo__waiting {
-  display: grid;
-  place-items: center;
-  align-content: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 10px;
   color: var(--text-muted);
+  text-align: center;
 }
-.indexing-demo__waiting strong { color: var(--text); font-size: 14px; }
-.indexing-demo__waiting span { max-width: 300px; color: var(--text-muted); font-size: 10px; line-height: 1.5; text-align: center; }
-.indexing-demo__model-status { width: min(360px, 100%); margin: 0 auto; }
-.indexing-demo__complete-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
-.indexing-demo__hero > svg {
-  color: var(--primary-text);
+.indexing-demo__waiting strong {
+  color: var(--text);
+  font-size: 15px;
 }
-.indexing-demo__hero div {
-  display: grid;
-}
-.indexing-demo__hero strong {
-  font-size: 16px;
-}
-.indexing-demo__hero span {
-  margin-top: 6px;
+.indexing-demo__waiting span {
+  max-width: 320px;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
+  text-align: center;
+}
+.indexing-demo__model-status {
+  width: 100%;
+}
+.indexing-demo__complete-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
 }
 .indexing-demo__add-folder {
-  align-self: center;
-  justify-self: center;
-  min-width: min(320px, 100%);
-  min-height: 64px;
-  padding-inline: 28px;
-  font-size: 13px;
+  min-width: min(240px, 100%);
 }
 .indexing-demo__job {
   display: grid;

@@ -32,4 +32,5 @@ export default {
 
   'settings.no_results_title': '設定が見つかりません',
   'settings.no_results_desc': '「ショートカット」「テーマ」「チュートリアル」「外観」などを試してください。',
+  'settings.app_settings_notice': 'その他の設定（言語、フォルダ、ウィンドウ操作）は、Imagyx アプリ内でいつでも利用できます。',
 } as const

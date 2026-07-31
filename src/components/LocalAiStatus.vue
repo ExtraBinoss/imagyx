@@ -63,7 +63,8 @@ const percent = computed(() =>
     : active.value ? null : 100,
 )
 const indeterminate = computed(() =>
-  preparingModel.value ||
+  (preparingModel.value && !downloading.value) ||
+  (downloading.value && total.value === 0) ||
   (indexing.value && current.value === 0) ||
   (folderIndexing.value && (props.progress?.stage === 'discovering' || total.value === 0)),
 )
@@ -100,7 +101,10 @@ const detail = computed(() => {
     }
     return props.modelProgress.fileName ?? t('indexing.message.downloading_name')
   }
-  return liveStats.value?.accelerationLabel ?? t('indexing.title.ready')
+  if (liveStats.value?.accelerationLabel && liveStats.value.accelerationLabel !== 'Non initialisée') {
+    return liveStats.value.accelerationLabel
+  }
+  return t('indexing.title.ready')
 })
 
 const phaseLabel = computed(() => {
@@ -226,7 +230,7 @@ async function copyAiDetails() {
               </div>
               <div>
                 <dt>{{ t('indexing.info.hardware') }}</dt>
-                <dd>{{ liveStats?.accelerationActive ? 'OK' : 'KO' }}</dd>
+                <dd>{{ liveStats?.accelerationActive ? 'WebGPU (OK)' : liveStats?.backendEffective && liveStats.backendEffective !== 'En attente' ? `${liveStats.backendEffective} (CPU)` : 'En attente' }}</dd>
               </div>
             </dl>
 
@@ -316,9 +320,9 @@ async function copyAiDetails() {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--primary), var(--primary-hover));
-  transition: width 200ms ease;
+  transition: width 220ms ease;
 }
-.card-track--indeterminate i { width: 35%; animation: progress-slide 1.2s ease-in-out infinite; }
+.card-track--indeterminate i { width: 35% !important; animation: progress-slide 1.2s ease-in-out infinite; }
 .card-control { width: 26px; height: 26px; padding: 0; }
 .ai-stats { display: grid; gap: var(--space-3); }
 .ai-stats__title { padding-bottom: var(--space-2); border-bottom: 1px solid var(--border); }

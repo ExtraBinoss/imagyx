@@ -32,4 +32,5 @@ export default {
 
   'settings.no_results_title': 'لم يتم العثور على إعدادات',
   'settings.no_results_desc': 'جرّب «اختصار» أو «سمة» أو «جولة» أو «مظهر».',
+  'settings.app_settings_notice': 'تبقى بقية إعداداتك (اللغة والمجلدات وعناصر تحكم النافذة) متاحة في أي وقت داخل تطبيق Imagyx.',
 } as const

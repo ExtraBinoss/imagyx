@@ -23,8 +23,8 @@ export default {
   'onboarding.step_preview_desc': 'Sélectionnez ou survolez une carte et appuyez sur Espace. L’aperçu complet s’ouvre dans Imagyx et se ferme avec Espace, Échap ou un clic à l’extérieur.',
   'onboarding.step_spotlight_title': 'Trouvez et utilisez une image depuis n’importe où',
   'onboarding.step_spotlight_desc': 'Imagyx reste disponible dans la zone de notification Windows. Utilisez le raccourci global pour chercher sans interrompre votre travail.',
-  'onboarding.step_settings_title': 'Adaptez Imagyx à votre bureau',
-  'onboarding.step_settings_desc': 'Modifiez instantanément le raccourci Spotlight, le thème et les contrôles de fenêtre. Vos préférences restent locales et persistent entre les redémarrages.',
+  'onboarding.step_settings_title': 'Personnalisez votre expérience',
+  'onboarding.step_settings_desc': 'Configurez votre raccourci Spotlight et votre thème dès maintenant. Le reste de vos paramètres (langue, dossiers, contrôles de fenêtre) est accessible à tout moment dans l’application Imagyx.',
   'onboarding.step_indexing_title': 'Ajoutez un dossier à analyser',
   'onboarding.step_indexing_desc': 'Choisissez un dossier d’images. Imagyx l’indexe localement en arrière-plan pour le rendre recherchable.',
 } as const

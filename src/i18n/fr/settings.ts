@@ -32,4 +32,5 @@ export default {
 
   'settings.no_results_title': 'Aucun réglage trouvé',
   'settings.no_results_desc': 'Essayez « raccourci », « thème », « tutoriel » ou « apparence ».',
+  'settings.app_settings_notice': 'Le reste de vos réglages (langue, dossiers, contrôles de fenêtre) est accessible à tout moment dans l’application Imagyx.',
 } as const

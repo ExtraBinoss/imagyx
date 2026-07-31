@@ -45,6 +45,11 @@ const steps = [
     descKey: 'onboarding.step_spotlight_desc',
     kind: 'spotlight' as const,
   },
+  {
+    titleKey: 'onboarding.step_settings_title',
+    descKey: 'onboarding.step_settings_desc',
+    kind: 'settings' as const,
+  },
 ]
 
 const stepIndex = ref(0)
@@ -216,8 +221,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 .onboarding-copy p { max-width: 790px; margin: 11px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.55; }
 .onboarding-preview { min-height: 0; overflow: hidden; }
 .onboarding-preview__content { height: 100%; }
-.onboarding-footer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 16px; min-width: 0; }
-.onboarding-progress { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.onboarding-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
+.onboarding-progress { display: flex; align-items: center; justify-content: flex-start; gap: 6px; }
 .onboarding-dot {
   width: 7px;
   min-width: 7px;

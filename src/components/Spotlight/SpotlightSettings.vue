@@ -21,7 +21,7 @@ const props = withDefaults(
     shortcutUpdating: boolean
     shortcutError: string | null
     themeMode: ThemeMode
-    variant?: 'spotlight' | 'popover'
+    variant?: 'spotlight' | 'popover' | 'embedded'
   }>(),
   {
     query: '',
@@ -51,13 +51,14 @@ const languageOptions = computed(() =>
 )
 
 const isPopover = computed(() => props.variant === 'popover')
+const isEmbedded = computed(() => props.variant === 'embedded')
 const normalizedQuery = computed(() => (props.query ?? '').trim().toLocaleLowerCase('en'))
-const showShortcut = computed(() => isPopover.value || matches(['shortcut', 'keyboard', 'keybind', 'spotlight', 'open']))
-const showTheme = computed(() => isPopover.value || matches(['theme', 'appearance', 'light', 'dark', 'system', 'color']))
-const showControls = computed(() => isPopover.value || matches(['buttons', 'controls', 'close', 'minimize', 'window', 'position', 'left', 'right', 'titlebar']))
-const showLanguage = computed(() => isPopover.value || matches(['language', 'langue', 'lang', 'locale', 'region', 'translate', 'traduire', 'français', 'english', '日本語', '简体中文', 'العربية', 'русский', 'deutsch', 'español', 'italiano', 'português']))
-const showOnboarding = computed(() => isPopover.value || matches(['onboarding', 'guide', 'tutorial', 'discover', 'welcome', 'help']))
-const showInfo = computed(() => isPopover.value || matches(['info', 'information', 'version', 'debug', 'system', 'imagyx', 'stats', 'indexing', 'database', 'sqlite']))
+const showShortcut = computed(() => isPopover.value || isEmbedded.value || matches(['shortcut', 'keyboard', 'keybind', 'spotlight', 'open']))
+const showTheme = computed(() => isPopover.value || isEmbedded.value || matches(['theme', 'appearance', 'light', 'dark', 'system', 'color']))
+const showControls = computed(() => !isEmbedded.value && (isPopover.value || matches(['buttons', 'controls', 'close', 'minimize', 'window', 'position', 'left', 'right', 'titlebar'])))
+const showLanguage = computed(() => !isEmbedded.value && (isPopover.value || matches(['language', 'langue', 'lang', 'locale', 'region', 'translate', 'traduire', 'français', 'english', '日本語', '简体中文', 'العربية', 'русский', 'deutsch', 'español', 'italiano', 'português'])))
+const showOnboarding = computed(() => !isEmbedded.value && (isPopover.value || matches(['onboarding', 'guide', 'tutorial', 'discover', 'welcome', 'help'])))
+const showInfo = computed(() => !isEmbedded.value && (isPopover.value || matches(['info', 'information', 'version', 'debug', 'system', 'imagyx', 'stats', 'indexing', 'database', 'sqlite'])))
 const hasResults = computed(() => showShortcut.value || showTheme.value || showControls.value || showLanguage.value || showOnboarding.value || showInfo.value)
 
 function getCurrentLocale(): string {
