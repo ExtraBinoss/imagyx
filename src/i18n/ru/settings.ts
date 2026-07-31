@@ -15,6 +15,11 @@ export default {
   'settings.controls_left': 'Слева',
   'settings.controls_right': 'Справа',
 
+  'settings.startup_title': 'Автоматически запускать Imagyx',
+  'settings.startup_desc': 'Imagyx будет доступен в фоне сразу после входа в систему.',
+  'settings.startup_enabled': 'Запускать вместе с компьютером',
+  'settings.startup_disabled': 'Не запускать автоматически',
+
   'settings.onboarding_title': 'Руководство',
   'settings.onboarding_desc': 'Просмотрите основные функции или добавьте папку с изображениями из обучающего тура.',
   'settings.onboarding_replay': 'Повторить обучение',

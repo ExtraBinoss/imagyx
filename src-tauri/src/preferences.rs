@@ -11,23 +11,30 @@ pub const DEFAULT_SPOTLIGHT_SHORTCUT: &str = "Control+Numpad9";
 #[serde(rename_all = "camelCase")]
 struct PreferencesFile {
     spotlight_shortcut: String,
+    #[serde(default)]
+    launch_on_startup: Option<bool>,
 }
 
 pub struct ShortcutPreferences {
     path: PathBuf,
-    current: Mutex<(String, Shortcut)>,
+    current: Mutex<(String, Shortcut, bool)>,
 }
 
 impl ShortcutPreferences {
     pub fn load(path: PathBuf) -> Self {
-        let requested = read_preferences(&path)
-            .map(|preferences| preferences.spotlight_shortcut)
+        let persisted = read_preferences(&path);
+        let requested = persisted
+            .as_ref()
+            .map(|preferences| preferences.spotlight_shortcut.clone())
             .unwrap_or_else(|| DEFAULT_SPOTLIGHT_SHORTCUT.to_owned());
+        let launch_on_startup = persisted
+            .and_then(|preferences| preferences.launch_on_startup)
+            .unwrap_or(true);
         let shortcut = Shortcut::from_str(&requested)
             .or_else(|_| Shortcut::from_str(DEFAULT_SPOTLIGHT_SHORTCUT))
             .expect("default spotlight shortcut must be valid");
         let normalized = shortcut.clone().into_string();
-        Self { path, current: Mutex::new((normalized, shortcut)) }
+        Self { path, current: Mutex::new((normalized, shortcut, launch_on_startup)) }
     }
 
     pub fn register(&self, app: &AppHandle) -> Result<(), String> {
@@ -37,6 +44,10 @@ impl ShortcutPreferences {
 
     pub fn value(&self) -> String {
         self.current.lock().0.clone()
+    }
+
+    pub fn launch_on_startup(&self) -> bool {
+        self.current.lock().2
     }
 
     pub fn update(&self, app: &AppHandle, requested: &str) -> Result<String, String> {
@@ -55,7 +66,10 @@ impl ShortcutPreferences {
             return Err(format!("Ce raccourci n’est pas disponible: {error}"));
         }
 
-        if let Err(error) = write_preferences(&self.path, &PreferencesFile { spotlight_shortcut: normalized.clone() }) {
+        if let Err(error) = write_preferences(&self.path, &PreferencesFile {
+            spotlight_shortcut: normalized.clone(),
+            launch_on_startup: Some(current.2),
+        }) {
             let _ = app.global_shortcut().unregister(parsed);
             let _ = app.global_shortcut().register(previous_shortcut);
             return Err(format!("Impossible d’enregistrer le raccourci: {error}"));
@@ -64,6 +78,19 @@ impl ShortcutPreferences {
         current.0 = normalized.clone();
         current.1 = parsed;
         Ok(normalized)
+    }
+
+    pub fn set_launch_on_startup(&self, enabled: bool) -> Result<(), String> {
+        let mut current = self.current.lock();
+        if current.2 == enabled {
+            return Ok(());
+        }
+        write_preferences(&self.path, &PreferencesFile {
+            spotlight_shortcut: current.0.clone(),
+            launch_on_startup: Some(enabled),
+        })?;
+        current.2 = enabled;
+        Ok(())
     }
 }
 

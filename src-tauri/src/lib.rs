@@ -22,6 +22,7 @@ use preferences::ShortcutPreferences;
 use state::AppState;
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::ShortcutState;
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use thiserror::Error;
 use watcher::FolderWatcher;
 
@@ -48,6 +49,7 @@ pub fn run() {
     tracing::init();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, _shortcut, event| {
@@ -71,6 +73,11 @@ pub fn run() {
                 let _trace = tracing::span("startup.shortcut.register");
                 if let Err(error) = shortcut_preferences.register(app.handle()) {
                     tracing::event("shortcut.register.failed", error);
+                }
+            }
+            if shortcut_preferences.launch_on_startup() {
+                if let Err(error) = app.autolaunch().enable() {
+                    tracing::event("autostart.enable.failed", error);
                 }
             }
 
@@ -159,6 +166,8 @@ pub fn run() {
             commands::app::update_model_progress,
             commands::app::get_spotlight_shortcut,
             commands::app::set_spotlight_shortcut,
+            commands::app::get_launch_on_startup,
+            commands::app::set_launch_on_startup,
             commands::app::prepare_local_model,
             commands::app::reset_embeddings,
             commands::folders::list_folders,

@@ -10,6 +10,7 @@ use crate::{
     state::AppState,
     tracing, tray,
 };
+use tauri_plugin_autostart::ManagerExt;
 
 #[tauri::command]
 pub fn get_app_info(state: State<'_, Arc<AppState>>, app: AppHandle) -> AppInfo {
@@ -99,6 +100,35 @@ pub fn set_spotlight_shortcut(
     let updated = preferences.update(&app, &shortcut)?;
     let _ = app.emit("spotlight-shortcut-updated", updated.clone());
     Ok(updated)
+}
+
+#[tauri::command]
+pub fn get_launch_on_startup(preferences: State<'_, ShortcutPreferences>) -> bool {
+    preferences.launch_on_startup()
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn set_launch_on_startup(
+    enabled: bool,
+    app: AppHandle,
+    preferences: State<'_, ShortcutPreferences>,
+) -> Result<bool, String> {
+    let autolaunch = app.autolaunch();
+    let previously_enabled = autolaunch.is_enabled().map_err(|error| error.to_string())?;
+    if enabled {
+        autolaunch.enable().map_err(|error| error.to_string())?;
+    } else {
+        autolaunch.disable().map_err(|error| error.to_string())?;
+    }
+    if let Err(error) = preferences.set_launch_on_startup(enabled) {
+        if previously_enabled {
+            let _ = autolaunch.enable();
+        } else {
+            let _ = autolaunch.disable();
+        }
+        return Err(error);
+    }
+    Ok(enabled)
 }
 
 #[tauri::command(rename_all = "camelCase")]

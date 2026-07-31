@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
-import { AlignLeft, AlignRight, BookOpen, Check, Copy, Globe, Info, Keyboard, Layout, Monitor, Moon, Palette, SearchX, Sun } from '@lucide/vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { AlignLeft, AlignRight, BookOpen, Check, Copy, Globe, Info, Keyboard, Layout, Monitor, Moon, Palette, Power, SearchX, Sun } from '@lucide/vue'
 import { imagyxApi } from '../../api/tauri'
 import type { ThemeMode } from '../../stores/theme'
 import { usePlatformStore } from '../../stores/platform'
@@ -10,6 +10,7 @@ import Accordion from '../ui/Accordion/Accordion.vue'
 import Button from '../ui/Button/Button.vue'
 import ButtonGroup from '../ui/ButtonGroup/ButtonGroup.vue'
 import SearchSelect from '../ui/Select/SearchSelect.vue'
+import Switch from '../ui/Switch/Switch.vue'
 import { copyDebugInfoToClipboard } from '../../utils/copy-information'
 import { useTranslate, setLocale, getI18n } from '../../i18n'
 import { languages } from '../../i18n/languages'
@@ -40,6 +41,9 @@ const platform = usePlatformStore()
 const library = useLibraryStore()
 const copied = ref(false)
 const currentLocale = ref(getCurrentLocale())
+const launchOnStartup = ref(false)
+const launchOnStartupLoading = ref(false)
+const launchOnStartupError = ref<string | null>(null)
 let scrollEndTimer: number | undefined
 
 const languageOptions = computed(() =>
@@ -56,10 +60,11 @@ const normalizedQuery = computed(() => (props.query ?? '').trim().toLocaleLowerC
 const showShortcut = computed(() => isPopover.value || isEmbedded.value || matches(['shortcut', 'keyboard', 'keybind', 'spotlight', 'open']))
 const showTheme = computed(() => isPopover.value || isEmbedded.value || matches(['theme', 'appearance', 'light', 'dark', 'system', 'color']))
 const showControls = computed(() => !isEmbedded.value && (isPopover.value || matches(['buttons', 'controls', 'close', 'minimize', 'window', 'position', 'left', 'right', 'titlebar'])))
+const showStartup = computed(() => !isEmbedded.value && (isPopover.value || matches(['startup', 'start', 'boot', 'launch', 'login', 'démarrage', 'ouvrir'])))
 const showLanguage = computed(() => !isEmbedded.value && (isPopover.value || matches(['language', 'langue', 'lang', 'locale', 'region', 'translate', 'traduire', 'français', 'english', '日本語', '简体中文', 'العربية', 'русский', 'deutsch', 'español', 'italiano', 'português'])))
 const showOnboarding = computed(() => !isEmbedded.value && (isPopover.value || matches(['onboarding', 'guide', 'tutorial', 'discover', 'welcome', 'help'])))
 const showInfo = computed(() => !isEmbedded.value && (isPopover.value || matches(['info', 'information', 'version', 'debug', 'system', 'imagyx', 'stats', 'indexing', 'database', 'sqlite'])))
-const hasResults = computed(() => showShortcut.value || showTheme.value || showControls.value || showLanguage.value || showOnboarding.value || showInfo.value)
+const hasResults = computed(() => showShortcut.value || showTheme.value || showControls.value || showStartup.value || showLanguage.value || showOnboarding.value || showInfo.value)
 
 function getCurrentLocale(): string {
   try {
@@ -92,6 +97,19 @@ async function openOnboarding() {
   await imagyxApi.openOnboarding()
 }
 
+async function setLaunchOnStartup(enabled: boolean) {
+  if (launchOnStartupLoading.value || enabled === launchOnStartup.value) return
+  launchOnStartupLoading.value = true
+  launchOnStartupError.value = null
+  try {
+    launchOnStartup.value = await imagyxApi.setLaunchOnStartup(enabled)
+  } catch (reason) {
+    launchOnStartupError.value = String(reason)
+  } finally {
+    launchOnStartupLoading.value = false
+  }
+}
+
 async function copyDebugInfo() {
   await copyDebugInfoToClipboard({
     appVersion: platform.appVersion,
@@ -114,6 +132,14 @@ async function copyDebugInfo() {
 onBeforeUnmount(() => {
   if (scrollEndTimer) window.clearTimeout(scrollEndTimer)
   emit('scrollState', false)
+})
+
+onMounted(async () => {
+  try {
+    launchOnStartup.value = await imagyxApi.launchOnStartup()
+  } catch (reason) {
+    launchOnStartupError.value = String(reason)
+  }
 })
 </script>
 
@@ -176,6 +202,20 @@ onBeforeUnmount(() => {
           <template #leading><AlignRight :size="16" /></template>{{ t('settings.controls_right') }}
         </Button>
       </ButtonGroup>
+    </section>
+
+    <section v-if="showStartup" class="settings-section">
+      <header>
+        <span class="settings-section__icon"><Power :size="17" /></span>
+        <div><strong>{{ t('settings.startup_title') }}</strong><p>{{ t('settings.startup_desc') }}</p></div>
+        <Switch
+          :model-value="launchOnStartup"
+          :disabled="launchOnStartupLoading"
+          :aria-label="t('settings.startup_title')"
+          @update:model-value="setLaunchOnStartup"
+        />
+      </header>
+      <small v-if="launchOnStartupError" class="settings-section__error" role="alert">{{ launchOnStartupError }}</small>
     </section>
 
     <section v-if="showLanguage" class="settings-section">
@@ -293,6 +333,7 @@ onBeforeUnmount(() => {
 }
 .settings-section header strong { display: block; color: var(--text); font-size: 12px; }
 .settings-section header p { margin: 4px 0 0; color: var(--text-muted); font-size: 10px; line-height: 1.45; }
+.settings-section__error { display: block; margin-top: 8px; color: var(--danger-text); font-size: 10px; line-height: 1.4; }
 .settings-error {
   margin: 0;
   padding: 9px 10px;

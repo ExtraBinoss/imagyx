@@ -209,6 +209,9 @@ export const imagyxApi = {
   spotlightShortcut: () => invoke<string>('get_spotlight_shortcut'),
   setSpotlightShortcut: (shortcut: string) =>
     invoke<string>('set_spotlight_shortcut', { shortcut }),
+  launchOnStartup: () => invoke<boolean>('get_launch_on_startup'),
+  setLaunchOnStartup: (enabled: boolean) =>
+    invoke<boolean>('set_launch_on_startup', { enabled }),
   prepareLocalModel: (modelKey: string) => invoke<string>('prepare_local_model', { modelKey }),
   resetEmbeddings: () => invoke<void>('reset_embeddings'),
   folders: () => invoke<FollowedFolder[]>('list_folders'),

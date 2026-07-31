@@ -15,6 +15,11 @@ export default {
   'settings.controls_left': 'Gauche',
   'settings.controls_right': 'Droite',
 
+  'settings.startup_title': 'Démarrer Imagyx automatiquement',
+  'settings.startup_desc': 'Gardez Imagyx disponible en arrière-plan dès l’ouverture de votre session.',
+  'settings.startup_enabled': 'Démarrer avec mon ordinateur',
+  'settings.startup_disabled': 'Ne pas démarrer automatiquement',
+
   'settings.onboarding_title': 'Guide de découverte',
   'settings.onboarding_desc': 'Revoyez les fonctionnalités principales ou ajoutez un dossier d’images depuis la visite guidée.',
   'settings.onboarding_replay': 'Revoir le tutoriel',

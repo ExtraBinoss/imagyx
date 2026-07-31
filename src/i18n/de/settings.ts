@@ -15,6 +15,11 @@ export default {
   'settings.controls_left': 'Links',
   'settings.controls_right': 'Rechts',
 
+  'settings.startup_title': 'Imagyx automatisch starten',
+  'settings.startup_desc': 'Halte Imagyx im Hintergrund bereit, sobald du dich anmeldest.',
+  'settings.startup_enabled': 'Mit meinem Computer starten',
+  'settings.startup_disabled': 'Nicht automatisch starten',
+
   'settings.onboarding_title': 'Einführungsguide',
   'settings.onboarding_desc': 'Sieh dir die wichtigsten Funktionen an oder füge einen Bildordner aus der geführten Tour hinzu.',
   'settings.onboarding_replay': 'Tour wiederholen',

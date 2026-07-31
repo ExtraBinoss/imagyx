@@ -382,7 +382,7 @@ async function runSearch() {
     })
   }
 
-  if (!hasFolders.value || (!text && !folderId)) {
+  if (!hasFolders.value) {
     results.value = []
     searching.value = false
     return

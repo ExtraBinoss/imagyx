@@ -15,6 +15,11 @@ export default {
   'settings.controls_left': '左',
   'settings.controls_right': '右',
 
+  'settings.startup_title': 'Imagyx を自動起動',
+  'settings.startup_desc': 'サインイン後すぐに Imagyx をバックグラウンドで利用できるようにします。',
+  'settings.startup_enabled': 'コンピューターの起動時に開始',
+  'settings.startup_disabled': '自動的に開始しない',
+
   'settings.onboarding_title': 'ディスカバリーガイド',
   'settings.onboarding_desc': '主要機能を確認するか、ガイド付きツアーから画像フォルダを追加します。',
   'settings.onboarding_replay': 'チュートリアルを再生',

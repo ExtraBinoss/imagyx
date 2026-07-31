@@ -15,6 +15,11 @@ export default {
   'settings.controls_left': '左侧',
   'settings.controls_right': '右侧',
 
+  'settings.startup_title': '自动启动 Imagyx',
+  'settings.startup_desc': '登录后立即让 Imagyx 在后台保持可用。',
+  'settings.startup_enabled': '随电脑启动',
+  'settings.startup_disabled': '不自动启动',
+
   'settings.onboarding_title': '发现指南',
   'settings.onboarding_desc': '查看核心功能或从引导教程中添加图片文件夹。',
   'settings.onboarding_replay': '重播教程',

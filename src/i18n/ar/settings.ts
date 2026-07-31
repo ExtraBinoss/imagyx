@@ -15,6 +15,11 @@ export default {
   'settings.controls_left': 'اليسار',
   'settings.controls_right': 'اليمين',
 
+  'settings.startup_title': 'تشغيل Imagyx تلقائيًا',
+  'settings.startup_desc': 'اجعل Imagyx متاحًا في الخلفية فور تسجيل الدخول.',
+  'settings.startup_enabled': 'التشغيل مع الكمبيوتر',
+  'settings.startup_disabled': 'عدم التشغيل تلقائيًا',
+
   'settings.onboarding_title': 'دليل الاكتشاف',
   'settings.onboarding_desc': 'راجع الميزات الأساسية أو أضف مجلد صور من الجولة الإرشادية.',
   'settings.onboarding_replay': 'إعادة العرض',

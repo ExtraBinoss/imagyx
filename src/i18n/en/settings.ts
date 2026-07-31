@@ -15,6 +15,11 @@ export default {
   'settings.controls_left': 'Left',
   'settings.controls_right': 'Right',
 
+  'settings.startup_title': 'Start Imagyx automatically',
+  'settings.startup_desc': 'Keep Imagyx available in the background as soon as you sign in.',
+  'settings.startup_enabled': 'Start with my computer',
+  'settings.startup_disabled': 'Do not start automatically',
+
   'settings.onboarding_title': 'Discovery guide',
   'settings.onboarding_desc': 'Review the core features or add an image folder from the guided tour.',
   'settings.onboarding_replay': 'Replay onboarding',
