@@ -487,36 +487,7 @@ defineExpose({ scrollToIndex });
           </div>
         </div>
 
-        <aside
-          v-if="semanticSearching && hasSearchQuery && results.length > 0"
-          class="spotlight-semantic-searching"
-          aria-live="polite"
-        >
-          <LoaderCircle class="spin" :size="16" />
-          <span>{{ t("spotlight.semantic_searching") }}</span>
-        </aside>
 
-        <div
-          v-if="searching && hasSearchQuery && results.length === 0"
-          class="spotlight-loading-list"
-          :aria-label="t('spotlight.searching')"
-        >
-          <span
-            v-for="item in 5"
-            :key="item"
-            :style="{ animationDelay: `${item * 45}ms` }"
-          />
-        </div>
-
-        <div
-          v-else-if="semanticSearching && hasSearchQuery && results.length === 0"
-          class="spotlight-semantic-empty"
-          aria-live="polite"
-        >
-          <LoaderCircle class="spin" :size="24" />
-          <strong>{{ t("spotlight.semantic_searching") }}</strong>
-          <span>{{ t("spotlight.semantic_searching_desc") }}</span>
-        </div>
 
         <div
           v-else-if="

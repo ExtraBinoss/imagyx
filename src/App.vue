@@ -20,7 +20,6 @@ import { usePlatformStore } from "./stores/platform";
 import { useShortcutStore } from "./stores/shortcut";
 import { useThemeStore } from "./stores/theme";
 import { semanticRuntime } from "./services/semantic";
-import { registerSemanticQueryProvider } from "./services/semantic-provider";
 import { spotlightSearchTiming } from "./config/spotlight-search";
 import { capitalize, useTagTypewriter } from "./useTagTypewriter";
 import { debounce, perfLog } from "./utils";
@@ -56,7 +55,6 @@ const searchHeader = ref<{
 } | null>(null);
 let unlistenOpenImage: UnlistenFn | null = null;
 let unlistenOpenOnboarding: UnlistenFn | null = null;
-let unlistenSemanticProvider: UnlistenFn | null = null;
 let unlistenPauseIndexing: UnlistenFn | null = null;
 let unlistenResumeIndexing: UnlistenFn | null = null;
 let unlistenAddFolder: UnlistenFn | null = null;
@@ -167,8 +165,6 @@ onMounted(async () => {
   onboarding.initialize();
   void platform.initialize();
   void shortcut.initialize();
-  unlistenSemanticProvider = await registerSemanticQueryProvider();
-  void imagyxApi.setSemanticProviderReady(true).catch(() => undefined);
   const initializePromise = store.initialize();
   void imagyxApi.setTrayPaused(semanticRuntime.isPaused);
   void initializePromise.then(() => {
@@ -196,16 +192,12 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
-  // The Rust process outlives a Vite/HMR frontend reload. Do not leave a stale
-  // ready flag pointing to an event listener that was just removed.
-  void imagyxApi.setSemanticProviderReady(false).catch(() => undefined);
   window.removeEventListener("keydown", handleTypeToSearch);
   unlistenOpenImage?.();
   unlistenOpenOnboarding?.();
   unlistenPauseIndexing?.();
   unlistenResumeIndexing?.();
   unlistenAddFolder?.();
-  unlistenSemanticProvider?.();
   for (const unlisten of store.listeners) unlisten();
 });
 </script>

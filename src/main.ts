@@ -4,8 +4,10 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App.vue";
 import SpotlightSearch from "./components/Spotlight/SpotlightSearch.vue";
+import { imagyxApi } from "./api/tauri";
 import { installSpotlightConverterKeyboardGuard } from "./services/spotlight-converter-keyboard";
 import { semanticRuntime } from "./services/semantic";
+import { registerSemanticQueryProvider } from "./services/semantic-provider";
 import { installUnifiedSearchEngine } from "./services/unified-search-engine";
 import { visualSearchSession } from "./services/visual-search-session";
 import { installPerformanceDiagnostics } from "./utils";
@@ -47,6 +49,13 @@ document.documentElement.style.colorScheme = resolvedTheme;
 
 installUnifiedSearchEngine();
 if (currentWindowLabel === "main") {
+  // Spotlight is a separate WebView and can be opened before App.vue mounts.
+  // Install the bridge before publishing readiness so its first semantic query
+  // never waits for an interaction with the main window.
+  void registerSemanticQueryProvider()
+    .then(() => imagyxApi.setSemanticProviderReady(true))
+    .catch(() => undefined);
+
   // Start loading before Vue mounts the main UI so an immediately opened
   // Spotlight has the shortest possible path to a text embedding.
   void semanticRuntime.prewarmText().catch(() => undefined);
