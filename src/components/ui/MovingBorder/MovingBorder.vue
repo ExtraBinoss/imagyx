@@ -106,10 +106,10 @@ const styleVariables = computed(() => ({
 
 .moving-border--md .moving-border__beam {
   stroke: var(--primary);
-  stroke-width: 2.5px;
-  stroke-dasharray: 18 82;
-  opacity: 0.92;
-  filter: drop-shadow(0 0 3px var(--primary));
+  stroke-width: 3px;
+  stroke-dasharray: 22 78;
+  opacity: 0.95;
+  filter: drop-shadow(0 0 4px var(--primary));
 }
 
 .moving-border--lg .moving-border__beam {

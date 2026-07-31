@@ -32,6 +32,7 @@ import womanPortrait from "../../assets/onboarding_assets/karina armageddon.jpg"
 import greenFashion from "../../assets/onboarding_assets/téléchargement (2).jpg";
 import imagyxLogo from "../../../src-tauri/icons/imagyx-bigger.avif";
 import ShortcutView from "../shortcuts/ShortcutView.vue";
+import UnifiedSearchInput from "../UnifiedSearchInput.vue";
 import SpotlightInput from "../Spotlight/SpotlightInput.vue";
 import SpotlightSettings from "../Spotlight/SpotlightSettings.vue";
 import Button from "../ui/Button/Button.vue";
@@ -233,8 +234,9 @@ const demoImages = [
 
     <div v-else-if="kind === 'search'" class="search-demo">
       <div class="search-demo__header">
-        <MovingBorder border-radius="16px" :duration="4200">
-          <SpotlightInput
+        <MovingBorder border-radius="13px" size="sm" :duration="4200">
+          <UnifiedSearchInput
+            variant="app"
             model-value="woman"
             view="search"
             :placeholder="t('search.placeholder')"
@@ -260,8 +262,10 @@ const demoImages = [
               <i v-for="tag in image.tags" :key="tag">{{ tag }}</i>
             </span>
           </span>
-          <strong>{{ image.fileName }}</strong>
-          <small>{{ 1600 + index * 320 }} × {{ 1100 + index * 180 }}</small>
+          <span class="demo-card-copy">
+            <strong>{{ image.label }}</strong>
+            <small>{{ image.fileName }}</small>
+          </span>
         </article>
       </div>
     </div>

@@ -291,13 +291,10 @@ async function syncFolders(openWhenEmpty = false) {
 
 async function openPanel(request = ++morphSequence) {
   if (collapseTimer) window.clearTimeout(collapseTimer)
-  try { await ensureExpanded() }
-  catch (reason) { if (request === morphSequence) error.value = String(reason); return }
-  if (request !== morphSequence) return
   shellMerged.value = true
-  await nextPaint()
-  if (request !== morphSequence) return
   resultsOpen.value = true
+  try { await ensureExpanded() }
+  catch (reason) { if (request === morphSequence) error.value = String(reason) }
 }
 
 async function closePanel(request = ++morphSequence) {
@@ -1020,6 +1017,7 @@ onBeforeUnmount(() => {
       <MovingBorder
         class="spotlight-border"
         border-radius="22px"
+        size="md"
         :duration="searching || hasActiveJobs ? 2600 : 4400"
         :active="visible"
       >
