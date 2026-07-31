@@ -212,6 +212,8 @@ export const imagyxApi = {
   launchOnStartup: () => invoke<boolean>('get_launch_on_startup'),
   setLaunchOnStartup: (enabled: boolean) =>
     invoke<boolean>('set_launch_on_startup', { enabled }),
+  semanticProviderReady: () => invoke<boolean>('semantic_provider_ready'),
+  setSemanticProviderReady: (ready: boolean) => invoke<void>('set_semantic_provider_ready', { ready }),
   prepareLocalModel: (modelKey: string) => invoke<string>('prepare_local_model', { modelKey }),
   resetEmbeddings: () => invoke<void>('reset_embeddings'),
   folders: () => invoke<FollowedFolder[]>('list_folders'),

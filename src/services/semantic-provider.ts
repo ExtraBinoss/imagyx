@@ -18,6 +18,12 @@ async function handleSemanticQueryRequest(request: SemanticQueryRequest): Promis
   }
 
   try {
+    // Acknowledge receipt immediately so Spotlight knows the event was not
+    // lost while the main window was starting or being hot-reloaded.
+    await emitTo(target, request.replyEvent, {
+      requestId: request.requestId,
+      status: 'accepted',
+    })
     const embeddingStartedAt = import.meta.env.DEV ? performance.now() : 0
     const result = await semanticRuntime.embedQuery(request.query)
     if (import.meta.env.DEV) {

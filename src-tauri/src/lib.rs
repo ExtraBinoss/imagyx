@@ -168,6 +168,8 @@ pub fn run() {
             commands::app::set_spotlight_shortcut,
             commands::app::get_launch_on_startup,
             commands::app::set_launch_on_startup,
+            commands::app::semantic_provider_ready,
+            commands::app::set_semantic_provider_ready,
             commands::app::prepare_local_model,
             commands::app::reset_embeddings,
             commands::folders::list_folders,

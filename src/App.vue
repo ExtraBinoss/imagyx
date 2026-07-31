@@ -182,6 +182,7 @@ onMounted(async () => {
   void platform.initialize();
   void shortcut.initialize();
   unlistenSemanticProvider = await registerSemanticQueryProvider();
+  void imagyxApi.setSemanticProviderReady(true).catch(() => undefined);
   // Spotlight delegates embeddings here. Start this before the main library
   // bootstrap so the first global search does not pay the model cold-start.
   scheduleEarlyTextWarmup();
@@ -212,6 +213,9 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  // The Rust process outlives a Vite/HMR frontend reload. Do not leave a stale
+  // ready flag pointing to an event listener that was just removed.
+  void imagyxApi.setSemanticProviderReady(false).catch(() => undefined);
   window.removeEventListener("keydown", handleTypeToSearch);
   unlistenOpenImage?.();
   unlistenOpenOnboarding?.();
