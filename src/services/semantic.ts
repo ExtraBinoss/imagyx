@@ -248,6 +248,8 @@ class SemanticRuntime {
   private environmentLoading: Promise<string> | null = null
   private localModelPath: string | null = null
   private indexing: Promise<void> | null = null
+  private pendingIndexFolders = new Set<string>()
+  private pendingIndexAll = false
   private genericConcepts: QueryConcept[] | null = null
   private callbacks: RuntimeCallbacks | null = null
   private queryCache = new Map<string, EmbeddedQuery>()
@@ -296,9 +298,31 @@ class SemanticRuntime {
       this.patchStats({ stage: 'paused', imagesPerSecond: 0 })
       return
     }
+    if (folderId) this.pendingIndexFolders.add(folderId)
+    else this.pendingIndexAll = true
+
     if (this.indexing) return this.indexing
-    this.indexing = this.runPendingIndex(folderId)
+    this.indexing = this.drainPendingIndexQueue()
     try { await this.indexing } finally { this.indexing = null }
+  }
+
+  private async drainPendingIndexQueue() {
+    while (!this.paused && (this.pendingIndexAll || this.pendingIndexFolders.size > 0)) {
+      const folderId = this.nextPendingFolder()
+      await this.runPendingIndex(folderId)
+    }
+  }
+
+  private nextPendingFolder(): string | undefined {
+    if (this.pendingIndexAll) {
+      this.pendingIndexAll = false
+      this.pendingIndexFolders.clear()
+      return undefined
+    }
+    const folderId = this.pendingIndexFolders.values().next().value
+    if (!folderId) return undefined
+    this.pendingIndexFolders.delete(folderId)
+    return folderId
   }
 
   private async prepareImageBatch(batch: ImageAsset[], batchId: string): Promise<PreparedBatch> {
