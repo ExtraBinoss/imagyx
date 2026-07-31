@@ -383,13 +383,21 @@ watch(() => props.images.length, () => {
     </div>
 
     <div v-else class="empty-state">
-      <component :is="hasFolders ? SearchX : FileImage" :size="34" :stroke-width="1.5" />
-      <strong>{{ hasFolders ? t('search.no_images_title') : t('search.no_folder_title') }}</strong>
-      <p>{{ hasFolders ? t('search.no_images_desc') : t('search.no_folder_desc') }}</p>
-      <Button v-if="!hasFolders" variant="primary" size="md" @click="emit('addFolder')">
-        <template #leading><FolderPlus :size="16" /></template>
-        {{ t('add_folder') }}
-      </Button>
+      <div v-if="!hasFolders" class="empty-state__card">
+        <span class="empty-state__icon"><FolderPlus :size="26" /></span>
+        <strong>{{ t('spotlight.no_folder_title') }}</strong>
+        <p>{{ t('onboarding.step_indexing_desc') }}</p>
+        <Button variant="primary" size="lg" class="empty-state__action" @click="emit('addFolder')">
+          <template #leading><FolderPlus :size="18" /></template>
+          {{ t('spotlight.no_folder_action') }}
+        </Button>
+        <small class="empty-state__privacy">{{ t('spotlight.no_folder_privacy') }}</small>
+      </div>
+      <template v-else>
+        <SearchX :size="36" :stroke-width="1.5" />
+        <strong>{{ t('search.no_images_title') }}</strong>
+        <p>{{ t('search.no_images_desc') }}</p>
+      </template>
     </div>
   </section>
 
@@ -575,6 +583,59 @@ watch(() => props.images.length, () => {
 .context-pop-leave-to { opacity: 0; transform: translate3d(0, -4px, 0) scale(0.96); filter: blur(3px); }
 @keyframes semantic-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 @keyframes context-spin { to { transform: rotate(1turn); } }
+.empty-state {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  height: 100%;
+  padding: 32px;
+  text-align: center;
+}
+.empty-state__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 400px;
+  padding: 36px 28px;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.08),
+    0 24px 50px -30px rgb(15 23 42 / 0.45);
+}
+.empty-state__icon {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  margin-bottom: 18px;
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--primary-soft) 72%, var(--surface));
+  color: var(--primary-text);
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.1), 0 14px 28px -24px rgb(15 23 42 / 0.5);
+}
+.empty-state__card strong {
+  color: var(--text);
+  font-size: 17px;
+  letter-spacing: -0.2px;
+}
+.empty-state__card p {
+  max-width: 320px;
+  margin: 10px 0 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.empty-state__action {
+  min-width: 190px;
+}
+.empty-state__privacy {
+  margin-top: 15px;
+  color: var(--text-subtle);
+  font-size: 10px;
+}
 @media (prefers-reduced-motion: reduce) {
   .semantic-marquee__track,
   .image-context-menu__spinner { animation: none !important; }

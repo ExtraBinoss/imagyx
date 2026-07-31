@@ -7,6 +7,11 @@ export default {
   'onboarding.next': 'Próximo',
   'onboarding.get_started': 'Começar',
   'onboarding.add_folder': 'Adicionar uma pasta',
+  'onboarding.first_folder_title': 'Adicione a sua primeira pasta',
+  'onboarding.add_another_folder': 'Adicionar outra pasta',
+  'onboarding.indexing_complete_title': '{count} imagens estão prontas para pesquisar',
+  'onboarding.indexing_complete_desc': 'A sua biblioteca está pronta. Abra-a agora ou adicione outra pasta quando quiser.',
+  'onboarding.open_library': 'Abrir a minha biblioteca',
 
   'onboarding.step_welcome_title': 'Bem-vindo à sua biblioteca visual',
   'onboarding.step_welcome_desc': 'O Imagyx mantém suas imagens no seu computador, organiza por pasta e as torna pesquisáveis em linguagem natural.',

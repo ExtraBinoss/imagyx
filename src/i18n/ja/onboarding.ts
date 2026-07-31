@@ -7,6 +7,11 @@ export default {
   'onboarding.next': '次へ',
   'onboarding.get_started': '始める',
   'onboarding.add_folder': 'フォルダを追加',
+  'onboarding.first_folder_title': '最初のフォルダを追加',
+  'onboarding.add_another_folder': '別のフォルダを追加',
+  'onboarding.indexing_complete_title': '{count} 枚の画像を検索できます',
+  'onboarding.indexing_complete_desc': 'ライブラリの準備ができました。今すぐ開くか、いつでも別のフォルダを追加できます。',
+  'onboarding.open_library': 'ライブラリを開く',
 
   'onboarding.step_welcome_title': 'ビジュアルライブラリへようこそ',
   'onboarding.step_welcome_desc': 'Imagyxはあなたの画像をコンピュータ上に保持し、フォルダごとに整理し、自然言語で検索可能にします。',

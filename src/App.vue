@@ -292,14 +292,18 @@ onBeforeUnmount(() => {
   <ImagePreviewDialog :image="previewImage" @close="previewImage = null" />
   <OnboardingDialog
     :open="onboarding.open"
-    :never-ask-again="onboarding.neverAskAgain"
     :theme-mode="theme.mode"
     :shortcut="shortcut.spotlight"
     :has-folders="store.folders.length > 0"
+    :total-images="store.totalImages"
+    :progress="store.progress"
+    :model-progress="store.modelProgress"
+    :runtime-stats="store.runtimeStats"
     @close="onboarding.close"
     @finish="onboarding.finish"
-    @never-ask-again="onboarding.setNeverAskAgain"
     @add-folder="addFolder"
     @theme-change="theme.setMode"
+    @pause-indexing="pauseIndexing"
+    @resume-indexing="resumeIndexing"
   />
 </template>

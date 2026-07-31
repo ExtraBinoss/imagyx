@@ -7,6 +7,11 @@ export default {
   'onboarding.next': 'Далее',
   'onboarding.get_started': 'Начать',
   'onboarding.add_folder': 'Добавить папку',
+  'onboarding.first_folder_title': 'Добавьте первую папку',
+  'onboarding.add_another_folder': 'Добавить другую папку',
+  'onboarding.indexing_complete_title': '{count} изображений готовы к поиску',
+  'onboarding.indexing_complete_desc': 'Ваша библиотека готова. Откройте её сейчас или добавьте другую папку в любое время.',
+  'onboarding.open_library': 'Открыть мою библиотеку',
 
   'onboarding.step_welcome_title': 'Добро пожаловать в вашу визуальную библиотеку',
   'onboarding.step_welcome_desc': 'Imagyx хранит ваши изображения на вашем компьютере, организует их по папкам и делает их доступными для поиска на естественном языке.',

@@ -7,6 +7,11 @@ export default {
   'onboarding.next': 'التالي',
   'onboarding.get_started': 'ابدأ',
   'onboarding.add_folder': 'إضافة مجلد',
+  'onboarding.first_folder_title': 'أضف مجلدك الأول',
+  'onboarding.add_another_folder': 'إضافة مجلد آخر',
+  'onboarding.indexing_complete_title': '{count} صورة جاهزة للبحث',
+  'onboarding.indexing_complete_desc': 'مكتبتك جاهزة. افتحها الآن أو أضف مجلدًا آخر متى شئت.',
+  'onboarding.open_library': 'فتح مكتبتي',
 
   'onboarding.step_welcome_title': 'مرحبًا بك في مكتبتك البصرية',
   'onboarding.step_welcome_desc': 'يحتفظ Imagyx بصورك على جهاز الكمبيوتر الخاص بك، وينظمها حسب المجلد، ويجعلها قابلة للبحث باللغة الطبيعية.',

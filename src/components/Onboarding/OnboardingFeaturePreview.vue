@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import {
   Check,
+  Copy,
+  Ellipsis,
   Folder,
   FolderOpen,
+  FolderPlus,
   Images,
   Info,
   Keyboard,
@@ -13,6 +16,8 @@ import {
   Sun,
   WandSparkles,
 } from "@lucide/vue";
+import { computed } from "vue";
+import type { IndexProgress, ModelDownloadProgress, RuntimeStats } from "../../types";
 import type { ThemeMode } from "../../stores/theme";
 import tribalPortrait from "../../assets/onboarding_assets/99003f6e5f05348d1852c38ed196d988.jpg";
 import womanGreen from "../../assets/onboarding_assets/girl_train_segmented.png";
@@ -22,12 +27,25 @@ import imagyxLogo from "../../../src-tauri/icons/imagyx-bigger.avif";
 import ShortcutView from "../shortcuts/ShortcutView.vue";
 import SpotlightInput from "../Spotlight/SpotlightInput.vue";
 import Button from "../ui/Button/Button.vue";
+import CopyButton from "../ui/Button/CopyButton.vue";
 import ButtonGroup from "../ui/ButtonGroup/ButtonGroup.vue";
 import KbdChip from "../ui/KbdChip/KbdChip.vue";
 import MovingBorder from "../ui/MovingBorder/MovingBorder.vue";
+import LocalAiStatus from "../LocalAiStatus.vue";
 import { useTranslate } from "../../i18n";
+import { isModelDownloading, isModelPreparing } from "../../utils/model-readiness";
 
-defineProps<{
+const { t } = useTranslate();
+
+const emit = defineEmits<{
+  addFolder: [];
+  themeChange: [value: ThemeMode];
+  pauseIndexing: [];
+  resumeIndexing: [];
+  openLibrary: [];
+}>();
+
+const props = defineProps<{
   kind:
     | "welcome"
     | "sidebar"
@@ -39,14 +57,20 @@ defineProps<{
   themeMode: ThemeMode;
   shortcut: string;
   hasFolders: boolean;
+  totalImages: number;
+  progress: IndexProgress | null;
+  modelProgress: ModelDownloadProgress | null;
+  runtimeStats: RuntimeStats | null;
 }>();
 
-const { t } = useTranslate();
-
-const emit = defineEmits<{
-  addFolder: [];
-  themeChange: [value: ThemeMode];
-}>();
+const isFolderIndexing = computed(() => Boolean(
+  props.progress
+  && !['complete', 'error'].includes(props.progress.stage),
+));
+const modelNeedsPreparation = computed(() =>
+  isModelDownloading(props.modelProgress)
+  || isModelPreparing(props.modelProgress, props.runtimeStats),
+);
 
 const demoImages = [
   {
@@ -195,11 +219,13 @@ const demoImages = [
     <div v-else-if="kind === 'search'" class="search-demo">
       <div class="search-demo__header">
         <MovingBorder border-radius="16px" :duration="4200">
-          <div class="search-demo__input">
-            <Search :size="18" />
-            <span>green</span>
-            <strong>{{ t("search.result_count", { count: 4 }) }}</strong>
-          </div>
+          <SpotlightInput
+            model-value="woman"
+            view="search"
+            :placeholder="t('search.placeholder')"
+            :searching="false"
+            :result-label="t('search.result_count', { count: 4 })"
+          />
         </MovingBorder>
         <Button class="search-demo__similar" variant="secondary" size="sm">
           <template #leading><WandSparkles :size="14" /></template>
@@ -253,7 +279,7 @@ const demoImages = [
     <div v-else-if="kind === 'spotlight'" class="spotlight-demo">
       <div class="spotlight-demo__shortcut">
         <span>{{ t("settings.shortcut_label") }}</span>
-        <KbdChip :shortcut="shortcut" size="md" />
+        <KbdChip :shortcut="shortcut" size="lg" variant="primary" />
       </div>
       <MovingBorder border-radius="20px" :duration="3600">
         <div class="spotlight-demo__surface">
@@ -270,23 +296,27 @@ const demoImages = [
               :key="image.fileName"
               :class="{ active: index === 0 }"
             >
-              <img class="demo-image" :src="image.src" :alt="image.label" />
-              <div>
-                <strong>{{ image.fileName }}</strong
-                ><small>{{ 92 - index * 6 }}% match</small>
+              <span class="spotlight-demo__thumb">
+                <img class="demo-image" :src="image.src" :alt="image.label" />
+              </span>
+              <div class="spotlight-demo__copy">
+                <strong>{{ image.fileName }}</strong>
+                <small>1600 × 1100 · 420 KB</small>
               </div>
-              <div class="spotlight-demo__actions">
-                <Button variant="secondary" size="sm"
-                  >Copy <KbdChip shortcut="Ctrl+C" size="sm"
-                /></Button>
-                <Button variant="secondary" size="sm"
-                  >Explorer <KbdChip shortcut="Ctrl+E" size="sm"
-                /></Button>
-                <Button variant="primary" size="sm"
-                  >Imagyx <KbdChip shortcut="Ctrl+I" size="sm"
-                /></Button>
-              </div>
+              <span class="spotlight-demo__score">{{ 92 - index * 6 }}%</span>
             </article>
+          </div>
+          <div class="spotlight-demo__action-dock" role="toolbar">
+            <div class="spotlight-demo__action-bar">
+              <CopyButton variant="ghost" size="md">
+                <template #trailing><KbdChip shortcut="Ctrl+C" size="sm" /></template>
+              </CopyButton>
+              <Button variant="ghost" size="md" :depth="false">
+                <template #leading><Ellipsis :size="17" /></template>
+                {{ t("spotlight.actions.more") }}
+                <template #trailing><KbdChip shortcut="Ctrl+K" size="sm" /></template>
+              </Button>
+            </div>
           </div>
         </div>
       </MovingBorder>
@@ -348,32 +378,59 @@ const demoImages = [
     </div>
 
     <div v-else class="indexing-demo">
-      <div class="indexing-demo__job">
-        <span><WandSparkles :size="17" /></span>
-        <div>
-          <strong>Visual references</strong
-          ><small>{{
-            t("indexing.message.embedding", { current: 684, total: 1248 })
-          }}</small>
-          <div class="progress-track"><i /></div>
+      <template v-if="!hasFolders">
+        <LocalAiStatus
+          v-if="modelNeedsPreparation"
+          class="indexing-demo__model-status"
+          :progress="progress"
+          :model-progress="modelProgress"
+          :runtime-stats="runtimeStats"
+          @pause="emit('pauseIndexing')"
+          @resume="emit('resumeIndexing')"
+        />
+        <div class="indexing-demo__hero">
+          <FolderOpen :size="23" />
+          <div>
+            <strong>{{ t("onboarding.first_folder_title") }}</strong>
+            <span>{{ t("onboarding.step_indexing_desc") }}</span>
+          </div>
         </div>
-        <b>55%</b>
-      </div>
-      <Button class="indexing-demo__add-folder" variant="primary" size="lg" @click="emit('addFolder')">
-        <template #leading><FolderOpen :size="20" /></template>
-        {{ t("onboarding.add_folder") }}
-      </Button>
-      <div class="indexing-demo__hero">
-        <FolderOpen :size="23" />
-        <div>
-          <strong>{{
-            hasFolders
-              ? t("indexing.title.completed")
-              : t("search.no_folder_title")
-          }}</strong>
-          <span>{{ t("onboarding.step_indexing_desc") }}</span>
+        <Button class="indexing-demo__add-folder" variant="primary" size="lg" @click="emit('addFolder')">
+          <template #leading><FolderOpen :size="20" /></template>
+          {{ t("onboarding.add_folder") }}
+        </Button>
+      </template>
+      <template v-else>
+        <div v-if="isFolderIndexing" class="indexing-demo__folder">
+          <div class="folder-row-demo">
+            <Button class="preview-row-button" variant="ghost" size="md" block>
+              <template #leading><Folder :size="16" /></template>
+              <span class="row-copy">Visual references</span>
+            </Button>
+          </div>
+          <LocalAiStatus
+            :progress="progress"
+            :model-progress="modelProgress"
+            :runtime-stats="runtimeStats"
+            @pause="emit('pauseIndexing')"
+            @resume="emit('resumeIndexing')"
+          />
         </div>
-      </div>
+        <div v-else class="indexing-demo__waiting">
+          <FolderOpen :size="23" />
+          <strong>{{ t("onboarding.indexing_complete_title", { count: totalImages }) }}</strong>
+          <span>{{ t("onboarding.indexing_complete_desc") }}</span>
+          <div class="indexing-demo__complete-actions">
+            <Button variant="secondary" size="md" @click="emit('openLibrary')">
+              {{ t("onboarding.open_library") }}
+            </Button>
+            <Button variant="ghost" size="md" @click="emit('addFolder')">
+              <template #leading><FolderPlus :size="16" /></template>
+              {{ t("onboarding.add_another_folder") }}
+            </Button>
+          </div>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -766,20 +823,24 @@ const demoImages = [
 }
 .spotlight-demo__shortcut {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  min-height: 28px;
+  justify-content: center;
+  gap: 10px;
+  min-height: 88px;
+  margin-bottom: 14px;
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: 11px;
+  font-weight: 600;
 }
 .spotlight-demo__surface {
+  position: relative;
   overflow: hidden;
   border-radius: 19px;
   background: color-mix(in srgb, var(--surface-elevated) 96%, transparent);
 }
 .spotlight-demo__results {
-  padding: 5px 8px 9px;
+  padding: 5px 8px 52px;
   border-top: 1px solid var(--border);
 }
 .spotlight-demo__results article {
@@ -793,39 +854,74 @@ const demoImages = [
   border-radius: 12px;
 }
 .spotlight-demo__results article.active {
-  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
-  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+  background: color-mix(in srgb, var(--primary-soft) 70%, var(--surface));
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.05);
+  transform: translate3d(2px, 0, 0) scale(0.998);
 }
-.spotlight-demo__results .demo-image {
+.spotlight-demo__thumb {
   width: 44px;
   height: 44px;
+  overflow: hidden;
+  border: 1px solid var(--border);
   border-radius: 9px;
+  background: var(--surface-hover);
+  box-shadow: 0 4px 12px rgb(2 6 23 / 0.12);
 }
-.spotlight-demo__results strong,
-.spotlight-demo__results small {
+.spotlight-demo__results article.active .spotlight-demo__thumb {
+  transform: scale(1.035) rotate(-0.35deg);
+}
+.spotlight-demo__thumb .demo-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.spotlight-demo__copy {
+  min-width: 0;
+}
+.spotlight-demo__copy strong,
+.spotlight-demo__copy small {
   display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.spotlight-demo__results strong {
-  font-size: 10px;
+.spotlight-demo__copy strong {
+  font-size: 11px;
+  letter-spacing: -0.12px;
 }
-.spotlight-demo__results small {
-  margin-top: 4px;
+.spotlight-demo__copy small {
+  margin-top: 3px;
   color: var(--text-muted);
-  font-size: 8px;
+  font-size: 9px;
 }
-.spotlight-demo__actions {
+.spotlight-demo__score {
+  padding: 3px 6px;
+  border-radius: var(--radius-full);
+  background: var(--primary-soft);
+  color: var(--primary-text);
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.spotlight-demo__action-dock {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  padding: 6px 10px 7px;
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 34%, transparent);
+  background: color-mix(in srgb, var(--surface-elevated) 82%, transparent);
+  box-shadow: 0 -8px 22px -17px rgb(2 6 23 / 0.42), inset 0 1px rgb(255 255 255 / 0.055);
+  backdrop-filter: blur(18px) saturate(1.1);
+}
+.spotlight-demo__action-bar {
   display: flex;
-  gap: 5px;
-  opacity: 0;
-  transform: translateX(8px);
-  transition:
-    opacity 160ms ease,
-    transform 180ms ease;
-}
-.spotlight-demo__results article:hover .spotlight-demo__actions,
-.spotlight-demo__results article.active .spotlight-demo__actions {
-  opacity: 1;
-  transform: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  width: 100%;
 }
 .settings-demo {
   display: grid;
@@ -887,7 +983,7 @@ const demoImages = [
 }
 .indexing-demo {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   align-content: stretch;
   gap: 16px;
   width: min(510px, calc(100% - 52px));
@@ -901,6 +997,24 @@ const demoImages = [
   align-items: center;
   gap: 14px;
 }
+.indexing-demo__folder {
+  display: grid;
+  align-content: center;
+  gap: 14px;
+  width: min(360px, 100%);
+  margin: auto;
+}
+.indexing-demo__waiting {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  color: var(--text-muted);
+}
+.indexing-demo__waiting strong { color: var(--text); font-size: 14px; }
+.indexing-demo__waiting span { max-width: 300px; color: var(--text-muted); font-size: 10px; line-height: 1.5; text-align: center; }
+.indexing-demo__model-status { width: min(360px, 100%); margin: 0 auto; }
+.indexing-demo__complete-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .indexing-demo__hero > svg {
   color: var(--primary-text);
 }

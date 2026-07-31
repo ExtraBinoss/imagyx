@@ -4,10 +4,12 @@ import { computed } from 'vue'
 const props = withDefaults(
   defineProps<{
     shortcut: string // e.g. "Ctrl+C", "Cmd+E", "Ctrl+Shift+P", "Enter"
-    size?: 'sm' | 'md'
+    size?: 'sm' | 'md' | 'lg'
+    variant?: 'primary' | 'secondary'
   }>(),
   {
     size: 'sm',
+    variant: 'secondary',
   },
 )
 
@@ -79,7 +81,7 @@ const parsedTokens = computed<TokenInfo[]>(() => {
 </script>
 
 <template>
-  <span class="kbd-chip" :class="[`kbd-chip--${size}`]">
+  <span class="kbd-chip" :class="[`kbd-chip--${size}`, `kbd-chip--${variant}`]">
     <template v-for="(item, index) in parsedTokens" :key="index">
       <kbd class="kbd-chip__key" :class="{ 'kbd-chip__key--symbol': item.isSymbol }">
         {{ item.label }}
@@ -113,6 +115,13 @@ const parsedTokens = computed<TokenInfo[]>(() => {
   box-shadow: 0 1px 1px rgb(0 0 0 / 0.15);
 }
 
+.kbd-chip--primary .kbd-chip__key {
+  background: var(--surface-elevated);
+  color: var(--text-secondary);
+  border-bottom-color: var(--border-strong);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), 0 2px 0 var(--border);
+}
+
 .kbd-chip__key--symbol {
   font-size: 1.15em;
   font-weight: 500;
@@ -139,5 +148,19 @@ const parsedTokens = computed<TokenInfo[]>(() => {
   height: 20px;
   padding: 0 6px;
   font-size: 11px;
+}
+
+.kbd-chip--lg .kbd-chip__key {
+  min-width: 42px;
+  height: 42px;
+  padding: 0 13px;
+  border-radius: 9px;
+  font-size: 20px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18), 0 3px 0 color-mix(in srgb, var(--border-strong) 80%, transparent);
+}
+
+.kbd-chip--lg .kbd-chip__plus {
+  padding-inline: 4px;
+  font-size: 15px;
 }
 </style>

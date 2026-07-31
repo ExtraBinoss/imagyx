@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, Check, EyeOff, FolderPlus, PartyPopper, X } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, FolderPlus, PartyPopper, X } from '@lucide/vue'
+import type { IndexProgress, ModelDownloadProgress, RuntimeStats } from '../../types'
 import type { ThemeMode } from '../../stores/theme'
 import Button from '../ui/Button/Button.vue'
 import OnboardingFeaturePreview from './OnboardingFeaturePreview.vue'
@@ -8,18 +9,22 @@ import { useTranslate } from '../../i18n'
 
 const props = defineProps<{
   open: boolean
-  neverAskAgain: boolean
   themeMode: ThemeMode
   shortcut: string
   hasFolders: boolean
+  totalImages: number
+  progress: IndexProgress | null
+  modelProgress: ModelDownloadProgress | null
+  runtimeStats: RuntimeStats | null
 }>()
 
 const emit = defineEmits<{
   close: []
   finish: []
-  neverAskAgain: [value: boolean]
   addFolder: []
   themeChange: [value: ThemeMode]
+  pauseIndexing: []
+  resumeIndexing: []
 }>()
 
 const { t } = useTranslate()
@@ -75,7 +80,7 @@ function next() {
 function handleKeydown(event: KeyboardEvent) {
   if (!props.open) return
   const target = event.target as HTMLElement | null
-  if (target?.matches('input, textarea, select, [contenteditable="true"]')) return
+  if (target?.matches('input, textarea, select, [contenteditable]')) return
   if (event.key === 'Escape') {
     event.preventDefault()
     emit('close')
@@ -125,27 +130,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
                 :theme-mode="themeMode"
                 :shortcut="shortcut"
                 :has-folders="hasFolders"
+                :total-images="totalImages"
+                :progress="progress"
+                :model-progress="modelProgress"
+                :runtime-stats="runtimeStats"
                 @add-folder="emit('addFolder')"
                 @theme-change="emit('themeChange', $event)"
+                @pause-indexing="emit('pauseIndexing')"
+                @resume-indexing="emit('resumeIndexing')"
+                @open-library="emit('finish')"
               />
             </Transition>
           </div>
 
           <footer class="onboarding-footer">
-            <Button
-              class="onboarding-never"
-              variant="ghost"
-              size="sm"
-              :pressed="neverAskAgain"
-              @click="emit('neverAskAgain', !neverAskAgain)"
-            >
-              <template #leading>
-                <Check v-if="neverAskAgain" :size="14" />
-                <EyeOff v-else :size="14" />
-              </template>
-              {{ t('onboarding.dont_show_again') }}
-            </Button>
-
             <div class="onboarding-progress" :aria-label="t('onboarding.step_of', { current: stepIndex + 1, total: steps.length })">
               <Button
                 v-for="(_, index) in steps"
@@ -218,8 +216,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 .onboarding-copy p { max-width: 790px; margin: 11px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.55; }
 .onboarding-preview { min-height: 0; overflow: hidden; }
 .onboarding-preview__content { height: 100%; }
-.onboarding-footer { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px; min-width: 0; }
-.onboarding-never { justify-self: start; }
+.onboarding-footer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 16px; min-width: 0; }
 .onboarding-progress { display: flex; align-items: center; justify-content: center; gap: 6px; }
 .onboarding-dot {
   width: 7px;
@@ -271,7 +268,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
   }
   .onboarding-footer { grid-template-columns: 1fr auto; }
   .onboarding-progress { grid-column: 1 / -1; grid-row: 1; }
-  .onboarding-never { grid-row: 2; }
   .onboarding-actions { grid-row: 2; }
 }
 @media (prefers-reduced-motion: reduce) {

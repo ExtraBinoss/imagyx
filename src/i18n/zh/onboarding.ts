@@ -7,6 +7,11 @@ export default {
   'onboarding.next': '下一步',
   'onboarding.get_started': '开始',
   'onboarding.add_folder': '添加文件夹',
+  'onboarding.first_folder_title': '添加第一个文件夹',
+  'onboarding.add_another_folder': '添加另一个文件夹',
+  'onboarding.indexing_complete_title': '{count} 张图片已可搜索',
+  'onboarding.indexing_complete_desc': '你的图库已准备就绪。现在即可打开，也可以随时添加另一个文件夹。',
+  'onboarding.open_library': '打开我的图库',
 
   'onboarding.step_welcome_title': '欢迎使用您的视觉库',
   'onboarding.step_welcome_desc': 'Imagyx 将您的图片保存在电脑上，按文件夹组织，并通过自然语言进行搜索。',

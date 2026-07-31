@@ -7,6 +7,11 @@ export default {
   'onboarding.next': 'Suivant',
   'onboarding.get_started': 'C’est parti',
   'onboarding.add_folder': 'Ajouter un dossier',
+  'onboarding.first_folder_title': 'Ajoutez votre premier dossier',
+  'onboarding.add_another_folder': 'Ajouter un autre dossier',
+  'onboarding.indexing_complete_title': '{count} images sont prêtes à être recherchées',
+  'onboarding.indexing_complete_desc': 'Votre bibliothèque est prête. Ouvrez-la maintenant ou ajoutez un autre dossier quand vous le souhaitez.',
+  'onboarding.open_library': 'Ouvrir ma bibliothèque',
 
   'onboarding.step_welcome_title': 'Bienvenue dans votre bibliothèque visuelle',
   'onboarding.step_welcome_desc': 'Imagyx conserve vos images sur votre ordinateur, les organise par dossier et les rend accessibles par recherche en langage naturel.',

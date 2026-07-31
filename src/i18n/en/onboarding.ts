@@ -7,6 +7,11 @@ export default {
   'onboarding.next': 'Next',
   'onboarding.get_started': 'Get started',
   'onboarding.add_folder': 'Add a folder',
+  'onboarding.first_folder_title': 'Add your first folder',
+  'onboarding.add_another_folder': 'Add another folder',
+  'onboarding.indexing_complete_title': '{count} images are ready to search',
+  'onboarding.indexing_complete_desc': 'Your library is ready. Open it now or add another folder whenever you are ready.',
+  'onboarding.open_library': 'Open my library',
 
   'onboarding.step_welcome_title': 'Welcome to your visual library',
   'onboarding.step_welcome_desc': 'Imagyx keeps your images on your computer, organizes them by folder, and makes them searchable with natural language.',
