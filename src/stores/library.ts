@@ -321,6 +321,7 @@ export const useLibraryStore = defineStore("library", {
       const toasts = useToastStore();
       if (progress.stage === "idle") return;
       if (progress.stage === "ready") {
+        toasts.dismiss("model-download");
         return;
       }
       if (progress.stage === "error") {

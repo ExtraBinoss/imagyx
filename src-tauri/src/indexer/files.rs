@@ -11,10 +11,14 @@ use crate::{
     models::{FollowedFolder, ImageAsset},
 };
 
-pub(super) fn discover_images(root: &Path) -> Vec<PathBuf> {
+pub(super) fn discover_images(root: &Path, excluded_roots: &[PathBuf]) -> Vec<PathBuf> {
     WalkDir::new(root)
         .follow_links(false)
         .into_iter()
+        .filter_entry(|entry| {
+            entry.path() == root
+                || !excluded_roots.iter().any(|excluded| entry.path().starts_with(excluded))
+        })
         .filter_map(Result::ok)
         .filter(|entry| entry.file_type().is_file())
         .map(walkdir::DirEntry::into_path)
@@ -104,9 +108,22 @@ mod tests {
         let temp = tempdir().expect("temp directory");
         fs::write(temp.path().join("image.png"), []).expect("image fixture");
         fs::write(temp.path().join("notes.txt"), []).expect("text fixture");
-        let discovered = discover_images(temp.path());
+        let discovered = discover_images(temp.path(), &[]);
         assert_eq!(discovered.len(), 1);
         assert!(discovered[0].ends_with("image.png"));
+    }
+
+    #[test]
+    fn discovery_skips_watched_nested_folders() {
+        let temp = tempdir().expect("temp directory");
+        let nested = temp.path().join("watched-subfolder");
+        fs::create_dir(&nested).expect("nested folder");
+        fs::write(temp.path().join("parent.png"), []).expect("parent image fixture");
+        fs::write(nested.join("child.png"), []).expect("child image fixture");
+
+        let discovered = discover_images(temp.path(), &[nested]);
+
+        assert_eq!(discovered, vec![temp.path().join("parent.png")]);
     }
 
     #[test]

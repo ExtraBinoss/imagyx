@@ -30,7 +30,16 @@ pub fn index_folder(
     let _guard = state.lock_indexer();
     progress::emit(app, folder, 0, 0, "discovering", "Analyse du dossier…");
 
-    let paths = discover_images(Path::new(&folder.path));
+    let root = Path::new(&folder.path);
+    let excluded_roots = state
+        .database
+        .folders()?
+        .into_iter()
+        .filter(|candidate| candidate.id != folder.id)
+        .map(|candidate| PathBuf::from(candidate.path))
+        .filter(|candidate| candidate.starts_with(root))
+        .collect::<Vec<_>>();
+    let paths = discover_images(root, &excluded_roots);
     let current_paths = paths
         .iter()
         .map(|path| path.to_string_lossy().into_owned())
