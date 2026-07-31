@@ -200,10 +200,10 @@ watch(searchQuery, (value) => {
   if (!value.trim()) {
     pendingSearchDiagnosticId = undefined
     pendingSearchUntilLibraryReady = null
-    results.value = []
-    searching.value = false
+    searching.value = true
     semanticSearching.value = false
-    if (view.value === 'search' && !hasActiveJobs.value) void closePanel(request)
+    void runSearch()
+    if (view.value === 'search') void openPanel(request)
     return
   }
 
