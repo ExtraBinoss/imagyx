@@ -301,7 +301,7 @@ watch(() => props.images.length, () => {
 
 <template>
   <section ref="viewport" class="image-area" @scroll.passive="handleScroll">
-    <div v-if="loading && images.length === 0" class="loading-grid" :aria-label="t('search.loading')">
+    <div v-if="hasFolders && loading && images.length === 0" class="loading-grid" :aria-label="t('search.loading')">
       <Skeleton v-for="item in 18" :key="item" class="skeleton-card" radius="lg" />
     </div>
 

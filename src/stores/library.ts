@@ -405,6 +405,14 @@ export const useLibraryStore = defineStore("library", {
       this.semanticSearching = Boolean(query);
       this.loadingMore = false;
       this.hasMoreImages = false;
+      if (!this.folders.length) {
+        this.images = [];
+        this.totalResults = 0;
+        this.hasMoreImages = false;
+        this.loading = false;
+        this.semanticSearching = false;
+        return;
+      }
       if (!this.images.length) this.loading = true;
       try {
         if (!query) {
@@ -431,10 +439,7 @@ export const useLibraryStore = defineStore("library", {
         const lexicalPromise = imagyxApi
           .searchPage({ query, folderId, limit: SEARCH_RESULT_LIMIT, offset: 0 })
           .then((page) => {
-            if (
-              sequence === this.searchSequence &&
-              (page.items.length > 0 || this.images.length === 0)
-            ) {
+            if (sequence === this.searchSequence) {
               this.images = imageList(page.items);
               this.totalResults = page.total;
               this.hasMoreImages = this.images.length < page.total;
