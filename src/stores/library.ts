@@ -138,7 +138,6 @@ export const useLibraryStore = defineStore("library", {
             performance.now() - eventsStarted,
           ),
         );
-        const firstPagePromise = this.refreshImages();
         const appInfoStarted = performance.now();
         const appInfoPromise = imagyxApi.appInfo().then((value) => {
           perfLog(
@@ -169,7 +168,7 @@ export const useLibraryStore = defineStore("library", {
         this.folders = folders;
         this.indexCoverage = indexCoverage;
         this.handleModelProgress(appInfo.modelProgress);
-        await Promise.all([firstPagePromise, eventsPromise]);
+        await Promise.all([this.refreshImages(), eventsPromise]);
         this.initialized = true;
         this.scheduleSemanticWarmup();
         perfLog(
