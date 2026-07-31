@@ -972,6 +972,18 @@ onMounted(async () => {
     unlistenLibrary,
     unlistenVectors,
   ] = unlisteners
+  semanticRuntime.setCallbacks({
+    progress: handleModelProgress,
+    stats: handleRuntimeStats,
+  })
+  // Spotlight owns its own WebView and therefore its own semantic runtime.
+  // Warm it here instead of waiting for the main window to exist or proxying
+  // the first query through another WebView.
+  void semanticRuntime.prewarmText().catch((reason) => {
+    if (import.meta.env.DEV) {
+      console.error('[Imagyx][SpotlightSearch] local semantic runtime failed to warm', reason)
+    }
+  })
   unlistenFocus = await currentWindow.onFocusChanged(({ payload }) => {
     if (!payload && !dialogOpen.value) void imagyxApi.hideSpotlight()
   })

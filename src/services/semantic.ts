@@ -1,9 +1,7 @@
 import { listen } from '@tauri-apps/api/event'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { imagyxApi } from '../api/tauri'
 import type { ImageAsset, ModelDownloadProgress, QueryConcept, RuntimeStats } from '../types'
 import { perfLog } from '../utils'
-import { requestSemanticEmbedding } from './semantic-channel'
 import {
   buildQueryPromptPlan,
   combinePromptVectors,
@@ -29,7 +27,6 @@ const AI_IMAGE_EDGE = 224
 const AI_IMAGE_CHANNELS = 3
 const AI_IMAGE_BYTES = AI_IMAGE_EDGE * AI_IMAGE_EDGE * AI_IMAGE_CHANNELS
 const QUERY_CACHE_CAPACITY = 24
-const currentWindow = getCurrentWindow()
 const DEFAULT_IMAGE_LABELS = [
   'personne', 'femme', 'homme', 'enfant', 'groupe de personnes', 'visage',
   'animal', 'chien', 'chat', 'oiseau', 'voiture', 'vélo', 'bâtiment', 'maison',
@@ -291,7 +288,6 @@ class SemanticRuntime {
   }
 
   async prewarmText() {
-    if (currentWindow.label === 'spotlight') return
     await this.ensureTextReady()
     if (this.textPrimed) return
     if (!this.textPriming) {
@@ -436,18 +432,6 @@ class SemanticRuntime {
   }
 
   async embedQuery(query: string): Promise<EmbeddedQuery | undefined> {
-    const trimmed = query.trim()
-    if (!trimmed) return undefined
-    if (currentWindow.label === 'spotlight') {
-      return requestSemanticEmbedding(trimmed)
-    }
-    return this.embedLocalQuery(trimmed)
-  }
-
-  // Spotlight requests are already debounced and sequenced by its own window.
-  // They must bypass the main window's search wrapper, which cancels stale
-  // typing there and would otherwise cancel a newer delegated query as well.
-  async embedDelegatedQuery(query: string): Promise<EmbeddedQuery | undefined> {
     const trimmed = query.trim()
     if (!trimmed) return undefined
     return this.embedLocalQuery(trimmed)

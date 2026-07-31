@@ -1,10 +1,7 @@
 use std::{
     fs,
     path::Path,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::Arc,
 };
 
 use chrono::Utc;
@@ -18,8 +15,6 @@ use crate::{
     tracing, tray,
 };
 use tauri_plugin_autostart::ManagerExt;
-
-static SEMANTIC_PROVIDER_READY: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 pub fn get_app_info(state: State<'_, Arc<AppState>>, app: AppHandle) -> AppInfo {
@@ -138,16 +133,6 @@ pub fn set_launch_on_startup(
         return Err(error);
     }
     Ok(enabled)
-}
-
-#[tauri::command]
-pub fn semantic_provider_ready() -> bool {
-    SEMANTIC_PROVIDER_READY.load(Ordering::Acquire)
-}
-
-#[tauri::command]
-pub fn set_semantic_provider_ready(ready: bool) {
-    SEMANTIC_PROVIDER_READY.store(ready, Ordering::Release);
 }
 
 #[tauri::command(rename_all = "camelCase")]

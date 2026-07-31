@@ -117,7 +117,7 @@ impl FuzzyIndex {
             }
             for candidate in candidate_tokens {
                 let distance = damerau_distance_at_most_one(query, candidate);
-                if distance == 0 || distance > 1 {
+                if distance > 1 {
                     continue;
                 }
                 let token_score =
@@ -221,5 +221,17 @@ mod tests {
             Some("woman")
         );
         assert!(!matches.iter().any(|item| item.image_id == "cartoon"));
+    }
+
+    #[test]
+    fn returns_exact_alias_candidates_for_human_queries() {
+        let index = FuzzyIndex::from_entries(vec![
+            ("girl".into(), "folder".into(), "girl_train_segmented.png".into()),
+            ("cartoon".into(), "folder".into(), "cartoon.png".into()),
+        ]);
+        let matches = index.search(&vec!["girl".into()], None, 20);
+
+        assert_eq!(matches.first().map(|item| item.image_id.as_str()), Some("girl"));
+        assert_eq!(matches.first().map(|item| item.score), Some(1.0));
     }
 }

@@ -4,10 +4,8 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App.vue";
 import SpotlightSearch from "./components/Spotlight/SpotlightSearch.vue";
-import { imagyxApi } from "./api/tauri";
 import { installSpotlightConverterKeyboardGuard } from "./services/spotlight-converter-keyboard";
 import { semanticRuntime } from "./services/semantic";
-import { registerSemanticQueryProvider } from "./services/semantic-provider";
 import { installUnifiedSearchEngine } from "./services/unified-search-engine";
 import { visualSearchSession } from "./services/visual-search-session";
 import { installPerformanceDiagnostics } from "./utils";
@@ -70,20 +68,7 @@ const RootComponent =
 
 async function mountApplication() {
   if (currentWindowLabel === "main") {
-    // Spotlight is a separate WebView and can be opened before App.vue mounts.
-    // Register the bridge first, then publish readiness. This removes the
-    // cold-launch race where Spotlight has already sent its first query while
-    // the main window is still mounting.
-    try {
-      await registerSemanticQueryProvider();
-      await imagyxApi.setSemanticProviderReady(true);
-    } catch {
-      // The browser/demo build has no Tauri event bus. In the desktop build a
-      // later Spotlight request still reports the provider startup failure.
-    }
-
-    // Start loading in parallel with Vue's first render after the provider is
-    // installed, so the first semantic query can share the same warm runtime.
+    // Keep the main window warm for its own search and indexing runtime.
     void semanticRuntime.prewarmText().catch(() => undefined);
   }
 
