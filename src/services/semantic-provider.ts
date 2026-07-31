@@ -6,7 +6,7 @@ import {
   type SemanticQueryRequest,
 } from './semantic-channel'
 
-const pendingEmbeddings = new Map<string, Promise<Awaited<ReturnType<typeof semanticRuntime.embedQuery>>>>()
+const pendingEmbeddings = new Map<string, Promise<Awaited<ReturnType<typeof semanticRuntime.embedDelegatedQuery>>>>()
 
 async function handleSemanticQueryRequest(request: SemanticQueryRequest): Promise<void> {
   const startedAt = import.meta.env.DEV ? performance.now() : 0
@@ -22,7 +22,7 @@ async function handleSemanticQueryRequest(request: SemanticQueryRequest): Promis
   try {
     let embedding = pendingEmbeddings.get(request.requestId)
     if (!embedding) {
-      embedding = semanticRuntime.embedQuery(request.query)
+      embedding = semanticRuntime.embedDelegatedQuery(request.query)
         .finally(() => pendingEmbeddings.delete(request.requestId))
       pendingEmbeddings.set(request.requestId, embedding)
     }

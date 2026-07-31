@@ -436,6 +436,15 @@ class SemanticRuntime {
     return this.embedLocalQuery(trimmed)
   }
 
+  // Spotlight requests are already debounced and sequenced by its own window.
+  // They must bypass the main window's search wrapper, which cancels stale
+  // typing there and would otherwise cancel a newer delegated query as well.
+  async embedDelegatedQuery(query: string): Promise<EmbeddedQuery | undefined> {
+    const trimmed = query.trim()
+    if (!trimmed) return undefined
+    return this.embedLocalQuery(trimmed)
+  }
+
   private async embedLocalQuery(query: string): Promise<EmbeddedQuery> {
     const cacheKey = query.toLocaleLowerCase('fr')
     const cached = this.queryCache.get(cacheKey)
