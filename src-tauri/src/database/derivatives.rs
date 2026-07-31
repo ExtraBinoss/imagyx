@@ -79,6 +79,7 @@ mod tests {
             thumbnail_path: String::new(),
             color_signature: None,
             semantic_score: None,
+            relevance_score: None,
         };
         database
             .save_assets(

@@ -14,6 +14,52 @@ pub fn normalize_query(query: &str) -> Vec<String> {
     tokens
 }
 
+pub fn meaningful_tokens(tokens: &[String]) -> Vec<String> {
+    tokens
+        .iter()
+        .filter(|token| {
+            !matches!(
+                token.as_str(),
+                "a" | "an" | "and" | "avec" | "de" | "des" | "du" | "en" | "et"
+                    | "la" | "le" | "les" | "of" | "par" | "pour" | "the" | "un"
+                    | "une" | "with"
+            )
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn expand_search_tokens(tokens: &[String]) -> Vec<String> {
+    let mut expanded = Vec::new();
+    for token in meaningful_tokens(tokens) {
+        let aliases: &[&str] = match token.as_str() {
+            "woman" | "women" | "femme" | "femmes" | "female" => {
+                &["woman", "women", "femme", "femmes", "girl", "girls", "fille", "filles", "female"]
+            }
+            "girl" | "girls" | "fille" | "filles" => {
+                &["girl", "girls", "fille", "filles", "woman", "women", "femme", "femmes", "female"]
+            }
+            "man" | "men" | "homme" | "hommes" | "male" => {
+                &["man", "men", "homme", "hommes", "boy", "boys", "garcon", "garcons", "male"]
+            }
+            "boy" | "boys" | "garcon" | "garcons" => {
+                &["boy", "boys", "garcon", "garcons", "man", "men", "homme", "hommes", "male"]
+            }
+            "person" | "people" | "personne" | "personnes" | "human" | "humain" => {
+                &["person", "people", "personne", "personnes", "human", "humain"]
+            }
+            _ => &[token.as_str()],
+        };
+        for alias in aliases {
+            let alias = (*alias).to_owned();
+            if !expanded.contains(&alias) {
+                expanded.push(alias);
+            }
+        }
+    }
+    expanded
+}
+
 fn strip_diacritic(character: char) -> String {
     match character {
         'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => "a".into(),
@@ -39,7 +85,7 @@ pub fn fts_query_or(query: &str) -> Option<String> {
 }
 
 fn build_fts_query(query: &str, operator: &str) -> Option<String> {
-    let tokens = normalize_query(query);
+    let tokens = meaningful_tokens(&normalize_query(query));
     if tokens.is_empty() {
         return None;
     }
@@ -54,7 +100,7 @@ fn build_fts_query(query: &str, operator: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{fts_query, fts_query_or, normalize_query};
+    use super::{expand_search_tokens, fts_query, fts_query_or, meaningful_tokens, normalize_query};
 
     #[test]
     fn strips_punctuation_but_keeps_useful_separators() {
@@ -83,5 +129,13 @@ mod tests {
             fts_query_or("woman green").as_deref(),
             Some("\"woman\"* OR \"green\"*")
         );
+    }
+
+    #[test]
+    fn expands_human_subjects_without_expanding_connectors() {
+        let tokens = normalize_query("woman and green");
+        assert_eq!(meaningful_tokens(&tokens), vec!["woman", "green"]);
+        assert!(expand_search_tokens(&tokens).contains(&"girl".to_owned()));
+        assert!(!expand_search_tokens(&tokens).contains(&"and".to_owned()));
     }
 }

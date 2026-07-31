@@ -34,6 +34,7 @@ pub struct ImageAsset {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color_signature: Option<Vec<u8>>,
     pub semantic_score: Option<f32>,
+    pub relevance_score: Option<f32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

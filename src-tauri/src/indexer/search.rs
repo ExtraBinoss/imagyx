@@ -6,8 +6,8 @@ use std::{
 use crate::{
     AppError,
     fuzzy::{
-        dominance_requested, fts_query, fts_query_or, name_match_quality, normalize_query,
-        parse_colors, reciprocal_rank, token_coverage,
+        dominance_requested, expand_search_tokens, fts_query, fts_query_or, meaningful_tokens,
+        name_match_quality, normalize_query, parse_colors, reciprocal_rank, token_coverage,
     },
     models::SearchPage,
     state::AppState,
@@ -51,6 +51,7 @@ pub fn search_page_with_diagnostics(
     }
 
     let tokens = normalize_query(query);
+    let meaningful = meaningful_tokens(&tokens);
     if query.trim().is_empty() {
         let limit = requested_limit.clamp(1, MAX_SEARCH_WINDOW);
         let offset = requested_offset.min(MAX_SEARCH_WINDOW);
@@ -80,6 +81,16 @@ pub fn search_page_with_diagnostics(
         .map(|values| parse_colors(&values.join(" ")))
         .filter(|values| !values.is_empty())
         .unwrap_or_else(|| parse_colors(query));
+    let subject_tokens = meaningful
+        .iter()
+        .filter(|token| parse_colors(token).is_empty())
+        .cloned()
+        .collect::<Vec<_>>();
+    let ranking_tokens = if subject_tokens.is_empty() {
+        &meaningful
+    } else {
+        &subject_tokens
+    };
     let dominant = dominant_color || dominance_requested(query);
     let color_limit = if colors.is_empty() {
         0
@@ -132,10 +143,11 @@ pub fn search_page_with_diagnostics(
             diagnostic_id,
         )
     });
+    let fuzzy_tokens = expand_search_tokens(&meaningful);
     let fuzzy = state
         .fuzzy
         .read()
-        .search(&tokens, folder_id, candidate_limit);
+        .search(&fuzzy_tokens, folder_id, candidate_limit);
     let color_matches = if colors.is_empty() {
         Vec::new()
     } else {
@@ -189,18 +201,25 @@ pub fn search_page_with_diagnostics(
             let semantic_score = semantic_match.map(|(_, score)| score).unwrap_or(0.0);
             let color_score = color_scores.get(&asset.id).copied().unwrap_or(0.0);
             let fuzzy_score = fuzzy_scores.get(&asset.id).copied().unwrap_or(0.0);
-            let name_score = name_match_quality(&asset, &tokens);
-            let coverage = token_coverage(&asset, &tokens);
-            let score = 0.40 * name_score
-                + 0.16 * coverage
-                + 0.25 * semantic_score
-                + 0.12 * color_score
-                + 0.05 * fuzzy_score
-                + 0.015 * reciprocal_rank(lexical_rank)
-                    / reciprocal_rank(Some(0)).max(f32::EPSILON)
-                + 0.005 * reciprocal_rank(semantic_match.map(|(rank, _)| rank))
-                    / reciprocal_rank(Some(0)).max(f32::EPSILON);
+            let name_score = name_match_quality(&asset, ranking_tokens);
+            let coverage = token_coverage(&asset, ranking_tokens);
+            let lexical_rank_score = reciprocal_rank(lexical_rank)
+                / reciprocal_rank(Some(0)).max(f32::EPSILON);
+            let semantic_rank_score = reciprocal_rank(semantic_match.map(|(rank, _)| rank))
+                / reciprocal_rank(Some(0)).max(f32::EPSILON);
+            let score = fused_relevance_score(
+                !subject_tokens.is_empty(),
+                !colors.is_empty(),
+                name_score,
+                coverage,
+                semantic_score,
+                color_score,
+                fuzzy_score,
+                lexical_rank_score,
+                semantic_rank_score,
+            );
             asset.semantic_score = semantic_match.map(|(_, score)| score);
+            asset.relevance_score = Some(score.clamp(0.0, 1.0));
             (asset, score)
         })
         .collect::<Vec<_>>();
@@ -243,6 +262,51 @@ pub fn search_page_with_diagnostics(
     };
     trace_search(diagnostic_id, mode, query, items.len(), total, started);
     Ok(SearchPage { items, total })
+}
+
+fn fused_relevance_score(
+    has_subject: bool,
+    has_color: bool,
+    name_score: f32,
+    coverage: f32,
+    semantic_score: f32,
+    color_score: f32,
+    fuzzy_score: f32,
+    lexical_rank_score: f32,
+    semantic_rank_score: f32,
+) -> f32 {
+    let score = match (has_subject, has_color) {
+        // A requested subject must decide the result. Colour is a useful
+        // tie-breaker but cannot promote a green logo over a filename/subject
+        // match such as girl_train_segmented.png.
+        (true, true) => 0.34 * name_score
+            + 0.14 * coverage
+            + 0.42 * semantic_score
+            + 0.07 * color_score
+            + 0.02 * fuzzy_score
+            + 0.005 * lexical_rank_score
+            + 0.005 * semantic_rank_score,
+        (true, false) => 0.36 * name_score
+            + 0.16 * coverage
+            + 0.44 * semantic_score
+            + 0.02 * fuzzy_score
+            + 0.01 * lexical_rank_score
+            + 0.01 * semantic_rank_score,
+        // Pure colour requests should be driven by the compact colour
+        // signature, with the text embedding as a secondary signal.
+        (false, true) => 0.04 * name_score
+            + 0.04 * coverage
+            + 0.20 * semantic_score
+            + 0.70 * color_score
+            + 0.01 * lexical_rank_score
+            + 0.01 * semantic_rank_score,
+        (false, false) => 0.20 * semantic_score
+            + 0.70 * color_score
+            + 0.05 * fuzzy_score
+            + 0.03 * lexical_rank_score
+            + 0.02 * semantic_rank_score,
+    };
+    score.clamp(0.0, 1.0)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -296,6 +360,7 @@ fn visual_search(
         .filter_map(|item| {
             let mut asset = assets.get(&item.image_id)?.clone();
             asset.semantic_score = Some(item.score);
+            asset.relevance_score = Some(item.score);
             Some(asset)
         })
         .collect::<Vec<_>>();
@@ -320,4 +385,17 @@ fn trace_search(
             started.elapsed().as_secs_f64() * 1_000.0,
         ),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fused_relevance_score;
+
+    #[test]
+    fn subject_match_beats_a_green_brand_asset_for_subject_colour_query() {
+        let girl = fused_relevance_score(true, true, 0.82, 1.0, 0.06, 0.82, 1.0, 0.0, 0.0);
+        let brand = fused_relevance_score(true, true, 0.0, 0.0, 0.58, 1.0, 0.0, 0.0, 0.0);
+
+        assert!(girl > brand, "girl={girl:.3} brand={brand:.3}");
+    }
 }

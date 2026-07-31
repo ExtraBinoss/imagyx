@@ -177,6 +177,9 @@ function logResultSet(
       semanticScore: image.semanticScore == null
         ? null
         : Number(image.semanticScore.toFixed(4)),
+      relevanceScore: image.relevanceScore == null
+        ? null
+        : Number(image.relevanceScore.toFixed(4)),
     })))
     console.groupEnd()
   })

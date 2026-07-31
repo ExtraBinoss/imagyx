@@ -46,6 +46,18 @@ describe('buildQueryPromptPlan', () => {
     expect(plan.negativePrompts).toEqual([])
     expect(plan.negativeWeight).toBe(0)
   })
+
+  it('keeps a human subject ahead of a requested colour', () => {
+    const plan = buildQueryPromptPlan('woman green')
+
+    expect(plan.subjectLabels).toEqual(['woman'])
+    expect(plan.detectedColors).toEqual(['green'])
+    expect(plan.positivePrompts).toContain('a photo of a woman')
+    expect(plan.positivePrompts).toContain('a woman in green')
+    expect(plan.positiveGroups[0]?.weight).toBeGreaterThan(plan.positiveGroups[1]?.weight ?? 0)
+    expect(plan.negativePrompts).not.toContain('a photo of a red woman')
+    expect(plan.negativePrompts).toContain('a logo or brand mark')
+  })
 })
 
 describe('combinePromptVectors', () => {

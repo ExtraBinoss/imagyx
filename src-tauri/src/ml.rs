@@ -9,7 +9,9 @@ use tauri::{AppHandle, Emitter};
 
 use crate::{models::ModelDownloadProgress, state::AppState};
 
-pub const MODEL_ID: &str = "active-transformersjs-model";
+// Bump this profile whenever the image preprocessing or the text prompt
+// ensemble changes enough that old vectors should not be mixed with new ones.
+pub const MODEL_ID: &str = "mobileclip-s0-search-v2";
 
 struct ModelSpec {
     name: &'static str,

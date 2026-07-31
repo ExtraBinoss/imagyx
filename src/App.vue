@@ -151,8 +151,7 @@ function openImageFromSpotlight(image: ImageAsset) {
   void store.refreshImages();
 }
 
-function ensureHiddenWindowIndexing() {
-  if (document.visibilityState !== "hidden") return;
+function ensurePendingIndexing() {
   void semanticRuntime
     .indexPending()
     .then(() => store.scheduleRefresh())
@@ -170,7 +169,9 @@ onMounted(async () => {
   void initializePromise.then(() => {
     onboarding.ensureFolderSetup(store.folders.length > 0);
     perfLog("App", "Full store initial load", performance.now() - start);
-    ensureHiddenWindowIndexing();
+    // This also rebuilds embeddings after a search-profile bump, even when
+    // the main window is visible and no new folder scan emitted an event.
+    ensurePendingIndexing();
   });
   window.addEventListener("keydown", handleTypeToSearch);
   [

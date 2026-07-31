@@ -480,8 +480,8 @@ defineExpose({ scrollToIndex });
                   KB</small
                 >
               </span>
-              <span v-if="image.semanticScore != null" class="spotlight-score"
-                >{{ Math.round(image.semanticScore * 100) }}%</span
+              <span v-if="image.relevanceScore != null || image.semanticScore != null" class="spotlight-score"
+                >{{ Math.round((image.relevanceScore ?? image.semanticScore ?? 0) * 100) }}%</span
               >
             </div>
           </div>

@@ -4,7 +4,11 @@ import { imagyxApi } from '../api/tauri'
 import type { ImageAsset, ModelDownloadProgress, QueryConcept, RuntimeStats } from '../types'
 import { perfLog } from '../utils'
 import { requestSemanticEmbedding } from './semantic-channel'
-import { buildQueryPromptPlan, combinePromptVectors } from './query-prompts'
+import {
+  buildQueryPromptPlan,
+  combinePromptVectors,
+  weightedPromptVectors,
+} from './query-prompts'
 import { configureLocalOnnxWasm } from './onnx-wasm-assets'
 import {
   VisionWorkerClient,
@@ -479,8 +483,9 @@ class SemanticRuntime {
       await this.prewarmText()
       const warmupMs = performance.now() - warmupStartedAt
       const plan = buildQueryPromptPlan(query)
+      const positivePrompts = plan.positiveGroups.flatMap((group) => group.prompts)
       const texts = [
-        ...plan.positivePrompts,
+        ...positivePrompts,
         ...plan.negativePrompts,
       ]
       const tokenizationStartedAt = performance.now()
@@ -494,11 +499,16 @@ class SemanticRuntime {
       const output = await this.textModel(inputs)
       const inferenceMs = performance.now() - inferenceStartedAt
       const vectors = tensorRows(output.text_embeds)
-      const positiveEnd = plan.positivePrompts.length
-      const negativeEnd = positiveEnd + plan.negativePrompts.length
+      let positiveOffset = 0
+      const positiveGroups = plan.positiveGroups.map((group) => {
+        const groupVectors = vectors.slice(positiveOffset, positiveOffset + group.prompts.length)
+        positiveOffset += group.prompts.length
+        return { vectors: groupVectors, weight: group.weight }
+      })
+      const negativeEnd = positiveOffset + plan.negativePrompts.length
       const queryVector = combinePromptVectors(
-        vectors.slice(0, positiveEnd),
-        vectors.slice(positiveEnd, negativeEnd),
+        weightedPromptVectors(positiveGroups),
+        vectors.slice(positiveOffset, negativeEnd),
         plan.negativeWeight,
       )
       if (!queryVector.length) throw new Error('Embedding de recherche vide')
@@ -517,6 +527,8 @@ class SemanticRuntime {
         query,
         prompts: texts.length,
         conceptsDeferred: plan.conceptLabels.length,
+        subjectLabels: plan.subjectLabels,
+        detectedColors: plan.detectedColors,
         warmupMs,
         tokenizationMs,
         inferenceMs,

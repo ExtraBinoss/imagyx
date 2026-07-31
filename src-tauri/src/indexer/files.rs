@@ -65,6 +65,7 @@ pub(crate) fn prepare_asset(folder: &FollowedFolder, path: &Path) -> Result<Imag
         thumbnail_path: String::new(),
         color_signature: signature_for_path(path).ok(),
         semantic_score: None,
+        relevance_score: None,
     })
 }
 

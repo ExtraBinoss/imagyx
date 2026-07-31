@@ -114,6 +114,7 @@ async function startConversion(format = selectedFormat.value) {
   try {
     const converted = await imagyxApi.convertImage(props.source.id, format)
     converted.image.semanticScore = props.source.semanticScore
+    converted.image.relevanceScore = props.source.relevanceScore
     progress.value = 1
     progressStage.value = 'complete'
     emit('converted', converted.image)

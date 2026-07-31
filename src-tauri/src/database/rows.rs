@@ -24,6 +24,7 @@ pub(super) fn map_image(row: &rusqlite::Row<'_>) -> rusqlite::Result<ImageAsset>
         thumbnail_path: row.get(9)?,
         color_signature: row.get(10)?,
         semantic_score: None,
+        relevance_score: None,
     })
 }
 

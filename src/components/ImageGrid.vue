@@ -328,8 +328,8 @@ watch(() => props.images.length, () => {
         >
           <div class="image-frame">
             <ThumbnailImage :image="entry.image" :priority="entry.priority" />
-            <Badge v-if="entry.image.semanticScore" class="score-badge" variant="primary">
-              {{ Math.round(entry.image.semanticScore * 100) }}%
+            <Badge v-if="entry.image.relevanceScore != null || entry.image.semanticScore != null" class="score-badge" variant="primary">
+              {{ Math.round((entry.image.relevanceScore ?? entry.image.semanticScore ?? 0) * 100) }}%
             </Badge>
 
             <div class="card-hover-actions">

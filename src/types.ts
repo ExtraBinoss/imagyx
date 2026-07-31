@@ -36,6 +36,7 @@ export interface ImageAsset {
   thumbnailPath: string
   colorSignature?: number[]
   semanticScore?: number
+  relevanceScore?: number
   semanticMatches?: SemanticMatch[]
 }
 

@@ -85,6 +85,9 @@ function logSearchResults(
     semanticScore: image.semanticScore == null
       ? null
       : Number(image.semanticScore.toFixed(4)),
+    relevanceScore: image.relevanceScore == null
+      ? null
+      : Number(image.relevanceScore.toFixed(4)),
     folderId: image.folderId,
   })))
   console.groupEnd()

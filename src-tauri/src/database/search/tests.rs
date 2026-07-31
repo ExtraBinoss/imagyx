@@ -31,6 +31,7 @@ fn asset(folder_id: &str, id: &str, name: &str, modified_at: i64) -> ImageAsset 
         thumbnail_path: String::new(),
         color_signature: None,
         semantic_score: None,
+        relevance_score: None,
     }
 }
 
